@@ -67,7 +67,7 @@ export const DefaultRibbon: RibbonTab[] = [
             },
             {
                 groupName: "ribbon.group.importExport",
-                items: ["file.import", "file.export", "file.stepUnfold"],
+                items: [["file.import", "file.importCityGML"], "file.export", "file.stepUnfold"],
             },
         ],
     },

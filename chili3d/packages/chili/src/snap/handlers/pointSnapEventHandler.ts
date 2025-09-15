@@ -10,7 +10,7 @@ import {
     IView,
     Plane,
     ShapeType,
-    XYZ
+    XYZ,
 } from "chili-core";
 import { Dimension } from "../dimension";
 import { ISnap, SnapData, SnapResult } from "../snap";
@@ -40,7 +40,7 @@ export class PointSnapEventHandler extends SnapEventHandler<PointSnapData> {
             ? new PlaneSnap(pointData.plane, pointData.refPoint)
             : new WorkplaneSnap(pointData.refPoint);
         const trackingSnap = new TrackingSnap(pointData.refPoint, true);
-        return [objectSnap, trackingSnap, workplaneSnap]
+        return [objectSnap, trackingSnap, workplaneSnap];
     }
 
     protected getPointFromInput(view: IView, text: string): SnapResult {
@@ -140,17 +140,14 @@ export class SnapPointPlaneEventHandler extends PointSnapEventHandler {
     protected override getInitSnaps(pointData: PointSnapData): ISnap[] {
         if (!pointData.plane) throw new Error("plane is required");
 
-        return [
-            new ObjectSnap(Config.instance.snapType),
-            new PlaneSnap(pointData.plane)
-        ]
+        return [new ObjectSnap(Config.instance.snapType), new PlaneSnap(pointData.plane)];
     }
 
     protected override findSnapPoint(shapeType: ShapeType, view: IView, event: PointerEvent): void {
         super.findSnapPoint(shapeType, view, event);
-        
+
         if (this._snaped?.point) {
-            this._snaped.point = this.data.plane!().project(this._snaped.point)
+            this._snaped.point = this.data.plane!().project(this._snaped.point);
         }
     }
 }

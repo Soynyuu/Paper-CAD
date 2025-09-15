@@ -32,7 +32,10 @@ export class Viewport extends HTMLElement {
     private readonly _eventCaches: [keyof HTMLElementEventMap, (e: any) => void][] = [];
     private readonly _acts: HTMLElement;
 
-    constructor(readonly view: IView, readonly showViewControls: boolean) {
+    constructor(
+        readonly view: IView,
+        readonly showViewControls: boolean,
+    ) {
         super();
         this.className = style.root;
         this._flyout = new Flyout();
@@ -52,15 +55,17 @@ export class Viewport extends HTMLElement {
     private render() {
         this.append(
             this._acts,
-            this.showViewControls ? div(
-                {
-                    className: style.viewControls,
-                    onpointerdown: (ev) => ev.stopPropagation(),
-                    onclick: (e) => e.stopPropagation(),
-                },
-                this.createCameraControls(),
-                this.createActionControls(),
-            ) : "",
+            this.showViewControls
+                ? div(
+                      {
+                          className: style.viewControls,
+                          onpointerdown: (ev) => ev.stopPropagation(),
+                          onclick: (e) => e.stopPropagation(),
+                      },
+                      this.createCameraControls(),
+                      this.createActionControls(),
+                  )
+                : "",
         );
     }
 

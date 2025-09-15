@@ -41,7 +41,10 @@ export function createComponentMesh(size: ComponentSize): ComponentMesh {
         },
         linesegments: Mesh.createLineSegments(size.lineSegment),
         surfaceMaterials: [],
-        surface: Mesh.createSurface(size.meshPosition, size.meshIndex > 0 ? size.meshIndex : size.meshPosition * 3),
+        surface: Mesh.createSurface(
+            size.meshPosition,
+            size.meshIndex > 0 ? size.meshIndex : size.meshPosition * 3,
+        ),
     };
 }
 
@@ -209,12 +212,7 @@ export class Component {
         });
     }
 
-    private mergeMeshNode(
-        visual: ComponentMesh,
-        node: MeshNode,
-        transform: Matrix4,
-        offset: ComponentSize
-    ) {
+    private mergeMeshNode(visual: ComponentMesh, node: MeshNode, transform: Matrix4, offset: ComponentSize) {
         if (node.mesh.meshType === "surface") {
             const materialONMap = this.mapOldNewMaterialIndex(node.materialId, visual.surfaceMaterials);
             MeshUtils.setSurfaceMeshData(visual.surface, node.mesh, transform, offset, materialONMap);
@@ -223,7 +221,10 @@ export class Component {
                 offset.meshIndex += node.mesh.index.length;
             }
         } else if (node.mesh.meshType === "linesegments") {
-            visual.linesegments.position?.set(transform.ofPoints(node.mesh.position!), offset.lineSegment * 3);
+            visual.linesegments.position?.set(
+                transform.ofPoints(node.mesh.position!),
+                offset.lineSegment * 3,
+            );
             offset.lineSegment += node.mesh.position!.length / 3;
         }
     }

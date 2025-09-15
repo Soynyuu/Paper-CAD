@@ -7,7 +7,7 @@ import {
     CursorType,
     IApplication,
     IView,
-    PubSub
+    PubSub,
 } from "chili-core";
 import { Cursor } from "../cursor";
 import style from "./layoutViewport.module.css";
@@ -16,7 +16,10 @@ import { Viewport } from "./viewport";
 export class LayoutViewport extends HTMLElement {
     private readonly _viewports: Map<IView, Viewport> = new Map();
 
-    constructor(readonly app: IApplication, readonly showViewControls: boolean = true) {
+    constructor(
+        readonly app: IApplication,
+        readonly showViewControls: boolean = true,
+    ) {
         super();
         this.className = style.root;
         app.views.onCollectionChanged(this._handleViewCollectionChanged);

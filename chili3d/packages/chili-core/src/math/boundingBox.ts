@@ -52,18 +52,78 @@ export class BoundingBox {
     static wireframe(box: BoundingBox): EdgeMeshData {
         const { min, max } = box;
         const position = [
-            min.x, min.y, min.z, min.x, min.y, max.z, // z
-            min.x, min.y, max.z, min.x, max.y, max.z, // y
-            min.x, max.y, max.z, min.x, max.y, min.z, // z
-            min.x, max.y, min.z, min.x, min.y, min.z, // y
-            max.x, min.y, min.z, max.x, min.y, max.z, // z
-            max.x, min.y, max.z, max.x, max.y, max.z, // y
-            max.x, max.y, max.z, max.x, max.y, min.z, // z
-            max.x, max.y, min.z, max.x, min.y, min.z, // y
-            min.x, min.y, min.z, max.x, min.y, min.z, // x
-            min.x, min.y, max.z, max.x, min.y, max.z, // x
-            min.x, max.y, max.z, max.x, max.y, max.z, // x
-            min.x, max.y, min.z, max.x, max.y, min.z, // x
+            min.x,
+            min.y,
+            min.z,
+            min.x,
+            min.y,
+            max.z, // z
+            min.x,
+            min.y,
+            max.z,
+            min.x,
+            max.y,
+            max.z, // y
+            min.x,
+            max.y,
+            max.z,
+            min.x,
+            max.y,
+            min.z, // z
+            min.x,
+            max.y,
+            min.z,
+            min.x,
+            min.y,
+            min.z, // y
+            max.x,
+            min.y,
+            min.z,
+            max.x,
+            min.y,
+            max.z, // z
+            max.x,
+            min.y,
+            max.z,
+            max.x,
+            max.y,
+            max.z, // y
+            max.x,
+            max.y,
+            max.z,
+            max.x,
+            max.y,
+            min.z, // z
+            max.x,
+            max.y,
+            min.z,
+            max.x,
+            min.y,
+            min.z, // y
+            min.x,
+            min.y,
+            min.z,
+            max.x,
+            min.y,
+            min.z, // x
+            min.x,
+            min.y,
+            max.z,
+            max.x,
+            min.y,
+            max.z, // x
+            min.x,
+            max.y,
+            max.z,
+            max.x,
+            max.y,
+            max.z, // x
+            min.x,
+            max.y,
+            min.z,
+            max.x,
+            max.y,
+            min.z, // x
         ];
         return {
             position: new Float32Array(position),

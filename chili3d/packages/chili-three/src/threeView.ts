@@ -215,13 +215,13 @@ export class ThreeView extends Observable implements IView {
             options?.hideDelete === true
                 ? ""
                 : svg({
-                    className: style.delete,
-                    icon: "icon-times",
-                    onclick: (e) => {
-                        e.stopPropagation();
-                        dispose();
-                    },
-                }),
+                      className: style.delete,
+                      icon: "icon-times",
+                      onclick: (e) => {
+                          e.stopPropagation();
+                          dispose();
+                      },
+                  }),
         );
     }
 

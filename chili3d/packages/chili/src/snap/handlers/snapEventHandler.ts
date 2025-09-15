@@ -113,7 +113,7 @@ export abstract class SnapEventHandler<D extends SnapData = SnapData> implements
 
     protected setSnaped(view: IView, event: PointerEvent) {
         this.findSnapPoint(ShapeType.Edge, view, event);
-        
+
         this.snaps.forEach((snap) => snap.handleSnaped?.(view.document.visual.document, this._snaped));
     }
 
@@ -148,9 +148,9 @@ export abstract class SnapEventHandler<D extends SnapData = SnapData> implements
             for (const snap of this.snaps) {
                 const snaped = snap.snap(detected);
                 if (snaped && this.validateSnapPoint(snaped)) {
-                    this._snaped = snaped
+                    this._snaped = snaped;
                     return;
-                };
+                }
             }
         }
     }

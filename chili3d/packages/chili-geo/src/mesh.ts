@@ -34,8 +34,8 @@ export class MeshUtils {
     }
 
     static setSurfaceMeshData(
-        data: Mesh, 
-        other: Mesh, 
+        data: Mesh,
+        other: Mesh,
         matrix: Matrix4,
         offset: { meshPosition: number; meshIndex: number },
         materialMap: Map<number, number>,
@@ -45,10 +45,13 @@ export class MeshUtils {
                 start: g.start + offset.meshIndex,
                 count: g.count,
                 materialIndex: materialMap.get(g.materialIndex)!,
-            })
-        })
+            });
+        });
         if (data.index && other.index) {
-            data.index.set(other.index.map((x) => x + offset.meshPosition), offset.meshIndex);
+            data.index.set(
+                other.index.map((x) => x + offset.meshPosition),
+                offset.meshIndex,
+            );
         }
         if (data.position && other.position) {
             data.position.set(matrix.ofPoints(other.position), offset.meshPosition * 3);

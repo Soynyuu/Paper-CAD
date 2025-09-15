@@ -123,11 +123,13 @@ export class DefaultDataExchange implements IDataExchange {
         const text = await slice.text();
 
         // Check for CityGML namespace or building elements
-        return text.includes("citygml") ||
-               text.includes("CityGML") ||
-               text.includes("bldg:") ||
-               text.includes("<Building") ||
-               text.includes("gml:");
+        return (
+            text.includes("citygml") ||
+            text.includes("CityGML") ||
+            text.includes("bldg:") ||
+            text.includes("<Building") ||
+            text.includes("gml:")
+        );
     }
 
     async export(type: string, nodes: VisualNode[]): Promise<BlobPart[] | undefined> {

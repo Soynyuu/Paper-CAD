@@ -92,11 +92,14 @@ export class CityGMLService implements ICityGMLService {
                 let errorMessage: string;
                 if (response.status === 400) {
                     const errorData = await response.json().catch(() => null);
-                    errorMessage = errorData?.detail || "CityGML file conversion failed. Please check the file format.";
+                    errorMessage =
+                        errorData?.detail || "CityGML file conversion failed. Please check the file format.";
                 } else if (response.status === 413) {
-                    errorMessage = "File size too large. Please use a smaller file or limit the number of buildings.";
+                    errorMessage =
+                        "File size too large. Please use a smaller file or limit the number of buildings.";
                 } else if (response.status === 503) {
-                    errorMessage = "Backend service unavailable. Please ensure the conversion service is running.";
+                    errorMessage =
+                        "Backend service unavailable. Please ensure the conversion service is running.";
                 } else {
                     errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 }
@@ -110,7 +113,10 @@ export class CityGMLService implements ICityGMLService {
             if (error instanceof Error) {
                 // Check for network errors
                 if (error.message.includes("fetch")) {
-                    return Result.err("Cannot connect to CityGML conversion service. Please ensure the backend is running on " + this.baseUrl);
+                    return Result.err(
+                        "Cannot connect to CityGML conversion service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
                 }
                 return Result.err(error.message);
             }

@@ -69,7 +69,11 @@ export class ImportCityGML implements ICommand {
                     });
 
                     if (!stepResult.isOk) {
-                        PubSub.default.pub("showToast", "error.citygml.conversionFailed:{0}", stepResult.error);
+                        PubSub.default.pub(
+                            "showToast",
+                            "error.citygml.conversionFailed:{0}",
+                            stepResult.error,
+                        );
                         return;
                     }
 

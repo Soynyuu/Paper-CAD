@@ -2,6 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 export * from "./application";
+export * from "./applyRailwayTexture";
 export * from "./boolean";
 export * from "./create";
 export * from "./createActCommand";

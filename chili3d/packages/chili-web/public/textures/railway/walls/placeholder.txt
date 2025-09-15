@@ -1,0 +1,10 @@
+PNG texture files should be placed here:
+
+- brick_red_100mm.png
+- brick_brown_100mm.png
+- stone_gray_150mm.png
+- wood_vertical_200mm.png
+- wood_horizontal_200mm.png
+- plaster_white_300mm.png
+
+Each file should be a seamless texture (tileable) at 512x512 or 1024x1024 pixels.

@@ -2,6 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import {
+    CityGMLService,
     EditableShapeNode,
     I18n,
     IDataExchange,
@@ -15,8 +16,14 @@ import {
 } from "chili-core";
 
 export class DefaultDataExchange implements IDataExchange {
+    private cityGMLService: CityGMLService;
+
+    constructor() {
+        this.cityGMLService = new CityGMLService();
+    }
+
     importFormats(): string[] {
-        return [".step", ".stp", ".iges", ".igs", ".brep", ".stl"];
+        return [".step", ".stp", ".iges", ".igs", ".brep", ".stl", ".gml", ".xml"];
     }
 
     exportFormats(): string[] {
@@ -41,6 +48,11 @@ export class DefaultDataExchange implements IDataExchange {
             importResult = await this.importStep(document, file);
         } else if (this.extensionIs(fileName, ".iges", ".igs")) {
             importResult = await this.importIges(document, file);
+        } else if (this.extensionIs(fileName, ".gml", ".xml")) {
+            // Check if it's likely a CityGML file
+            if (await this.isCityGMLFile(file)) {
+                importResult = await this.importCityGML(document, file);
+            }
         }
 
         this.handleImportResult(document, fileName, importResult);
@@ -83,6 +95,39 @@ export class DefaultDataExchange implements IDataExchange {
     private async importStep(document: IDocument, file: File) {
         const content = new Uint8Array(await file.arrayBuffer());
         return document.application.shapeFactory.converter.convertFromSTEP(document, content);
+    }
+
+    private async importCityGML(document: IDocument, file: File) {
+        // Convert CityGML to STEP using the backend service
+        const stepResult = await this.cityGMLService.convertToStep(file, {
+            defaultHeight: 10.0,
+            limit: 50,
+            autoReproject: true,
+        });
+
+        if (!stepResult.isOk) {
+            return Result.err(stepResult.error);
+        }
+
+        // Convert the STEP blob to array buffer
+        const arrayBuffer = await stepResult.value.arrayBuffer();
+        const content = new Uint8Array(arrayBuffer);
+
+        // Use the existing STEP import logic
+        return document.application.shapeFactory.converter.convertFromSTEP(document, content);
+    }
+
+    private async isCityGMLFile(file: File): Promise<boolean> {
+        // Quick check for CityGML content by reading first few KB
+        const slice = file.slice(0, 4096);
+        const text = await slice.text();
+
+        // Check for CityGML namespace or building elements
+        return text.includes("citygml") ||
+               text.includes("CityGML") ||
+               text.includes("bldg:") ||
+               text.includes("<Building") ||
+               text.includes("gml:");
     }
 
     async export(type: string, nodes: VisualNode[]): Promise<BlobPart[] | undefined> {

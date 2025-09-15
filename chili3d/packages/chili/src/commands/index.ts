@@ -8,6 +8,7 @@ export * from "./createActCommand";
 export * from "./createCommand";
 export * from "./delete";
 export * from "./folder";
+export * from "./importCityGML";
 export * from "./importExport";
 export * from "./stepUnfold";
 export * from "./measure";

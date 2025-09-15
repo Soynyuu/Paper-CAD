@@ -1,6 +1,0 @@
-[submodule "chili3d"]
-	path = chili3d
-	url = https://github.com/Soynyuu/chili3d.git
-[submodule "unfold-step2svg"]
-	path = unfold-step2svg
-	url = https://github.com/Soynyuu/unfold-step2svg.git

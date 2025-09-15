@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unfold STEP2SVG - デモページ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-button.active { 
+            background-color: rgb(59, 130, 246);
+            color: white;
+        }
+        .loading { 
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">🏗️ Unfold STEP2SVG</h1>
+            <p class="text-gray-600">3D CADファイルをペーパークラフト用SVGに変換するWebサービス</p>
+            <div id="health-status" class="mt-4 p-3 bg-gray-100 rounded-md text-sm">
+                <span class="text-gray-500">システム状態をチェック中...</span>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="bg-white rounded-lg shadow-lg">
+            <div class="flex border-b">
+                <button class="tab-button active px-6 py-3 font-medium text-gray-700 hover:bg-gray-100 rounded-tl-lg" onclick="switchTab('step2svg')">
+                    STEP → SVG
+                </button>
+                <button class="tab-button px-6 py-3 font-medium text-gray-700 hover:bg-gray-100" onclick="switchTab('citygml2step')">
+                    CityGML → STEP
+                </button>
+                <button class="tab-button px-6 py-3 font-medium text-gray-700 hover:bg-gray-100" onclick="switchTab('validate')">
+                    CityGML検証
+                </button>
+            </div>
+
+            <!-- STEP to SVG Tab -->
+            <div id="step2svg" class="tab-content active p-6">
+                <h2 class="text-xl font-bold mb-4">STEPファイルをSVGペーパークラフトに変換</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            STEPファイル (.step/.stp)
+                        </label>
+                        <input type="file" id="step-file" accept=".step,.stp" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">レイアウトモード</label>
+                            <select id="layout-mode" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <option value="canvas">Canvas (動的サイズ)</option>
+                                <option value="paged">Paged (固定ページ)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">スケール倍率</label>
+                            <input type="number" id="scale-factor" value="10" min="0.1" step="0.1" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                    </div>
+
+                    <div id="page-settings" class="grid grid-cols-2 gap-4" style="display:none;">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">ページサイズ</label>
+                            <select id="page-format" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <option value="A4">A4</option>
+                                <option value="A3">A3</option>
+                                <option value="Letter">Letter</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">ページ方向</label>
+                            <select id="page-orientation" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <option value="portrait">縦</option>
+                                <option value="landscape">横</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" id="face-numbers" checked class="mr-2">
+                        <label for="face-numbers" class="text-sm text-gray-700">面番号を表示</label>
+                    </div>
+
+                    <button onclick="convertStepToSvg()" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                        変換を実行
+                    </button>
+                </div>
+            </div>
+
+            <!-- CityGML to STEP Tab -->
+            <div id="citygml2step" class="tab-content p-6">
+                <h2 class="text-xl font-bold mb-4">CityGMLをSTEPファイルに変換</h2>
+                
+                <!-- 注意事項の追加 -->
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-blue-700">
+                                <strong>自動座標系変換:</strong> 地理座標系（緯度経度）のCityGMLファイルは自動的に適切な平面直角座標系に変換されます。
+                                日本のPLATEAUデータの場合、地域に応じた座標系が自動選択されます。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            CityGMLファイル (.gml/.xml)
+                        </label>
+                        <input type="file" id="citygml-file" accept=".gml,.xml" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">変換方式</label>
+                            <select id="method" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <option value="auto">自動 (Solid→縫合→押し出し)</option>
+                                <option value="solid">Solid (LOD1/2直接・PLATEAU推奨)</option>
+                                <option value="extrude">押し出し (高速・シンプル)</option>
+                                <option value="sew">縫合 (LOD2詳細・低速)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">建物数上限</label>
+                            <input type="number" id="limit" value="5" min="1" max="100" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                            <p class="text-xs text-gray-500 mt-1">推奨: 5以下（大量の建物は処理時間が長くなります）</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">デフォルト高さ (m)</label>
+                            <input type="number" id="default-height" value="10" min="0.1" step="0.1" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">縫合トレランス (m)</label>
+                            <input type="number" id="sew-tolerance" value="0.001" min="0.000001" step="0.000001" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            出力座標系 (オプション)
+                        </label>
+                        <input type="text" id="reproject-to" placeholder="例: EPSG:6676" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        <p class="text-xs text-gray-500 mt-1">未指定の場合、地理座標系を自動検出して適切な平面直角座標系に変換します</p>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" id="auto-reproject" checked class="mr-2">
+                        <label for="auto-reproject" class="text-sm text-gray-700">自動座標系変換を有効化</label>
+                    </div>
+                    
+                    <div class="flex items-center">
+                        <input type="checkbox" id="debug" class="mr-2">
+                        <label for="debug" class="text-sm text-gray-700">デバッグログを有効化</label>
+                    </div>
+
+                    <button onclick="convertCityGmlToStep()" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                        変換を実行
+                    </button>
+                </div>
+            </div>
+
+            <!-- Validate Tab -->
+            <div id="validate" class="tab-content p-6">
+                <h2 class="text-xl font-bold mb-4">CityGMLファイル検証</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            CityGMLファイル (.gml/.xml)
+                        </label>
+                        <input type="file" id="validate-file" accept=".gml,.xml" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">検証する建物数</label>
+                        <input type="number" id="validate-limit" value="10" min="1" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                    </div>
+
+                    <button onclick="validateCityGml()" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                        検証を実行
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Area -->
+        <div id="result" class="mt-8 bg-white rounded-lg shadow-lg p-6" style="display:none;">
+            <h3 class="text-lg font-bold mb-4">実行結果</h3>
+            <div id="result-content"></div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style="display:none;">
+            <div class="bg-white p-6 rounded-lg shadow-xl">
+                <div class="flex items-center">
+                    <svg class="loading w-8 h-8 mr-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span id="loading-text">処理中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkHealth();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('layout-mode').addEventListener('change', (e) => {
+                const pageSettings = document.getElementById('page-settings');
+                if (e.target.value === 'paged') {
+                    pageSettings.style.display = 'grid';
+                } else {
+                    pageSettings.style.display = 'none';
+                }
+            });
+        }
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('health-status');
+                if (data.status === 'healthy') {
+                    statusDiv.innerHTML = `
+                        <span class="text-green-600 font-semibold">✅ システム正常</span>
+                        <span class="text-gray-600 ml-4">OpenCASCADE: ${data.occt_available ? '利用可能' : '利用不可'}</span>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<span class="text-red-600 font-semibold">❌ システムエラー</span>';
+                }
+            } catch (error) {
+                document.getElementById('health-status').innerHTML = 
+                    '<span class="text-red-600 font-semibold">❌ サーバーに接続できません</span>';
+            }
+        }
+
+        function showLoading(message = '処理中...') {
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('loading-text').textContent = message;
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showResult(content, isError = false) {
+            const resultDiv = document.getElementById('result');
+            const resultContent = document.getElementById('result-content');
+            
+            resultDiv.style.display = 'block';
+            if (isError) {
+                resultContent.innerHTML = `<div class="text-red-600">${content}</div>`;
+            } else {
+                resultContent.innerHTML = content;
+            }
+            
+            // Scroll to result
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function convertStepToSvg() {
+            const fileInput = document.getElementById('step-file');
+            if (!fileInput.files[0]) {
+                alert('STEPファイルを選択してください');
+                return;
+            }
+
+            showLoading('STEPファイルを変換中...');
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('return_face_numbers', document.getElementById('face-numbers').checked);
+            formData.append('layout_mode', document.getElementById('layout-mode').value);
+            formData.append('scale_factor', document.getElementById('scale-factor').value);
+            
+            if (document.getElementById('layout-mode').value === 'paged') {
+                formData.append('page_format', document.getElementById('page-format').value);
+                formData.append('page_orientation', document.getElementById('page-orientation').value);
+            }
+
+            try {
+                const response = await fetch('/api/step/unfold', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '変換に失敗しました');
+                }
+
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/zip')) {
+                    // Handle ZIP file
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'papercraft_pages.zip';
+                    a.click();
+                    showResult('✅ ZIPファイルのダウンロードを開始しました（複数ページ）');
+                } else {
+                    // Handle SVG
+                    const svgText = await response.text();
+                    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'papercraft.svg';
+                    a.click();
+                    
+                    // Show preview
+                    showResult(`
+                        <div>✅ SVGファイルのダウンロードを開始しました</div>
+                        <div class="mt-4 border rounded-lg p-4 overflow-auto" style="max-height: 400px;">
+                            ${svgText}
+                        </div>
+                    `);
+                }
+            } catch (error) {
+                showResult(`❌ エラー: ${error.message}`, true);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function convertCityGmlToStep() {
+            const fileInput = document.getElementById('citygml-file');
+            if (!fileInput.files[0]) {
+                alert('CityGMLファイルを選択してください');
+                return;
+            }
+
+            showLoading('CityGMLを変換中...');
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('method', document.getElementById('method').value);
+            formData.append('limit', document.getElementById('limit').value);
+            formData.append('default_height', document.getElementById('default-height').value);
+            formData.append('sew_tolerance', document.getElementById('sew-tolerance').value);
+            formData.append('debug', document.getElementById('debug').checked);
+            formData.append('auto_reproject', document.getElementById('auto-reproject').checked);
+            
+            const reprojectTo = document.getElementById('reproject-to').value;
+            if (reprojectTo) {
+                formData.append('reproject_to', reprojectTo);
+            }
+
+            try {
+                console.log('Starting CityGML to STEP conversion...');
+                console.log('FormData entries:', [...formData.entries()]);
+                
+                const response = await fetch('/api/citygml/to-step', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                if (!response.ok) {
+                    console.error('Response not ok:', response.status, response.statusText);
+                    let errorDetail = '変換に失敗しました';
+                    try {
+                        const error = await response.json();
+                        errorDetail = error.detail || errorDetail;
+                    } catch (e) {
+                        console.error('Failed to parse error response:', e);
+                    }
+                    throw new Error(errorDetail);
+                }
+
+                console.log('Converting response to blob...');
+                const blob = await response.blob();
+                console.log('Blob size:', blob.size, 'type:', blob.type);
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'citygml_converted.step';
+                a.click();
+                
+                showResult(`✅ STEPファイルのダウンロードを開始しました<br>ファイルサイズ: ${(blob.size / 1024).toFixed(2)} KB`);
+            } catch (error) {
+                console.error('Fetch error:', error);
+                console.error('Error type:', error.constructor.name);
+                console.error('Error stack:', error.stack);
+                
+                if (error instanceof TypeError) {
+                    console.error('This is likely a network error or CORS issue');
+                    showResult(`❌ ネットワークエラー: ${error.message}<br>CORSまたは接続の問題の可能性があります`, true);
+                } else {
+                    showResult(`❌ エラー: ${error.message}`, true);
+                }
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function validateCityGml() {
+            const fileInput = document.getElementById('validate-file');
+            if (!fileInput.files[0]) {
+                alert('CityGMLファイルを選択してください');
+                return;
+            }
+
+            showLoading('CityGMLを検証中...');
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('limit', document.getElementById('validate-limit').value);
+
+            try {
+                const response = await fetch('/api/citygml/validate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '検証に失敗しました');
+                }
+
+                const result = await response.json();
+                
+                let resultHtml = '<div class="space-y-2">';
+                if (result.valid) {
+                    resultHtml += `
+                        <div class="text-green-600 font-semibold">✅ 有効なCityGMLファイルです</div>
+                        <div>フットプリント付き建物数: ${result.buildings_with_footprints}</div>
+                    `;
+                    if (result.sample_building_id) {
+                        resultHtml += `<div>サンプル建物ID: ${result.sample_building_id}</div>`;
+                    }
+                    if (result.notes) {
+                        resultHtml += `<div class="text-gray-600 text-sm">備考: ${result.notes}</div>`;
+                    }
+                } else {
+                    resultHtml += `
+                        <div class="text-red-600 font-semibold">❌ 処理可能な建物が見つかりません</div>
+                        <div>${result.error || 'フットプリントを抽出できませんでした'}</div>
+                    `;
+                }
+                resultHtml += '</div>';
+                
+                showResult(resultHtml);
+            } catch (error) {
+                showResult(`❌ エラー: ${error.message}`, true);
+            } finally {
+                hideLoading();
+            }
+        }
+    </script>
+</body>
+</html>

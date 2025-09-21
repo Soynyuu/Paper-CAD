@@ -211,7 +211,7 @@ export default {
         "prompt.saveDocument{0}": "Do you want to save the changes to {0}?",
         "prompt.select.edges": "Please select edges",
         "prompt.select.faces": "Please select faces",
-        "prompt.selectFacesForTexture": "Please select faces for texture application",
+        "prompt.selectFacesForTexture": "Click a face to apply texture",
         "prompt.select.models": "Please select models",
         "prompt.select.noModelSelected": "No model selected",
         "prompt.select.section": "Please select section",

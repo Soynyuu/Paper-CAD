@@ -210,7 +210,7 @@ export default {
         "prompt.saveDocument{0}": "{0}への変更を保存しますか？",
         "prompt.select.edges": "エッジを選択してください",
         "prompt.select.faces": "面を選択してください",
-        "prompt.selectFacesForTexture": "テクスチャを適用する面を選択してください",
+        "prompt.selectFacesForTexture": "テクスチャを適用する面をクリックしてください",
         "prompt.select.models": "展開する3D形状を選択してください",
         "prompt.select.noModelSelected": "モデルが選択されていません",
         "prompt.select.section": "断面を選択してください",

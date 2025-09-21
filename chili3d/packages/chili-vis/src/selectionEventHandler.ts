@@ -111,14 +111,27 @@ export abstract class SelectionHandler implements IEventHandler {
     }
 
     pointerUp(view: IView, event: PointerEvent): void {
+        console.log("[SelectionHandler] pointerUp", {
+            button: event.button,
+            isPrimary: event.isPrimary,
+            mouseIsDown: this.mouse.isDown,
+            multiMode: this.multiMode,
+        });
+
         event.preventDefault();
         if (this.mouse.isDown && event.button === 0 && event.isPrimary) {
             this.mouse.isDown = false;
             this.removeRect(view);
             const count = this.select(view, event);
+            console.log("[SelectionHandler] selected count:", count);
             this.cleanHighlights();
             view.update();
-            if (count > 0 && !this.multiMode) this.controller?.success();
+            if (count > 0 && !this.multiMode) {
+                console.log("[SelectionHandler] triggering success for single mode");
+                this.controller?.success();
+            } else if (this.multiMode) {
+                console.log("[SelectionHandler] multi mode - awaiting user confirmation");
+            }
         }
         this.pointerEventMap.delete(event.pointerId);
     }

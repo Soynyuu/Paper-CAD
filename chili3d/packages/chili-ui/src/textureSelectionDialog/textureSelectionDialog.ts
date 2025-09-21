@@ -42,8 +42,8 @@ export class TextureSelectionDialog extends HTMLElement {
     public show(): Promise<TextureSelectionResult> {
         return new Promise((resolve) => {
             this.resolvePromise = resolve;
-            this.dialog.showModal();
             document.body.appendChild(this.dialog);
+            this.dialog.showModal();
         });
     }
 

@@ -198,7 +198,7 @@ export class TextureSelectionDialog extends HTMLElement {
         }
 
         const patterns = this.patternManager.getPatterns();
-        patterns.forEach((pattern) => {
+        patterns.forEach((pattern: TexturePattern) => {
             const opt = option({
                 value: pattern.id,
                 textContent: pattern.name,

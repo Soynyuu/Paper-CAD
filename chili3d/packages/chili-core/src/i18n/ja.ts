@@ -126,7 +126,6 @@ export default {
         "texture.selection.title": "テクスチャー選択",
         "texture.pattern": "パターン",
         "texture.preview": "プレビュー",
-        "texture.tileCount": "タイル数",
         "command.wechat.group": "WeChat",
         "command.workingPlane.alignToPlane": "整列",
         "command.workingPlane.fromSection": "断面",

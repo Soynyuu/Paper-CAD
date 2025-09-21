@@ -126,7 +126,6 @@ export default {
         "texture.selection.title": "纹理选择",
         "texture.pattern": "图案",
         "texture.preview": "预览",
-        "texture.tileCount": "平铺数量",
         "command.wechat.group": "微信群",
         "command.workingPlane.alignToPlane": "对齐",
         "command.workingPlane.fromSection": "从截面",

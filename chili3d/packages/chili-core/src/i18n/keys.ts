@@ -122,7 +122,6 @@ const I18N_KEYS = [
     "texture.selection.title",
     "texture.pattern",
     "texture.preview",
-    "texture.tileCount",
     "command.wechat.group",
     "command.workingPlane.alignToPlane",
     "command.workingPlane.fromSection",

@@ -231,7 +231,7 @@ export class TexturePatternManager {
         if (!pattern) return patternId;
 
         const currentLang = I18n.currentLanguage();
-        const isJapanese = currentLang === "ja-jp" || currentLang === "zh-cn";
+        const isJapanese = (currentLang as string) === "ja-jp" || (currentLang as string) === "zh-cn";
         return isJapanese ? pattern.name : pattern.nameEn;
     }
 
@@ -243,7 +243,7 @@ export class TexturePatternManager {
         if (!pattern) return "";
 
         const currentLang = I18n.currentLanguage();
-        const isJapanese = currentLang === "ja-jp" || currentLang === "zh-cn";
+        const isJapanese = (currentLang as string) === "ja-jp" || (currentLang as string) === "zh-cn";
         return isJapanese ? pattern.description : pattern.descriptionEn;
     }
 

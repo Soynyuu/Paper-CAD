@@ -19,13 +19,13 @@ export class TextureSelectionDialog extends HTMLElement {
     private patternManager: TexturePatternManager;
     private selectedPatternId: string = "grass";
     private tileCount: number = 5;
-    private patternSelector: HTMLSelectElement;
-    private previewContainer: HTMLDivElement;
-    private tileCountInput: HTMLInputElement;
-    private tileCountLabel: HTMLSpanElement;
-    private applyButton: HTMLButtonElement;
-    private cancelButton: HTMLButtonElement;
-    private dialog: HTMLDialogElement;
+    private patternSelector!: HTMLSelectElement;
+    private previewContainer!: HTMLDivElement;
+    private tileCountInput!: HTMLInputElement;
+    private tileCountLabel!: HTMLSpanElement;
+    private applyButton!: HTMLButtonElement;
+    private cancelButton!: HTMLButtonElement;
+    private dialog!: HTMLDialogElement;
     private resolvePromise?: (result: TextureSelectionResult) => void;
 
     constructor() {

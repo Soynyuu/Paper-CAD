@@ -126,7 +126,6 @@ export default {
         "texture.selection.title": "Texture Selection",
         "texture.pattern": "Pattern",
         "texture.preview": "Preview",
-        "texture.tileCount": "Tile Count",
         "command.wechat.group": "Wechat",
         "command.workingPlane.alignToPlane": "Align",
         "command.workingPlane.fromSection": "Section",

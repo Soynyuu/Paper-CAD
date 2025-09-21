@@ -210,7 +210,7 @@ export default {
         "prompt.saveDocument{0}": "是否保存对 {0} 的更改？",
         "prompt.select.edges": "请选择边",
         "prompt.select.faces": "请选择面",
-        "prompt.selectFacesForTexture": "请选择要应用纹理的面",
+        "prompt.selectFacesForTexture": "点击要应用纹理的面",
         "prompt.select.models": "请选择模型",
         "prompt.select.noModelSelected": "未选择任何模型",
         "prompt.select.section": "请选择截面",

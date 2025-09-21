@@ -92,15 +92,19 @@ export class ApplyTextureCommand implements ICommand {
         this.parameters = new TextureParameters(document, () => this.updatePreview(document));
 
         // Step 1: 面を選択
+        console.log("[ApplyTextureCommand] Starting face selection...");
         const controller = new AsyncController();
         const selectStep = new SelectShapeStep(ShapeType.Face, "prompt.selectFacesForTexture", {
-            multiple: true,
+            multiple: false,
             selectedState: VisualState.edgeHighlight,
         });
 
+        console.log("[ApplyTextureCommand] Executing SelectShapeStep...");
         const result = await selectStep.execute(document, controller);
+        console.log("[ApplyTextureCommand] SelectShapeStep result:", result);
+
         if (!result || result.shapes.length === 0) {
-            console.log("No faces selected for texture");
+            console.log("[ApplyTextureCommand] No faces selected for texture");
             return;
         }
 

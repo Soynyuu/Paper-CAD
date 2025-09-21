@@ -130,16 +130,27 @@ export class SubshapeSelectionHandler extends ShapeSelectionHandler {
     }
 
     protected override select(view: IView, event: PointerEvent): number {
+        console.log("[SubshapeSelectionHandler] select() called", {
+            multiMode: this.multiMode,
+            highlightsCount: this._highlights?.length ?? 0,
+            currentShapesCount: this._shapes.size,
+        });
+
         const document = view.document.visual.document;
         if (this.multiMode) {
-            this._highlights?.forEach((x) =>
-                this._shapes.has(x.shape) ? this.removeSelected(x) : this.addSelected(x),
-            );
+            this._highlights?.forEach((x) => {
+                const action = this._shapes.has(x.shape) ? "remove" : "add";
+                console.log(`[SubshapeSelectionHandler] ${action} shape:`, x.shape);
+                this._shapes.has(x.shape) ? this.removeSelected(x) : this.addSelected(x);
+            });
         } else {
             this.clearSelected(document);
             this._highlights?.forEach(this.addSelected.bind(this));
         }
-        return this._shapes.size;
+
+        const resultCount = this._shapes.size;
+        console.log("[SubshapeSelectionHandler] selection complete, count:", resultCount);
+        return resultCount;
     }
 
     private removeSelected(shape: VisualShapeData) {

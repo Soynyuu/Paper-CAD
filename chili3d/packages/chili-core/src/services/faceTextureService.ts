@@ -114,6 +114,18 @@ export class FaceTextureService implements IService {
     }
 
     /**
+     * 展開図生成用のテクスチャマッピングデータを取得
+     * @returns UnfoldOptions用のテクスチャマッピングデータ
+     */
+    getUnfoldMappings(): Array<{
+        faceNumber: number;
+        patternId: string;
+        tileCount: number;
+    }> {
+        return this.getBackendFormat();
+    }
+
+    /**
      * シリアライズ（保存用）
      * @returns JSON文字列
      */

@@ -15,6 +15,7 @@ export interface UnfoldOptions {
         faceNumber: number;
         patternId: string;
         tileCount: number;
+        imageData?: string; // Base64エンコードされた画像データ（data:image/png;base64,...形式）
     }>;
 }
 

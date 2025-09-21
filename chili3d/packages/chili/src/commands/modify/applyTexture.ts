@@ -146,34 +146,18 @@ export class ApplyTextureCommand implements ICommand {
      * 面番号を生成
      */
     private async generateFaceNumbers(document: IDocument): Promise<void> {
-        // 選択された面から親形状を取得
-        const processedShapes = new Set<IShape>();
-
-        for (const face of this.selectedFaces) {
-            // 面の親形状を探す（通常はソリッドまたはシェル）
-            let parentShape = face;
-            while (parentShape && parentShape.shapeType === ShapeType.Face) {
-                // 親形状を探す処理（実際の実装では適切な方法で親を取得）
-                break;
+        // 面インデックスから面番号を計算
+        // バックエンドと同じ番号体系を使用（インデックス + 1）
+        this.selectedFaces.forEach((face) => {
+            if ("index" in face) {
+                const subFace = face as ISubFaceShape;
+                const faceNumber = subFace.index + 1; // バックエンドと同じ番号体系
+                this.faceNumbers.push(faceNumber);
+                console.log(
+                    `[ApplyTextureCommand] Face index: ${subFace.index}, Face number: ${faceNumber}`,
+                );
             }
-
-            if (parentShape && !processedShapes.has(parentShape)) {
-                processedShapes.add(parentShape);
-
-                // FaceNumberDisplayの決定論的面番号生成を使用
-                // 実際にはThreeGeometryから取得する必要がある
-                const faceNumberMap = new Map<number, number>();
-
-                // 仮の面番号割り当て（実際には適切な方法で生成）
-                const faces = parentShape.findSubShapes(ShapeType.Face);
-                faces.forEach((f, index) => {
-                    if (this.selectedFaces.includes(f)) {
-                        // 簡易的な面番号（実際にはFaceNumberDisplayを使用）
-                        this.faceNumbers.push(index + 1);
-                    }
-                });
-            }
-        }
+        });
 
         console.log(`[ApplyTextureCommand] Generated face numbers:`, this.faceNumbers);
     }

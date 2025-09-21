@@ -42,6 +42,7 @@ export const DefaultRibbon: RibbonTab[] = [
                     ["modify.split", "modify.break", "modify.trim"],
                     ["modify.fillet", "modify.chamfer", "modify.explode"],
                     ["modify.deleteNode", "modify.removeShapes", "modify.removeFeature"],
+                    "modify.applyTexture",
                 ],
             },
             {

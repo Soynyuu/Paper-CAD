@@ -11,6 +11,11 @@ export interface UnfoldOptions {
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
+    textureMappings?: Array<{
+        faceNumber: number;
+        patternId: string;
+        tileCount: number;
+    }>;
 }
 
 export interface UnfoldResponse {
@@ -18,6 +23,11 @@ export interface UnfoldResponse {
     svgContent?: string; // 後方互換性のため
     face_numbers?: Array<{ faceIndex: number; faceNumber: number }>;
     faceNumbers?: Array<{ faceIndex: number; faceNumber: number }>; // 後方互換性のため
+    textureMappings?: Array<{
+        faceNumber: number;
+        patternId: string;
+        tileCount: number;
+    }>;
     stats?: any;
 }
 
@@ -69,6 +79,12 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
 
+            // テクスチャマッピングを追加
+            if (options.textureMappings && options.textureMappings.length > 0) {
+                formData.append("texture_mappings", JSON.stringify(options.textureMappings));
+                console.log("[StepUnfoldService] Sending texture mappings:", options.textureMappings);
+            }
+
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
                 method: "POST",
                 body: formData,
@@ -108,6 +124,12 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("layout_mode", options.layoutMode || "canvas");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
+
+            // テクスチャマッピングを追加
+            if (options.textureMappings && options.textureMappings.length > 0) {
+                formData.append("texture_mappings", JSON.stringify(options.textureMappings));
+                console.log("[StepUnfoldService] Sending texture mappings:", options.textureMappings);
+            }
 
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
                 method: "POST",

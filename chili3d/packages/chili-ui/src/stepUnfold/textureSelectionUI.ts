@@ -50,7 +50,7 @@ export class TextureSelectionUI extends HTMLElement {
             { className: style.selectorContainer },
             span({
                 className: style.label,
-                textContent: I18n.translate("stepUnfold.texturePattern") || "テクスチャパターン",
+                textContent: "テクスチャパターン",
             }),
             this.patternSelector,
         );
@@ -68,8 +68,7 @@ export class TextureSelectionUI extends HTMLElement {
                     { className: style.header },
                     span({
                         className: style.title,
-                        textContent:
-                            "🎨 " + (I18n.translate("stepUnfold.textureSelection") || "テクスチャ選択"),
+                        textContent: "🎨 テクスチャ選択",
                     }),
                 ),
                 selectorContainer,
@@ -84,7 +83,7 @@ export class TextureSelectionUI extends HTMLElement {
             { className: style.selector },
             option({
                 value: "",
-                textContent: I18n.translate("stepUnfold.selectPattern") || "パターンを選択...",
+                textContent: "パターンを選択...",
             }),
         );
     }
@@ -94,8 +93,7 @@ export class TextureSelectionUI extends HTMLElement {
             { className: style.preview },
             div({
                 className: style.previewPlaceholder,
-                textContent:
-                    I18n.translate("stepUnfold.noPatternSelected") || "パターンが選択されていません",
+                textContent: "パターンが選択されていません",
             }),
         );
     }
@@ -103,7 +101,7 @@ export class TextureSelectionUI extends HTMLElement {
     private createApplyButton(): HTMLButtonElement {
         return button({
             className: style.applyButton,
-            textContent: "✓ " + (I18n.translate("stepUnfold.applyTexture") || "適用"),
+            textContent: "✓ 適用",
             disabled: true,
         });
     }
@@ -111,7 +109,7 @@ export class TextureSelectionUI extends HTMLElement {
     private createClearButton(): HTMLButtonElement {
         return button({
             className: style.clearButton,
-            textContent: "✗ " + (I18n.translate("stepUnfold.clearTexture") || "クリア"),
+            textContent: "✗ クリア",
             disabled: true,
         });
     }
@@ -166,11 +164,12 @@ export class TextureSelectionUI extends HTMLElement {
 
     private getCategoryName(categoryId: string): string {
         const categories = this.patternManager.getCategories();
-        const category = categories.find((cat) => cat === categoryId);
+        const category = categories.find((cat) => (cat as any).id === categoryId);
         if (!category) return categoryId;
 
-        const isJapanese = I18n.currentLanguage === "ja-jp" || I18n.currentLanguage === "zh-cn";
-        return isJapanese ? category.name : category.nameEn;
+        const currentLang = I18n.currentLanguage();
+        const isJapanese = (currentLang as string) === "ja-jp" || (currentLang as string) === "zh-cn";
+        return isJapanese ? (category as any).name : (category as any).nameEn;
     }
 
     private setupEventListeners() {
@@ -205,8 +204,7 @@ export class TextureSelectionUI extends HTMLElement {
             this.previewContainer.appendChild(
                 div({
                     className: style.previewPlaceholder,
-                    textContent:
-                        I18n.translate("stepUnfold.noPatternSelected") || "パターンが選択されていません",
+                    textContent: "パターンが選択されていません",
                 }),
             );
             return;
@@ -270,7 +268,7 @@ export class TextureSelectionUI extends HTMLElement {
         }
 
         // Show success feedback
-        this.showFeedback(I18n.translate("stepUnfold.textureApplied") || "テクスチャを適用しました");
+        this.showFeedback("テクスチャを適用しました");
     }
 
     /**
@@ -284,7 +282,7 @@ export class TextureSelectionUI extends HTMLElement {
         }
 
         // Show success feedback
-        this.showFeedback(I18n.translate("stepUnfold.textureCleared") || "テクスチャをクリアしました");
+        this.showFeedback("テクスチャをクリアしました");
     }
 
     /**

@@ -27,6 +27,8 @@ export class TextureSelectionDialog extends HTMLElement {
     private cancelButton!: HTMLButtonElement;
     private dialog!: HTMLDialogElement;
     private resolvePromise?: (result: TextureSelectionResult) => void;
+    private previewImage!: HTMLImageElement;
+    private updatePreviewTimeoutId?: number;
 
     constructor() {
         super();
@@ -175,6 +177,11 @@ export class TextureSelectionDialog extends HTMLElement {
 
         // Close event cleanup
         this.dialog.addEventListener("close", () => {
+            // Clear any pending preview updates
+            if (this.updatePreviewTimeoutId) {
+                clearTimeout(this.updatePreviewTimeoutId);
+                this.updatePreviewTimeoutId = undefined;
+            }
             this.dialog.remove();
         });
     }
@@ -218,35 +225,51 @@ export class TextureSelectionDialog extends HTMLElement {
         const input = event.target as HTMLInputElement;
         this.tileCount = parseInt(input.value);
         this.tileCountLabel.textContent = this.tileCount.toString();
-        this.updatePreview();
+        this.debouncedUpdatePreview();
+    }
+
+    private debouncedUpdatePreview() {
+        // Clear existing timeout to debounce rapid changes
+        if (this.updatePreviewTimeoutId) {
+            clearTimeout(this.updatePreviewTimeoutId);
+        }
+
+        // Schedule update after a short delay
+        this.updatePreviewTimeoutId = window.setTimeout(() => {
+            this.updatePreview();
+        }, 150); // 150ms debounce delay
     }
 
     private updatePreview() {
-        // Clear previous preview
-        while (this.previewContainer.firstChild) {
-            this.previewContainer.removeChild(this.previewContainer.firstChild);
+        const pattern = this.patternManager.getPattern(this.selectedPatternId);
+        if (!pattern || !pattern.image) {
+            return;
         }
 
-        const pattern = this.patternManager.getPattern(this.selectedPatternId);
-        if (pattern && pattern.image) {
-            const previewImg = img({
-                src: `/textures/${pattern.image}`,
+        // Create preview image only once, then reuse it
+        if (!this.previewImage) {
+            this.previewImage = img({
                 className: style.previewImage,
                 alt: pattern.name,
             });
-
-            // Add tiling preview effect
-            previewImg.style.cssText = `
+            // Set base styles that don't change
+            this.previewImage.style.cssText = `
                 width: 200px;
                 height: 200px;
                 object-fit: repeat;
                 background-repeat: repeat;
-                background-size: ${200 / this.tileCount}px ${200 / this.tileCount}px;
-                background-image: url(/textures/${pattern.image});
             `;
-
-            this.previewContainer.appendChild(previewImg);
+            this.previewContainer.appendChild(this.previewImage);
         }
+
+        // Update only the parts that change
+        const imageUrl = `/textures/${pattern.image}`;
+        const tileSize = 200 / this.tileCount;
+
+        this.previewImage.src = imageUrl;
+        this.previewImage.alt = pattern.name;
+        this.previewImage.style.backgroundImage = `url(${imageUrl})`;
+        this.previewImage.style.backgroundSize = `${tileSize}px ${tileSize}px`;
     }
 
     private onApply() {

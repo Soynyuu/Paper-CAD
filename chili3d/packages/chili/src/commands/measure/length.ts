@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { command, Precision, VisualConfig, XYZ } from "chili-core";
+import { command, Config, LengthUnit, Precision, UnitSystem, VisualConfig, XYZ } from "chili-core";
 import { Dimension, PointSnapData } from "../../snap";
 import { IStep, PointStep } from "../../step";
 import { MultistepCommand } from "../multistepCommand";
@@ -39,19 +39,21 @@ export class LengthMeasure extends MultistepCommand {
         const firstPoint = this.stepDatas[0].point!;
         const secondPoint = this.stepDatas[1].point!;
         const distance = firstPoint.distanceTo(secondPoint);
+
+        // Convert from internal mm to display unit
+        const config = Config.instance;
+        const displayValue = UnitSystem.convertLength(distance, LengthUnit.Millimeter, config.lengthUnit);
+        const displayText = UnitSystem.formatLength(displayValue, config.lengthUnit, config.lengthPrecision);
+
         const visualId = this.document.visual.context.displayMesh([
             this.meshPoint(firstPoint),
             this.meshLine(firstPoint, secondPoint, VisualConfig.highlightEdgeColor, 3),
             this.meshPoint(secondPoint),
         ]);
-        this.application.activeView?.htmlText(
-            distance.toFixed(2),
-            firstPoint.add(secondPoint).multiply(0.5),
-            {
-                onDispose: () => {
-                    this.document.visual.context.removeMesh(visualId);
-                },
+        this.application.activeView?.htmlText(displayText, firstPoint.add(secondPoint).multiply(0.5), {
+            onDispose: () => {
+                this.document.visual.context.removeMesh(visualId);
             },
-        );
+        });
     }
 }

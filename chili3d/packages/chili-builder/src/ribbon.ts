@@ -20,17 +20,39 @@ export const DefaultRibbon: RibbonTab[] = [
                 ],
             },
             {
-                groupName: "ribbon.group.modify",
+                groupName: "ribbon.group.importExport",
+                items: ["file.import", "file.importCityGML", "file.export", "file.stepUnfold"],
+            },
+            {
+                groupName: "ribbon.group.measure",
+                items: [["measure.length", "measure.angle", "measure.select"]],
+            },
+        ],
+    },
+    {
+        tabName: "ribbon.tab.modify",
+        groups: [
+            {
+                groupName: "ribbon.group.transform",
+                items: ["modify.move", "modify.rotate", "modify.mirror"],
+            },
+            {
+                groupName: "ribbon.group.edit",
                 items: [
-                    "modify.move",
-                    "modify.rotate",
-                    "modify.mirror",
                     ["modify.split", "modify.break", "modify.trim"],
                     ["modify.fillet", "modify.chamfer", "modify.explode"],
                     ["modify.deleteNode", "modify.removeShapes", "modify.removeFeature"],
-                    ["modify.brushAdd", "modify.brushRemove", "modify.brushClear"],
                 ],
             },
+            {
+                groupName: "ribbon.group.brush",
+                items: [["modify.brushAdd", "modify.brushRemove", "modify.brushClear"]],
+            },
+        ],
+    },
+    {
+        tabName: "ribbon.tab.converter",
+        groups: [
             {
                 groupName: "ribbon.group.converter",
                 items: [
@@ -46,6 +68,11 @@ export const DefaultRibbon: RibbonTab[] = [
                 groupName: "ribbon.group.boolean",
                 items: [["boolean.common", "boolean.cut", "boolean.join"]],
             },
+        ],
+    },
+    {
+        tabName: "ribbon.tab.tools",
+        groups: [
             {
                 groupName: "ribbon.group.workingPlane",
                 items: [
@@ -58,71 +85,12 @@ export const DefaultRibbon: RibbonTab[] = [
                 items: ["create.group", ["create.section", "create.offset", "create.copyShape"]],
             },
             {
-                groupName: "ribbon.group.measure",
-                items: [["measure.length", "measure.angle", "measure.select"]],
-            },
-            {
-                groupName: "ribbon.group.act",
-                items: ["act.alignCamera"],
-            },
-            {
-                groupName: "ribbon.group.importExport",
-                items: [["file.import", "file.importCityGML"], "file.export", "file.stepUnfold"],
-            },
-        ],
-    },
-    {
-        tabName: "ribbon.tab.draw",
-        groups: [
-            {
-                groupName: "ribbon.group.2d",
-                items: [
-                    "create.line",
-                    "create.rect",
-                    "create.circle",
-                    "create.arc",
-                    "create.ellipse",
-                    "create.polygon",
-                    "create.bezier",
-                ],
-            },
-            {
-                groupName: "ribbon.group.3d",
-                items: [
-                    "create.box",
-                    "create.pyramid",
-                    "create.cylinder",
-                    "create.cone",
-                    "create.sphere",
-                    "create.thickSolid",
-                ],
-            },
-        ],
-    },
-    {
-        tabName: "ribbon.tab.tools",
-        groups: [
-            {
-                groupName: "ribbon.group.modify",
-                items: [
-                    "modify.break",
-                    "modify.trim",
-                    "modify.fillet",
-                    "modify.chamfer",
-                    "modify.removeFeature",
-                ],
-            },
-            {
-                groupName: "ribbon.group.tools",
-                items: ["create.section", "modify.split", "convert.toWire", "convert.toFace"],
-            },
-            {
                 groupName: "ribbon.group.act",
                 items: ["act.alignCamera"],
             },
             {
                 groupName: "ribbon.group.other",
-                items: ["test.performace"],
+                items: ["test.performace", "settings.units"],
             },
         ],
     },

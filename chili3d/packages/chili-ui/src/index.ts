@@ -4,4 +4,5 @@
 export * from "./components";
 export * from "./dialog";
 export * from "./mainWindow";
+export * from "./property";
 export * from "./stepUnfold";

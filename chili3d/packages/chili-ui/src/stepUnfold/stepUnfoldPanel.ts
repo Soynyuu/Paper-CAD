@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { button, div, input, span } from "chili-controls";
+import { button, div, input, span, label, select, option } from "chili-controls";
 import {
     IApplication,
     IDocument,
@@ -10,49 +10,42 @@ import {
     ShapeNode,
     EditableShapeNode,
     VisualNode,
+    I18n,
+    UnfoldOptions,
 } from "chili-core";
-import { Editor } from "simple-svg-edit/features/editor";
-import "simple-svg-edit/features/default-helper";
-import "simple-svg-edit/features/text";
-import "simple-svg-edit/features/default-text-helper";
-import "simple-svg-edit/features/text-align";
-import "simple-svg-edit/features/align";
+import Editor from "svgedit";
+import "svgedit/dist/editor/svgedit.css";
+import "./svgedit-override.css"; // Apply our design system overrides
 import style from "./stepUnfoldPanel.module.css";
 
 export class StepUnfoldPanel extends HTMLElement {
+    private static _instance: StepUnfoldPanel | null = null;
     private readonly _service: StepUnfoldService;
     private readonly _svgContainer: HTMLDivElement;
     private readonly _svgWrapper: HTMLDivElement;
-    private readonly _convertButton: HTMLButtonElement;
-    private readonly _statusText: HTMLSpanElement;
     private readonly _showFaceNumbersButton: HTMLButtonElement;
-    private readonly _undoButton: HTMLButtonElement;
-    private readonly _redoButton: HTMLButtonElement;
-    private readonly _deleteButton: HTMLButtonElement;
-    private readonly _alignLeftButton: HTMLButtonElement;
-    private readonly _alignCenterButton: HTMLButtonElement;
-    private readonly _alignRightButton: HTMLButtonElement;
     private _faceNumbersVisible: boolean = false;
+    private readonly _layoutModeButton: HTMLButtonElement;
+    private readonly _pageSettingsContainer: HTMLDivElement;
+    private readonly _pageFormatSelect: HTMLSelectElement;
+    private readonly _pageOrientationSelect: HTMLSelectElement;
+    private _layoutMode: "canvas" | "paged" = "canvas";
     private _svgEditor: Editor | null = null;
+    private _svgEditContainer: HTMLDivElement | null = null;
     private readonly _app: IApplication;
+    private _scaleSlider: HTMLInputElement;
+    private _scaleValueDisplay: HTMLSpanElement;
+    private _modelSizeDisplay: HTMLDivElement;
+    private _currentScale: number = 1; // Default to 1:1 scale
+    private _modelBoundingSize: number = 0; // Model's bounding box max dimension in mm
 
     constructor(app: IApplication) {
         super();
         console.log("StepUnfoldPanel constructor called with app:", app);
         this._app = app;
-        this._service = new StepUnfoldService();
+        StepUnfoldPanel._instance = this;
 
-        this._convertButton = button({
-            textContent: "Use Ribbon Button",
-            onclick: () => {
-                alert("Please use the '展開図' button in the ribbon (Import/Export group) instead.");
-            },
-        });
-
-        this._statusText = span({
-            textContent: this._getActiveDocument() ? "Ready to convert" : "No document available",
-            className: style.status,
-        });
+        this._service = new StepUnfoldService("http://localhost:8001/api");
 
         this._svgWrapper = div({
             className: style.svgWrapper,
@@ -64,44 +57,73 @@ export class StepUnfoldPanel extends HTMLElement {
 
         this._showFaceNumbersButton = button({
             textContent: "🔢 Numbers",
-            onclick: () => this._toggleFaceNumbers(),
+            className: style.faceNumberButton,
         });
         this._faceNumbersVisible = false;
 
-        this._undoButton = button({
-            textContent: "↶ Undo",
-            onclick: () => this._handleUndo(),
-            disabled: true,
+        // Create layout mode button
+        this._layoutModeButton = button({
+            textContent: "📄 " + I18n.translate("stepUnfold.layoutMode.canvas"),
+            className: style.layoutModeButton,
         });
 
-        this._redoButton = button({
-            textContent: "↷ Redo",
-            onclick: () => this._handleRedo(),
-            disabled: true,
+        // Create page settings controls
+        this._pageFormatSelect = select(
+            {
+                className: style.pageFormatSelect,
+            },
+            option({ value: "A4", textContent: I18n.translate("stepUnfold.pageFormat.A4") }),
+            option({ value: "A3", textContent: I18n.translate("stepUnfold.pageFormat.A3") }),
+            option({ value: "Letter", textContent: I18n.translate("stepUnfold.pageFormat.Letter") }),
+        );
+
+        this._pageOrientationSelect = select(
+            {
+                className: style.pageOrientationSelect,
+            },
+            option({
+                value: "portrait",
+                textContent: I18n.translate("stepUnfold.pageOrientation.portrait"),
+            }),
+            option({
+                value: "landscape",
+                textContent: I18n.translate("stepUnfold.pageOrientation.landscape"),
+            }),
+        );
+
+        this._pageSettingsContainer = div(
+            {
+                className: style.pageSettingsContainer,
+                style: { display: "none" }, // Hidden by default
+            },
+            label(
+                { className: style.pageSettingLabel },
+                span({ textContent: I18n.translate("stepUnfold.pageFormat") + ": " }),
+                this._pageFormatSelect,
+            ),
+            label(
+                { className: style.pageSettingLabel },
+                span({ textContent: I18n.translate("stepUnfold.pageOrientation") + ": " }),
+                this._pageOrientationSelect,
+            ),
+        );
+
+        // Create scale slider
+        this._scaleSlider = input({
+            type: "range",
+            min: "0",
+            max: "7",
+            value: "0",
+            className: style.scaleSlider,
         });
 
-        this._deleteButton = button({
-            textContent: "🗑 Delete",
-            onclick: () => this._handleDelete(),
-            disabled: true,
+        this._scaleValueDisplay = span({
+            className: style.scaleValue,
+            textContent: "1:1",
         });
 
-        this._alignLeftButton = button({
-            textContent: "◀ Left",
-            onclick: () => this._handleAlign(0, null),
-            disabled: true,
-        });
-
-        this._alignCenterButton = button({
-            textContent: "■ Center",
-            onclick: () => this._handleAlign(0.5, 0.5),
-            disabled: true,
-        });
-
-        this._alignRightButton = button({
-            textContent: "▶ Right",
-            onclick: () => this._handleAlign(1, null),
-            disabled: true,
+        this._modelSizeDisplay = div({
+            className: style.modelSizeInfo,
         });
 
         this._svgWrapper.appendChild(this._svgContainer);
@@ -115,6 +137,19 @@ export class StepUnfoldPanel extends HTMLElement {
         // PubSubイベントリスナーを追加
         (PubSub.default as any).sub("stepUnfold.showResult", this._handleUnfoldResult);
 
+        // Add click handler for face numbers button
+        this._showFaceNumbersButton.onclick = () => this._toggleFaceNumbers();
+
+        // Add click handler for layout mode button
+        this._layoutModeButton.onclick = () => this._toggleLayoutMode();
+
+        // Add scale slider change handler
+        this._scaleSlider.oninput = () => this._updateScaleDisplay();
+
+        // Initialize scale display and calculate initial model size
+        this._updateScaleDisplay();
+        this._updateModelSizeFromCurrentDocument();
+
         console.log("StepUnfoldPanel fully initialized, element:", this);
     }
 
@@ -122,18 +157,28 @@ export class StepUnfoldPanel extends HTMLElement {
         this.append(
             div(
                 { className: style.root },
-                div({ className: style.header }, this._convertButton, this._statusText),
                 div(
                     { className: style.controls },
-                    this._undoButton,
-                    this._redoButton,
-                    this._deleteButton,
-                    div({ className: style.separator }),
-                    this._alignLeftButton,
-                    this._alignCenterButton,
-                    this._alignRightButton,
-                    div({ className: style.separator }),
-                    this._showFaceNumbersButton,
+                    div({ className: style.buttonRow }, this._showFaceNumbersButton, this._layoutModeButton),
+                    this._pageSettingsContainer,
+                    div(
+                        { className: style.scaleControls },
+                        div(
+                            { className: style.experimentalBadge },
+                            span({ textContent: I18n.translate("stepUnfold.experimental") }),
+                            span({
+                                className: style.experimentalTooltip,
+                                textContent: I18n.translate("stepUnfold.experimentalWarning"),
+                            }),
+                        ),
+                        label(
+                            { className: style.scaleLabel },
+                            span({ textContent: I18n.translate("stepUnfold.scale") + ": " }),
+                            this._scaleValueDisplay,
+                        ),
+                        this._scaleSlider,
+                        this._modelSizeDisplay,
+                    ),
                 ),
                 this._svgWrapper,
             ),
@@ -143,15 +188,11 @@ export class StepUnfoldPanel extends HTMLElement {
     private async _checkBackendHealth() {
         const result = await this._service.checkBackendHealth();
         if (!result.isOk) {
-            this._statusText.textContent = `Backend unavailable: ${result.error}`;
-            this._statusText.className = `${style.status} ${style.error}`;
-            this._convertButton.disabled = true;
+            console.error(`Backend unavailable: ${result.error}`);
         } else {
             const health = result.value;
             if (health.status !== "healthy" || !health.opencascade_available) {
-                this._statusText.textContent = `Backend unavailable - OpenCASCADE not available`;
-                this._statusText.className = `${style.status} ${style.error}`;
-                this._convertButton.disabled = true;
+                console.error(`Backend unavailable - OpenCASCADE not available`);
             } else {
                 this._updateStatus();
             }
@@ -161,22 +202,18 @@ export class StepUnfoldPanel extends HTMLElement {
     private async _convertCurrentModel() {
         const activeDocument = this._getActiveDocument();
         if (!activeDocument) {
-            this._statusText.textContent = "No document available";
-            this._statusText.className = `${style.status} ${style.error}`;
+            console.error("No document available");
             return;
         }
 
         // 既存のExportコマンドと同じ方法でノードを取得
         const allNodes = this._getAllVisualNodes(activeDocument);
         if (allNodes.length === 0) {
-            this._statusText.textContent = "No shapes to convert";
-            this._statusText.className = `${style.status} ${style.error}`;
+            console.error("No shapes to convert");
             return;
         }
 
-        this._statusText.textContent = "Converting to STEP...";
-        this._statusText.className = `${style.status} ${style.processing}`;
-        this._convertButton.disabled = true;
+        console.log("Converting to STEP...");
 
         try {
             console.log(
@@ -184,16 +221,24 @@ export class StepUnfoldPanel extends HTMLElement {
                 allNodes.map((n) => ({ name: n.name, type: n.constructor.name })),
             );
 
+            // Calculate model bounding size before export
+            this._calculateModelBoundingSize(allNodes);
+
             // Export current model to STEP format (既存のDataExchangeと同じ方法)
             const stepData = await this._app.dataExchange.export(".step", allNodes);
             if (!stepData || stepData.length === 0) {
-                this._statusText.textContent = "Failed to export to STEP";
-                this._statusText.className = `${style.status} ${style.error}`;
+                console.error("Failed to export to STEP");
                 return;
             }
 
-            // Send STEP data to backend for unfolding
-            const result = await this._service.unfoldStepFromData(stepData[0]);
+            // Send STEP data to backend for unfolding with options
+            const options: UnfoldOptions = {
+                scale: this._currentScale,
+                layoutMode: this._layoutMode,
+                pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
+                pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+            };
+            const result = await this._service.unfoldStepFromData(stepData[0], options);
 
             if (result.isOk) {
                 const responseData = result.value as any; // 型安全性を一時的に回避
@@ -212,19 +257,14 @@ export class StepUnfoldPanel extends HTMLElement {
                     this._applyBackendFaceNumbers(faceNumbers);
                 }
 
-                this._statusText.textContent = `Successfully converted model`;
-                this._statusText.className = `${style.status} ${style.success}`;
+                console.log("Successfully converted model");
             } else {
-                this._statusText.textContent = `Error: ${result.error}`;
-                this._statusText.className = `${style.status} ${style.error}`;
+                console.error(`Error: ${result.error}`);
                 PubSub.default.pub("showToast", "toast.converter.error");
             }
         } catch (error) {
-            this._statusText.textContent = `Unexpected error: ${error}`;
-            this._statusText.className = `${style.status} ${style.error}`;
+            console.error(`Unexpected error: ${error}`);
             PubSub.default.pub("showToast", "toast.converter.error");
-        } finally {
-            this._convertButton.disabled = false;
         }
     }
 
@@ -286,6 +326,7 @@ export class StepUnfoldPanel extends HTMLElement {
         // ドキュメントの追加/削除を監視
         setInterval(() => {
             this._updateStatus();
+            this._updateModelSizeFromCurrentDocument();
         }, 1000); // 1秒ごとに状態をチェック
     }
 
@@ -301,13 +342,9 @@ export class StepUnfoldPanel extends HTMLElement {
         });
 
         if (!activeDoc) {
-            this._statusText.textContent = "No document available";
-            this._statusText.className = `${style.status} ${style.error}`;
-            this._convertButton.disabled = true;
+            console.log("No document available");
         } else {
-            this._statusText.textContent = "Ready - Use ribbon button to unfold shapes";
-            this._statusText.className = `${style.status} ${style.ready}`;
-            this._convertButton.disabled = false;
+            console.log("Ready - Use ribbon button to unfold shapes");
         }
     }
 
@@ -341,8 +378,7 @@ export class StepUnfoldPanel extends HTMLElement {
             }
         }
 
-        this._statusText.textContent = "Unfold diagram generated";
-        this._statusText.className = `${style.status} ${style.success}`;
+        console.log("Unfold diagram generated");
     };
 
     /**
@@ -439,167 +475,188 @@ export class StepUnfoldPanel extends HTMLElement {
         }
     }
 
-    private _displaySVG(svgContent: string) {
+    private async _displaySVG(svgContent: string) {
         // Destroy existing editor if present
-        if (this._svgEditor) {
-            this._svgEditor.destroy();
+        if (this._svgEditContainer) {
+            this._svgEditContainer.remove();
+            this._svgEditContainer = null;
             this._svgEditor = null;
         }
 
-        // Clear container and create a new SVG element for the editor
+        // Clear container
         this._svgContainer.innerHTML = "";
 
-        // Create a container div for the editor
-        const editorContainer = document.createElement("div");
-        editorContainer.style.width = "100%";
-        editorContainer.style.height = "100%";
-        editorContainer.style.position = "relative";
-        this._svgContainer.appendChild(editorContainer);
+        // Create a container div for SVG-Edit
+        this._svgEditContainer = document.createElement("div");
+        this._svgEditContainer.style.width = "100%";
+        this._svgEditContainer.style.height = "100%";
+        this._svgEditContainer.style.position = "relative";
+        this._svgEditContainer.id = "svg-edit-container-" + Date.now();
+        this._svgContainer.appendChild(this._svgEditContainer);
 
-        // Create SVG element from content
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = svgContent;
-        const svgElement = tempDiv.querySelector("svg");
+        try {
+            console.log("Initializing SVG-Edit editor...");
 
-        if (svgElement) {
-            // Ensure SVG has proper dimensions
-            svgElement.style.width = "100%";
-            svgElement.style.height = "100%";
-            editorContainer.appendChild(svgElement);
+            // Initialize SVG-Edit editor
+            this._svgEditor = new Editor(this._svgEditContainer);
 
-            // Initialize simple-svg-edit editor with enhanced features
-            try {
-                // Add required classes for editing functionality
-                svgElement.classList.add("sse-editable");
+            // Configure SVG-Edit with proper resource paths
+            this._svgEditor.setConfig({
+                // Resource paths - relative to the web root
+                imgPath: "/node_modules/svgedit/dist/editor/images/",
+                extPath: "/node_modules/svgedit/dist/editor/extensions/",
+                langPath: "/node_modules/svgedit/dist/editor/locale/",
 
-                this._svgEditor = new Editor(svgElement, {
-                    // Enable all editing features
+                // Editor configuration
+                allowInitialUserOverride: false,
+                dimensions: [800, 600],
+                gridSnapping: true,
+                gridColor: "#ddd",
+                showRulers: true,
+                showGrid: true,
+                baseUnit: "px",
+                snappingStep: 10,
+                initFill: {
+                    color: "FF0000",
+                    opacity: 1,
+                },
+                initStroke: {
+                    color: "000000",
+                    opacity: 1,
+                    width: 2,
+                },
+                initTool: "select",
+                wireframe: false,
+                no_save_warning: true,
+
+                // Disable some features that might cause issues
+                noDefaultExtensions: false,
+                extensions: [],
+            });
+
+            // Initialize the editor
+            console.log("Calling SVG-Edit init()...");
+            await this._svgEditor.init();
+            console.log("SVG-Edit initialized successfully");
+
+            // Use ready callback to ensure editor is fully loaded
+            if (this._svgEditor.ready) {
+                this._svgEditor.ready(() => {
+                    console.log("SVG-Edit ready callback triggered");
+
+                    // Load the SVG content
+                    if (svgContent) {
+                        console.log("Loading SVG content into editor...");
+
+                        // Try multiple methods to load SVG
+                        if (this._svgEditor && this._svgEditor.svgCanvas) {
+                            if (this._svgEditor.svgCanvas.setSvgString) {
+                                const success = this._svgEditor.svgCanvas.setSvgString(svgContent);
+                                console.log("setSvgString result:", success);
+
+                                // Force a canvas update after loading
+                                if (this._svgEditor.svgCanvas.updateCanvas && this._svgEditContainer) {
+                                    const svgElement = this._svgEditContainer.querySelector("svg");
+                                    if (svgElement) {
+                                        const width = svgElement.getAttribute("width") || "800";
+                                        const height = svgElement.getAttribute("height") || "600";
+                                        this._svgEditor.svgCanvas.updateCanvas(
+                                            parseFloat(width),
+                                            parseFloat(height),
+                                        );
+                                    }
+                                }
+                            } else if (this._svgEditor.loadFromString) {
+                                this._svgEditor.loadFromString(svgContent);
+                                console.log("Used loadFromString method");
+                            }
+                        } else {
+                            console.error("SVG canvas not available");
+                        }
+
+                        // Setup event listeners for the editor
+                        this._setupEditorEvents();
+                    }
                 });
-
-                // Setup event listeners for the editor
-                this._setupEditorEvents();
-
-                // Enable editing buttons
-                this._updateEditButtons();
-            } catch (error) {
-                console.error("Failed to initialize SVG editor:", error);
-                // Fallback: just display the SVG without editing capabilities
-                this._svgContainer.innerHTML = svgContent;
+            } else {
+                // Fallback: use setTimeout if ready method is not available
+                setTimeout(() => {
+                    if (svgContent && this._svgEditor && this._svgEditor.svgCanvas) {
+                        console.log("Loading SVG content (fallback)...");
+                        if (this._svgEditor.svgCanvas.setSvgString) {
+                            const success = this._svgEditor.svgCanvas.setSvgString(svgContent);
+                            console.log("setSvgString result:", success);
+                        } else if (this._svgEditor.loadFromString) {
+                            this._svgEditor.loadFromString(svgContent);
+                            console.log("Used loadFromString method");
+                        }
+                        this._setupEditorEvents();
+                    }
+                }, 1000);
             }
+        } catch (error) {
+            console.error("Failed to initialize SVG-Edit:", error);
+            if (error instanceof Error) {
+                console.error("Error details:", error.stack);
+            }
+            // Fallback: just display the SVG without editing capabilities
+            this._svgContainer.innerHTML = svgContent;
         }
     }
 
     private _setupEditorEvents() {
         if (!this._svgEditor) return;
 
-        // Listen to selection changes
-        this._svgEditor.on("selection-changed", () => {
-            console.log("Selection changed:", this._svgEditor?.getSelectedElements());
-            this._updateEditButtons();
-        });
+        // SVG-Edit may not immediately expose svgCanvas, so we'll try to access it safely
+        try {
+            // For SVG-Edit, the canvas might be available through different properties
+            const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
 
-        // Listen to content changes
-        this._svgEditor.on("change", () => {
-            console.log("SVG content changed");
-            this._updateEditButtons();
-        });
+            if (canvas && canvas.bind) {
+                // Listen to selection changes
+                canvas.bind("selected", () => {
+                    console.log("Selection changed");
+                });
 
-        // Enable click-to-select on SVG elements
-        const svgElements = this._svgEditor.canvas.querySelectorAll(
-            "path, rect, circle, ellipse, line, polyline, polygon, text",
-        );
+                // Listen to content changes
+                canvas.bind("changed", () => {
+                    console.log("SVG content changed");
+                });
 
-        svgElements.forEach((element) => {
-            element.addEventListener("click", (e: Event) => {
-                e.stopPropagation();
-                this._svgEditor?.selectElement(element as SVGElement);
-            });
+                // Additional event bindings for better user experience
+                canvas.bind("cleared", () => {
+                    console.log("Canvas cleared");
+                });
 
-            // Add hover effect
-            element.addEventListener("mouseenter", () => {
-                const selectedElements = this._svgEditor?.getSelectedElements() || [];
-                if (!selectedElements.includes(element as SVGElement)) {
-                    (element as SVGElement).style.opacity = "0.8";
-                }
-            });
-
-            element.addEventListener("mouseleave", () => {
-                const selectedElements = this._svgEditor?.getSelectedElements() || [];
-                if (!selectedElements.includes(element as SVGElement)) {
-                    (element as SVGElement).style.opacity = "1";
-                }
-            });
-        });
-
-        // Click on empty space to deselect
-        this._svgEditor.canvas.addEventListener("click", (e: Event) => {
-            if (e.target === this._svgEditor?.canvas) {
-                this._svgEditor.deselectAll();
+                canvas.bind("zoomed", () => {
+                    console.log("Zoom changed");
+                });
+            } else {
+                console.log("SVG-Edit canvas not yet available, deferring event setup");
+                // Try again after a delay
+                setTimeout(() => this._setupEditorEvents(), 500);
             }
-        });
-    }
-
-    private _updateEditButtons() {
-        if (!this._svgEditor) {
-            this._disableAllEditButtons();
-            return;
+        } catch (error) {
+            console.warn("Error setting up editor events:", error);
         }
-
-        // Update undo/redo buttons based on actual history state
-        this._undoButton.disabled = !this._svgEditor.canUndo();
-        this._redoButton.disabled = !this._svgEditor.canRedo();
-
-        // Update selection-based buttons
-        const selectedElements = this._svgEditor.getSelectedElements();
-        const hasSelection = selectedElements && selectedElements.length > 0;
-        this._deleteButton.disabled = !hasSelection;
-        this._alignLeftButton.disabled = !hasSelection;
-        this._alignCenterButton.disabled = !hasSelection;
-        this._alignRightButton.disabled = !hasSelection;
-    }
-
-    private _disableAllEditButtons() {
-        this._undoButton.disabled = true;
-        this._redoButton.disabled = true;
-        this._deleteButton.disabled = true;
-        this._alignLeftButton.disabled = true;
-        this._alignCenterButton.disabled = true;
-        this._alignRightButton.disabled = true;
-    }
-
-    private _handleUndo() {
-        if (!this._svgEditor) return;
-        this._svgEditor.undo();
-        this._updateEditButtons();
-    }
-
-    private _handleRedo() {
-        if (!this._svgEditor) return;
-        this._svgEditor.redo();
-        this._updateEditButtons();
-    }
-
-    private _handleDelete() {
-        if (!this._svgEditor) return;
-        this._svgEditor.deleteSelected();
-        this._updateEditButtons();
-    }
-
-    private _handleAlign(x: number | null, y: number | null) {
-        if (!this._svgEditor) return;
-        console.log(`Align to x: ${x}, y: ${y}`);
-        // TODO: Implement alignment functionality using moveSelected
-        // For now, just log the requested alignment
     }
 
     private _toggleFaceNumbers() {
         this._faceNumbersVisible = !this._faceNumbersVisible;
         console.log(`Toggling face numbers: ${this._faceNumbersVisible}`);
 
-        // 3D viewの面番号表示を切り替え
+        // Update button appearance
+        if (this._faceNumbersVisible) {
+            this._showFaceNumbersButton.classList.add(style.active);
+            this._showFaceNumbersButton.textContent = "🔢 3D面番号の非表示✓";
+        } else {
+            this._showFaceNumbersButton.classList.remove(style.active);
+            this._showFaceNumbersButton.textContent = "🔢 3D面番号の表示";
+        }
+
+        // Toggle 3D view face numbers
         const activeDocument = this._getActiveDocument();
         if (activeDocument && activeDocument.visual) {
-            // visualのcontextからgeometriesを取得
             const visual = activeDocument.visual as any;
             console.log("Visual object:", visual);
 
@@ -609,22 +666,11 @@ export class StepUnfoldPanel extends HTMLElement {
 
                 visual.context._NodeVisualMap.forEach((visualObject: any, node: any) => {
                     console.log("Checking visual object:", visualObject);
-                    // ThreeGeometryインスタンスかチェック
+                    // Check if it's a ThreeGeometry instance
                     if (visualObject && "setFaceNumbersVisible" in visualObject) {
                         console.log("Found geometry with setFaceNumbersVisible method");
                         visualObject.setFaceNumbersVisible(this._faceNumbersVisible);
                         geometryCount++;
-
-                        // 面番号が表示される場合で、まだバックエンドの面番号が設定されていない場合は再設定を試行
-                        if (
-                            this._faceNumbersVisible &&
-                            visualObject.faceNumberDisplay &&
-                            visualObject.faceNumberDisplay.backendFaceNumbers &&
-                            visualObject.faceNumberDisplay.backendFaceNumbers.size === 0
-                        ) {
-                            console.log("Backend face numbers not set, checking if we have cached data");
-                            // ここで必要に応じてバックエンドから面番号データを再取得する処理を追加
-                        }
                     }
                 });
 
@@ -636,28 +682,39 @@ export class StepUnfoldPanel extends HTMLElement {
             console.log("No active document or visual");
         }
 
-        // ボタンのスタイルを更新
-        if (this._faceNumbersVisible) {
-            this._showFaceNumbersButton.classList.add(style.active);
-            this._showFaceNumbersButton.textContent = "🔢 Numbers ✓";
-        } else {
-            this._showFaceNumbersButton.classList.remove(style.active);
-            this._showFaceNumbersButton.textContent = "🔢 Numbers";
-        }
-
-        // SVG側の面番号表示も切り替え（将来的に実装）
+        // Toggle SVG face numbers
         this._toggleSvgFaceNumbers();
     }
 
     private _toggleSvgFaceNumbers() {
-        if (!this._svgEditor || !this._svgEditor.canvas) return;
+        if (!this._svgEditor) return;
 
-        // SVG内の面番号要素を表示/非表示
-        const faceNumbers = this._svgEditor.canvas.querySelectorAll(".face-number");
-        faceNumbers.forEach((element) => {
-            const svgElement = element as SVGElement;
-            svgElement.style.display = this._faceNumbersVisible ? "block" : "none";
-        });
+        try {
+            const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
+            if (!canvas) return;
+
+            const svgRoot = canvas.getRootElem
+                ? canvas.getRootElem()
+                : canvas.getContentElem
+                  ? canvas.getContentElem()
+                  : null;
+            if (!svgRoot) return;
+
+            // Toggle face number elements in SVG
+            const faceNumbers = svgRoot.querySelectorAll(".face-number");
+            faceNumbers.forEach((element: Element) => {
+                const svgElement = element as SVGElement;
+                if (this._faceNumbersVisible) {
+                    svgElement.style.display = "block";
+                } else {
+                    svgElement.style.display = "none";
+                }
+            });
+
+            console.log(`Toggled ${faceNumbers.length} SVG face numbers`);
+        } catch (error) {
+            console.warn("Error toggling SVG face numbers:", error);
+        }
     }
 
     private _getAllGeometryNodes(document: IDocument): any[] {
@@ -674,6 +731,186 @@ export class StepUnfoldPanel extends HTMLElement {
         }
 
         return geometries;
+    }
+
+    private _updateModelSizeFromCurrentDocument() {
+        const activeDocument = this._getActiveDocument();
+        console.log("[UpdateModelSize] Active document:", !!activeDocument);
+
+        if (activeDocument) {
+            const allNodes = this._getAllVisualNodes(activeDocument);
+            console.log("[UpdateModelSize] Found nodes:", allNodes.length);
+
+            if (allNodes.length > 0) {
+                console.log("[UpdateModelSize] Calculating bounding size for nodes:", allNodes);
+                this._calculateModelBoundingSize(allNodes);
+            } else {
+                console.log("[UpdateModelSize] No visual nodes found");
+            }
+        } else {
+            console.log("[UpdateModelSize] No active document");
+        }
+    }
+
+    private _updateScaleDisplay() {
+        const scaleMap = [1, 10, 50, 100, 150, 200, 300, 500];
+        const scaleIndex = parseInt(this._scaleSlider.value);
+        this._currentScale = scaleMap[scaleIndex];
+
+        if (this._currentScale === 1) {
+            this._scaleValueDisplay.textContent = "1:1";
+        } else {
+            this._scaleValueDisplay.textContent = `1:${this._currentScale}`;
+        }
+
+        // Update model size display - use a default size if not calculated yet
+        const estimatedSize = this._modelBoundingSize > 0 ? this._modelBoundingSize : 200; // Default 200mm
+        const scaledSize = estimatedSize / this._currentScale;
+        const formattedSize =
+            scaledSize > 1000 ? `${(scaledSize / 1000).toFixed(2)}m` : `${scaledSize.toFixed(1)}mm`;
+        this._modelSizeDisplay.textContent = I18n.translate("stepUnfold.modelSize").replace(
+            "{0}",
+            formattedSize,
+        );
+    }
+
+    /**
+     * Get current unfold options for external use
+     */
+    public getCurrentOptions(): UnfoldOptions {
+        return {
+            scale: this._currentScale,
+            layoutMode: this._layoutMode,
+            pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
+            pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+        };
+    }
+
+    /**
+     * Static method to get current instance
+     */
+    public static getInstance(): StepUnfoldPanel | null {
+        return StepUnfoldPanel._instance;
+    }
+
+    private _toggleLayoutMode() {
+        this._layoutMode = this._layoutMode === "canvas" ? "paged" : "canvas";
+
+        // Update button text and appearance
+        if (this._layoutMode === "paged") {
+            this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.paged");
+            this._layoutModeButton.classList.add(style.active);
+            this._pageSettingsContainer.style.display = "flex";
+        } else {
+            this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.canvas");
+            this._layoutModeButton.classList.remove(style.active);
+            this._pageSettingsContainer.style.display = "none";
+        }
+
+        console.log(`Layout mode changed to: ${this._layoutMode}`);
+    }
+
+    private _calculateModelBoundingSize(nodes: VisualNode[]) {
+        let minX = Infinity,
+            minY = Infinity,
+            minZ = Infinity;
+        let maxX = -Infinity,
+            maxY = -Infinity,
+            maxZ = -Infinity;
+        let hasValidBounds = false;
+
+        console.log("[CalculateBounds] Starting calculation for", nodes.length, "nodes");
+
+        // Calculate bounding box from mesh data
+        nodes.forEach((node, index) => {
+            const shape = (node as any).shape;
+            console.log(`[CalculateBounds] Node ${index}:`, {
+                hasShape: !!shape,
+                nodeName: node.name,
+                nodeType: node.constructor.name,
+            });
+
+            if (shape) {
+                // Try to access mesh - it might be a getter that needs to be called
+                let mesh;
+                try {
+                    mesh = shape.mesh;
+                    console.log(`[CalculateBounds] Node ${index} mesh:`, {
+                        hasMesh: !!mesh,
+                        hasFaces: !!mesh?.faces,
+                        hasEdges: !!mesh?.edges,
+                        facesPositionLength: mesh?.faces?.position?.length || 0,
+                        edgesPositionLength: mesh?.edges?.position?.length || 0,
+                    });
+                } catch (e) {
+                    console.log(`[CalculateBounds] Error accessing mesh for node ${index}:`, e);
+                }
+
+                if (mesh) {
+                    // Get position data from faces
+                    if (mesh.faces && mesh.faces.position) {
+                        const positions = mesh.faces.position;
+                        console.log(`[CalculateBounds] Processing ${positions.length / 3} face vertices`);
+
+                        // Process positions in groups of 3 (x, y, z)
+                        for (let i = 0; i < positions.length; i += 3) {
+                            const x = positions[i];
+                            const y = positions[i + 1];
+                            const z = positions[i + 2];
+
+                            minX = Math.min(minX, x);
+                            minY = Math.min(minY, y);
+                            minZ = Math.min(minZ, z);
+                            maxX = Math.max(maxX, x);
+                            maxY = Math.max(maxY, y);
+                            maxZ = Math.max(maxZ, z);
+                            hasValidBounds = true;
+                        }
+                    }
+
+                    // Also check edges if available
+                    if (mesh.edges && mesh.edges.position) {
+                        const positions = mesh.edges.position;
+                        console.log(`[CalculateBounds] Processing ${positions.length / 3} edge vertices`);
+
+                        for (let i = 0; i < positions.length; i += 3) {
+                            const x = positions[i];
+                            const y = positions[i + 1];
+                            const z = positions[i + 2];
+
+                            minX = Math.min(minX, x);
+                            minY = Math.min(minY, y);
+                            minZ = Math.min(minZ, z);
+                            maxX = Math.max(maxX, x);
+                            maxY = Math.max(maxY, y);
+                            maxZ = Math.max(maxZ, z);
+                            hasValidBounds = true;
+                        }
+                    }
+                }
+            }
+        });
+
+        if (hasValidBounds) {
+            // Calculate the maximum dimension
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const depth = maxZ - minZ;
+            this._modelBoundingSize = Math.max(width, height, depth);
+
+            console.log("Calculated bounding box:", {
+                width,
+                height,
+                depth,
+                maxDimension: this._modelBoundingSize,
+            });
+        } else {
+            // Default size if no valid bounds found
+            this._modelBoundingSize = 200;
+            console.log("Using default size: 200mm");
+        }
+
+        this._updateScaleDisplay();
     }
 }
 

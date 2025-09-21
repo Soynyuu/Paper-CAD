@@ -34,6 +34,9 @@ export class Editor extends HTMLElement {
     private readonly _stepUnfoldPanel: StepUnfoldPanel;
     private readonly _app: IApplication;
     private readonly _resizablePanels: ResizablePanels;
+    private _sidebarCollapsed: boolean = false;
+    private readonly _sidebar: HTMLDivElement;
+    private readonly _toggleButton: HTMLButtonElement;
 
     constructor(app: IApplication, tabs: RibbonTab[]) {
         super();
@@ -51,15 +54,39 @@ export class Editor extends HTMLElement {
         this._stepUnfoldPanel.classList.add(style.stepUnfoldPanel);
         console.log("Editor: Created stepUnfoldPanel:", this._stepUnfoldPanel);
 
+        // サイドバーを作成
+        this._sidebar = div(
+            { className: style.sidebar },
+            new ProjectView({ className: style.sidebarItem }),
+            new PropertyView({ className: style.sidebarItem }),
+        );
+
+        // 折りたたみボタンを作成
+        this._toggleButton = document.createElement("button");
+        this._toggleButton.className = style.sidebarToggle;
+        this._toggleButton.textContent = "◀";
+        this._toggleButton.onclick = () => this.toggleSidebar();
+
+        // LocalStorageから状態を復元
+        const savedState = localStorage.getItem("editor-sidebar-collapsed");
+        if (savedState === "true") {
+            this._sidebarCollapsed = true;
+            this._sidebar.classList.add(style.collapsed);
+            this._toggleButton.textContent = "▶";
+        }
+
         // リサイズ可能なパネルを作成
+        // サイドバーの幅を考慮して、残りの領域を50:50に分割
+        const sidebarWidth = this._sidebarCollapsed ? 40 : 280;
+        const availableWidth = window.innerWidth - sidebarWidth;
         this._resizablePanels = new ResizablePanels({
             leftPanel: this._viewportContainer,
             rightPanel: this._stepUnfoldPanel,
-            initialLeftWidth: window.innerWidth * 0.7, // 画面幅の70%を初期値に
+            initialLeftWidth: availableWidth * 0.5, // 利用可能な幅の50%を初期値に（半々の比率）
             minLeftWidth: 400,
-            maxLeftWidth: window.innerWidth - 400, // 右パネルが最低400px確保できるように
+            maxLeftWidth: availableWidth - 400, // 右パネルが最低400px確保できるように
             className: style.resizableContent,
-            storageKey: "editor-main-panels",
+            storageKey: "editor-main-panels-v2", // v2に変更して新しい初期値を適用
         });
 
         this.clearSelectionControl();
@@ -75,15 +102,7 @@ export class Editor extends HTMLElement {
             div(
                 { className: style.root },
                 new Ribbon(this.ribbonContent),
-                div(
-                    { className: style.content },
-                    div(
-                        { className: style.sidebar },
-                        new ProjectView({ className: style.sidebarItem }),
-                        new PropertyView({ className: style.sidebarItem }),
-                    ),
-                    this._resizablePanels,
-                ),
+                div({ className: style.content }, this._sidebar, this._toggleButton, this._resizablePanels),
                 new Statusbar(style.statusbar),
             ),
         );
@@ -108,9 +127,31 @@ export class Editor extends HTMLElement {
 
     private readonly _handleWindowResize = () => {
         if (this._resizablePanels) {
-            this._resizablePanels.setMinMaxWidth(400, window.innerWidth - 400);
+            const sidebarAdjust = this._sidebarCollapsed ? 40 : 400;
+            this._resizablePanels.setMinMaxWidth(400, window.innerWidth - sidebarAdjust);
         }
     };
+
+    private toggleSidebar() {
+        this._sidebarCollapsed = !this._sidebarCollapsed;
+
+        if (this._sidebarCollapsed) {
+            this._sidebar.classList.add(style.collapsed);
+            this._toggleButton.textContent = "▶";
+        } else {
+            this._sidebar.classList.remove(style.collapsed);
+            this._toggleButton.textContent = "◀";
+        }
+
+        // 状態を保存
+        localStorage.setItem("editor-sidebar-collapsed", this._sidebarCollapsed.toString());
+
+        // リサイズパネルの幅を調整
+        if (this._resizablePanels) {
+            const sidebarAdjust = this._sidebarCollapsed ? 40 : 400;
+            this._resizablePanels.setMinMaxWidth(400, window.innerWidth - sidebarAdjust);
+        }
+    }
 
     private readonly showSelectionControl = (controller: AsyncController) => {
         this._selectionController.setControl(controller);

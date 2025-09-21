@@ -20,6 +20,8 @@
         flex: 0 0 360px;
         max-width: 400px;
         background-color: var(--background-color);
+        position: relative;
+        transition: all 0.3s ease-in-out;
 
         & .sidebarItem {
             margin-top: 10px;
@@ -27,6 +29,44 @@
             flex: 1 1 auto;
             height: 0;
         }
+    }
+
+    & .sidebar.collapsed {
+        flex: 0 0 0;
+        overflow: hidden;
+
+        & .sidebarItem {
+            display: none;
+        }
+    }
+
+    & .sidebarToggle {
+        position: absolute;
+        left: 360px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 60px;
+        background-color: #f0f0f0;
+        border: 1px solid #ddd;
+        border-left: none;
+        border-radius: 0 4px 4px 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        transition: all 0.3s ease-in-out;
+        font-size: 12px;
+        color: #666;
+    }
+
+    & .sidebarToggle:hover {
+        background-color: #e0e0e0;
+    }
+
+    & .sidebar.collapsed + .sidebarToggle {
+        left: 0;
     }
 
     & .viewportContainer {

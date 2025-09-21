@@ -2,8 +2,16 @@
 // See LICENSE file in the project root for full license information.
 
 import { IApplication } from "../application";
+import { config } from "../config/config";
 import { Result } from "../foundation";
 import { IService } from "../service";
+
+export interface UnfoldOptions {
+    scale?: number;
+    layoutMode?: "canvas" | "paged";
+    pageFormat?: "A4" | "A3" | "Letter";
+    pageOrientation?: "portrait" | "landscape";
+}
 
 export interface UnfoldResponse {
     svg_content: string;
@@ -14,8 +22,8 @@ export interface UnfoldResponse {
 }
 
 export interface IStepUnfoldService extends IService {
-    unfoldStep(stepFile: File): Promise<Result<UnfoldResponse>>;
-    unfoldStepFromData(stepData: BlobPart): Promise<Result<UnfoldResponse>>;
+    unfoldStep(stepFile: File, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
+    unfoldStepFromData(stepData: BlobPart, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
     checkBackendHealth(): Promise<Result<HealthResponse>>;
 }
 
@@ -45,7 +53,7 @@ export class StepUnfoldService implements IStepUnfoldService {
         // サービス停止時の処理
     }
 
-    async unfoldStep(stepFile: File): Promise<Result<UnfoldResponse>> {
+    async unfoldStep(stepFile: File, options: UnfoldOptions = {}): Promise<Result<UnfoldResponse>> {
         try {
             // ファイル拡張子チェック
             if (!this.isValidStepFile(stepFile)) {
@@ -56,6 +64,10 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("file", stepFile);
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
+            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("layout_mode", options.layoutMode || "canvas");
+            formData.append("page_format", options.pageFormat || "A4");
+            formData.append("page_orientation", options.pageOrientation || "portrait");
 
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
                 method: "POST",
@@ -82,13 +94,20 @@ export class StepUnfoldService implements IStepUnfoldService {
         }
     }
 
-    async unfoldStepFromData(stepData: BlobPart): Promise<Result<UnfoldResponse>> {
+    async unfoldStepFromData(
+        stepData: BlobPart,
+        options: UnfoldOptions = {},
+    ): Promise<Result<UnfoldResponse>> {
         try {
             const formData = new FormData();
             const stepBlob = new Blob([stepData], { type: "application/octet-stream" });
             formData.append("file", stepBlob, "model.step");
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
+            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("layout_mode", options.layoutMode || "canvas");
+            formData.append("page_format", options.pageFormat || "A4");
+            formData.append("page_orientation", options.pageOrientation || "portrait");
 
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
                 method: "POST",

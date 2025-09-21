@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { ObjectStorage, Observable } from "./foundation";
+import { AngleUnit, LengthUnit, ObjectStorage, Observable } from "./foundation";
 import { I18n } from "./i18n";
 import { SerializedProperties, Serializer } from "./serialize";
 import { ObjectSnapType } from "./snapType";
@@ -88,6 +88,46 @@ export class Config extends Observable {
     }
     set navigation3DIndex(value: number) {
         this.setProperty("navigation3DIndex", value, () => {
+            this.saveToStorage();
+        });
+    }
+
+    @Serializer.serialze()
+    get lengthUnit() {
+        return this.getPrivateValue("lengthUnit", LengthUnit.Millimeter);
+    }
+    set lengthUnit(value: LengthUnit) {
+        this.setProperty("lengthUnit", value, () => {
+            this.saveToStorage();
+        });
+    }
+
+    @Serializer.serialze()
+    get angleUnit() {
+        return this.getPrivateValue("angleUnit", AngleUnit.Degree);
+    }
+    set angleUnit(value: AngleUnit) {
+        this.setProperty("angleUnit", value, () => {
+            this.saveToStorage();
+        });
+    }
+
+    @Serializer.serialze()
+    get lengthPrecision() {
+        return this.getPrivateValue("lengthPrecision", 2);
+    }
+    set lengthPrecision(value: number) {
+        this.setProperty("lengthPrecision", value, () => {
+            this.saveToStorage();
+        });
+    }
+
+    @Serializer.serialze()
+    get anglePrecision() {
+        return this.getPrivateValue("anglePrecision", 2);
+    }
+    set anglePrecision(value: number) {
+        this.setProperty("anglePrecision", value, () => {
             this.saveToStorage();
         });
     }

@@ -2,58 +2,75 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 4px;
-    margin: 4px;
-    border-radius: 4px;
-    max-width: 42px;
+    padding: var(--spacing-xs);
+    margin: var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    min-width: 48px;
+    max-width: 80px;
+    transition: all var(--transition-fast);
+    cursor: pointer;
 }
 
 .normal:hover {
-    opacity: 0.85;
     background-color: var(--hover-background-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 .normal:active {
     background-color: var(--active-background-color);
+    transform: translateY(0);
+    box-shadow: none;
 }
 
 .small {
     display: flex;
     flex-direction: row;
-    justify-items: top;
-    padding: 4px;
-    margin: 0px 4px;
+    align-items: center;
+    padding: var(--spacing-xs);
+    margin: 0px var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    cursor: pointer;
 }
 
 .checked {
     background-color: var(--checked-color);
+    border: 1px solid var(--primary-color);
 }
 
 .small:hover {
-    opacity: 0.85;
     background-color: var(--hover-background-color);
+    box-shadow: var(--shadow-sm);
 }
 
 .small:active {
     background-color: var(--active-background-color);
+    box-shadow: none;
 }
 
 .buttonText {
     color: var(--foreground-color);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     text-overflow: ellipsis;
     overflow: hidden;
-    text-wrap: nowrap;
+    text-wrap: wrap;
+    text-align: center;
+    line-height: 1.2;
+    max-width: 100%;
+    font-weight: 500;
+    word-break: keep-all;
 }
 
 .icon {
-    width: 30px;
-    height: 30px;
-    margin-bottom: 4px;
+    width: 24px;
+    height: 24px;
+    margin-bottom: 2px;
+    flex-shrink: 0;
 }
 
 .smallIcon {
     width: 16px;
     height: 16px;
-    margin-right: 8px;
+    margin-right: var(--spacing-sm);
 }

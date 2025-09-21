@@ -2,3 +2,4 @@
 // See LICENSE file in the project root for full license information.
 
 export * from "./propertyView";
+export * from "./unitSettings";

@@ -4,3 +4,5 @@
 export * from "./commandService";
 export * from "./editorService";
 export * from "./hotkeyService";
+export * from "./keymapPreset";
+export * from "./keymapPresetManager";

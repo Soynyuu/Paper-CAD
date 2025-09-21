@@ -1,0 +1,160 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 350px;
+}
+
+.title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #cccccc;
+}
+
+.patternSelect {
+    padding: 8px 12px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background-color: #404040;
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.patternSelect:focus {
+    outline: none;
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.previewContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background-color: #333;
+    overflow: hidden;
+}
+
+.previewImage {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 4px;
+}
+
+.tileControls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tileSlider {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #555;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.tileSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4a90e2;
+    cursor: pointer;
+}
+
+.tileSlider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4a90e2;
+    cursor: pointer;
+    border: none;
+}
+
+.tileLabel {
+    min-width: 24px;
+    text-align: center;
+    font-weight: bold;
+    color: #e0e0e0;
+    font-size: 16px;
+}
+
+.buttonSection {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #555;
+}
+
+.button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.buttonPrimary {
+    background-color: #4a90e2;
+    color: white;
+}
+
+.buttonPrimary:hover {
+    background-color: #357abd;
+}
+
+.buttonSecondary {
+    background-color: #666;
+    color: #e0e0e0;
+}
+
+.buttonSecondary:hover {
+    background-color: #777;
+}
+
+.closeButton {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: #ccc;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.closeButton:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}

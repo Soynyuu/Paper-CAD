@@ -116,12 +116,23 @@ export class ApplyTextureCommand implements ICommand {
         // Step 2: 面番号を生成
         await this.generateFaceNumbers(document);
 
-        // Step 3: テクスチャパラメータをUIで設定（プロパティパネルに表示）
-        // TODO: Show texture parameters in property panel
-        console.log("Texture parameters ready for UI");
+        // Step 3: テクスチャパラメータをUIで設定
+        const textureResult = await this.showTextureSelectionDialog();
+        if (!textureResult.confirmed) {
+            console.log("[ApplyTextureCommand] Texture selection cancelled");
+            return;
+        }
+
+        // Update parameters with user selection
+        this.parameters.patternId = textureResult.patternId;
+        this.parameters.tileCount = textureResult.tileCount;
+        console.log("[ApplyTextureCommand] Texture parameters selected:", {
+            patternId: textureResult.patternId,
+            tileCount: textureResult.tileCount,
+        });
 
         // Step 4: テクスチャを適用
-        await this.applyTextureWithConfirmation(document);
+        await this.applyTextureDirectly(document);
     }
 
     /**
@@ -169,6 +180,39 @@ export class ApplyTextureCommand implements ICommand {
         console.log(
             `[ApplyTextureCommand] Preview update: ${this.parameters.patternId} x${this.parameters.tileCount}`,
         );
+    }
+
+    /**
+     * テクスチャー選択ダイアログを表示
+     */
+    private async showTextureSelectionDialog(): Promise<any> {
+        // Dynamically import to avoid circular dependencies
+        const { TextureSelectionDialog } = await import("chili-ui");
+
+        const dialog = new TextureSelectionDialog();
+        const result = await dialog.show();
+        return result;
+    }
+
+    /**
+     * テクスチャを直接適用（確認ダイアログ済み）
+     */
+    private async applyTextureDirectly(document: IDocument): Promise<void> {
+        // トランザクション内でテクスチャを適用
+        Transaction.execute(document, "applyTexture", () => {
+            const textureData = this.parameters.toTextureData();
+
+            // FaceTextureServiceに保存
+            this.faceNumbers.forEach((faceNumber) => {
+                this.textureService?.applyTextureToFace(faceNumber, textureData);
+            });
+
+            // 各面にマテリアルを適用
+            this.applyMaterialToFaces(document, textureData);
+        });
+
+        console.log(`Applied texture to ${this.faceNumbers.length} faces`);
+        console.log(`[ApplyTextureCommand] Applied texture to ${this.faceNumbers.length} faces`);
     }
 
     /**

@@ -113,6 +113,20 @@ class StepUnfoldGenerator:
             "processing_time": 0.0   # 処理時間：性能評価指標（秒単位）
         }
 
+        # ═══ テクスチャマッピング：面番号とテクスチャパターンの対応表 ═══
+        self.texture_mappings: List[Dict[str, Any]] = []
+        # [{faceNumber: int, patternId: str, tileCount: int}, ...]
+
+
+    def set_texture_mappings(self, texture_mappings: List[Dict[str, Any]]):
+        """
+        テクスチャマッピング情報を設定する。
+
+        Args:
+            texture_mappings: [{faceNumber: int, patternId: str, tileCount: int}, ...]
+        """
+        self.texture_mappings = texture_mappings
+        print(f"[StepUnfoldGenerator] Set {len(texture_mappings)} texture mappings")
 
     def load_from_file(self, file_path: str) -> bool:
         """
@@ -229,7 +243,11 @@ class StepUnfoldGenerator:
             page_format=self.page_format,
             page_orientation=self.page_orientation
         )
-        
+
+        # テクスチャマッピングを設定
+        if self.texture_mappings:
+            self.svg_exporter.set_texture_mappings(self.texture_mappings)
+
         # SVGエクスポーターに処理を委譲
         return self.svg_exporter.export_to_svg(placed_groups, output_path, self.layout_manager)
     
@@ -249,7 +267,11 @@ class StepUnfoldGenerator:
             page_format=self.page_format,
             page_orientation=self.page_orientation
         )
-        
+
+        # テクスチャマッピングを設定
+        if self.texture_mappings:
+            self.svg_exporter.set_texture_mappings(self.texture_mappings)
+
         # SVGエクスポーターに処理を委譲
         return self.svg_exporter.export_to_svg_paged_single_file(paged_groups, output_path)
 

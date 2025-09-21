@@ -7,3 +7,4 @@ export * from "./keymapSettings";
 export * from "./mainWindow";
 export * from "./property";
 export * from "./stepUnfold";
+export * from "./textureSelectionDialog";

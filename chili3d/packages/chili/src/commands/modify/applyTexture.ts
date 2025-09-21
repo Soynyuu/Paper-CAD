@@ -95,7 +95,7 @@ export class ApplyTextureCommand implements ICommand {
         const controller = new AsyncController();
         const selectStep = new SelectShapeStep(ShapeType.Face, "prompt.selectFacesForTexture", {
             multiple: true,
-            selectedState: VisualState.highlight,
+            selectedState: VisualState.edgeHighlight,
         });
 
         const result = await selectStep.execute(document, controller);

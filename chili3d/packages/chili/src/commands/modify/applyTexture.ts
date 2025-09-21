@@ -71,7 +71,7 @@ export class TextureParameters {
  */
 @command({
     key: "modify.applyTexture",
-    icon: "icon-texture",
+    icon: "icon-edit",
 })
 export class ApplyTextureCommand implements ICommand {
     private selectedFaces: IShape[] = [];

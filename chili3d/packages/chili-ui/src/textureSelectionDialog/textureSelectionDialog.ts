@@ -263,7 +263,7 @@ export class TextureSelectionDialog extends HTMLElement {
         }
 
         // Update only the parts that change
-        const imageUrl = `/textures/${pattern.image}`;
+        const imageUrl = `textures/${pattern.image}`;
         const tileSize = 200 / this.tileCount;
 
         this.previewImage.src = imageUrl;

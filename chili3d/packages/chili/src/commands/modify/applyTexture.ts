@@ -5,12 +5,14 @@ import {
     AsyncController,
     command,
     FaceTextureService,
+    GeometryNode,
     IApplication,
     ICommand,
     IDocument,
     IFace,
     INode,
     IShape,
+    ISubFaceShape,
     Material,
     PhongMaterial,
     Property,
@@ -21,6 +23,7 @@ import {
     TextureData,
     Transaction,
     VisualState,
+    XY,
 } from "chili-core";
 import { SelectShapeStep } from "../../step";
 
@@ -60,7 +63,7 @@ export class TextureParameters {
         return {
             patternId: this.patternId,
             tileCount: this.tileCount,
-            imageUrl: `/textures/${this.patternId}.png`,
+            imageUrl: `textures/${this.patternId}.png`,
             repeat: { x: this.tileCount, y: this.tileCount },
         };
     }
@@ -75,6 +78,7 @@ export class TextureParameters {
 })
 export class ApplyTextureCommand implements ICommand {
     private selectedFaces: IShape[] = [];
+    private selectedNodes: INode[] = [];
     private faceNumbers: number[] = [];
     private textureService: FaceTextureService | null = null;
     private parameters!: TextureParameters;
@@ -111,7 +115,10 @@ export class ApplyTextureCommand implements ICommand {
         this.selectedFaces = result.shapes
             .map((s) => s.shape)
             .filter((shape) => shape !== undefined) as IShape[];
-        console.log(`[ApplyTextureCommand] Selected ${this.selectedFaces.length} faces`);
+        this.selectedNodes = result.nodes || [];
+        console.log(
+            `[ApplyTextureCommand] Selected ${this.selectedFaces.length} faces, ${this.selectedNodes.length} nodes`,
+        );
 
         // Step 2: 面番号を生成
         await this.generateFaceNumbers(document);
@@ -248,18 +255,84 @@ export class ApplyTextureCommand implements ICommand {
      */
     private applyMaterialToFaces(document: IDocument, textureData: TextureData): void {
         // テクスチャ付きマテリアルを作成
-        const material = new PhongMaterial(document, `Texture_${textureData.patternId}`, 0xffffff);
+        const material = new PhongMaterial(
+            document,
+            `Texture_${textureData.patternId}_${Date.now()}`,
+            0xffffff,
+        );
 
         // テクスチャを設定
         material.map.image = textureData.imageUrl;
-        material.map.repeat = { x: textureData.tileCount, y: textureData.tileCount } as any;
+        material.map.repeat = new XY(textureData.tileCount, textureData.tileCount);
+        // wrapSとwrapTは数値で設定（Three.jsのRepeatWrapping = 1000）
+        material.map.wrapS = 1000;
+        material.map.wrapT = 1000;
 
-        // 選択された面にマテリアルを適用
-        // TODO: 実際の面ごとのマテリアル適用を実装
+        // マテリアルをドキュメントに追加
+        document.materials.push(material);
+
+        // 選択された面から面インデックスを取得
+        const faceIndices: number[] = [];
         this.selectedFaces.forEach((face) => {
-            console.log(`[ApplyTextureCommand] Applying material to face:`, face);
-            // face.material = material; // 実際の実装が必要
+            if ("index" in face) {
+                const subFace = face as ISubFaceShape;
+                faceIndices.push(subFace.index);
+                console.log(`[ApplyTextureCommand] Face index: ${subFace.index}`);
+            }
         });
+
+        if (faceIndices.length === 0) {
+            console.warn("[ApplyTextureCommand] No face indices found");
+            return;
+        }
+
+        // 選択されたノードからGeometryNodeを探す
+        const geometryNodeMap = new Map<GeometryNode, number[]>();
+
+        // 選択されたノードを処理
+        this.selectedNodes.forEach((node, index) => {
+            // 親をたどってGeometryNodeを探す
+            let currentNode: INode | undefined = node;
+            while (currentNode) {
+                // GeometryNodeかどうか確認
+                if (currentNode instanceof GeometryNode) {
+                    if (!geometryNodeMap.has(currentNode)) {
+                        geometryNodeMap.set(currentNode, []);
+                    }
+                    // 対応する面インデックスを追加
+                    if (index < faceIndices.length) {
+                        geometryNodeMap.get(currentNode)!.push(faceIndices[index]);
+                    }
+                    break;
+                }
+                currentNode = currentNode.parent;
+            }
+        });
+
+        console.log(`[ApplyTextureCommand] Found ${geometryNodeMap.size} geometry nodes`);
+
+        // 各GeometryNodeに対して面ごとにマテリアルを適用
+        if (geometryNodeMap.size > 0) {
+            geometryNodeMap.forEach((faceIndices, geometryNode) => {
+                console.log(
+                    `[ApplyTextureCommand] Applying material to ${faceIndices.length} faces on geometry node`,
+                );
+
+                // addFaceMaterialメソッドを使用して面ごとにマテリアルを適用
+                const pairs = faceIndices.map((faceIndex) => ({
+                    faceIndex: faceIndex,
+                    materialId: material.id,
+                }));
+
+                geometryNode.addFaceMaterial(pairs);
+            });
+
+            // ドキュメント全体の再描画をトリガー
+            document.visual.update();
+            console.log(`[ApplyTextureCommand] Applied texture to selected faces`);
+        } else {
+            console.warn("[ApplyTextureCommand] No geometry nodes found to apply material");
+        }
     }
 
     /**

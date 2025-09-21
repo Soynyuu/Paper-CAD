@@ -1,0 +1,178 @@
+{
+    "patterns": [
+        {
+            "id": "grass",
+            "name": "芝生",
+            "nameEn": "Grass",
+            "description": "自然な芝生のテクスチャ",
+            "descriptionEn": "Natural grass texture",
+            "image": "grass.png",
+            "scale": 0.5,
+            "category": "nature",
+            "svgPattern": {
+                "width": 100,
+                "height": 100,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "wood",
+            "name": "木目",
+            "nameEn": "Wood",
+            "description": "木材の質感",
+            "descriptionEn": "Wood grain texture",
+            "image": "wood.png",
+            "scale": 0.8,
+            "category": "material",
+            "svgPattern": {
+                "width": 200,
+                "height": 200,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "brick",
+            "name": "レンガ",
+            "nameEn": "Brick",
+            "description": "レンガ壁のパターン",
+            "descriptionEn": "Brick wall pattern",
+            "image": "brick.png",
+            "scale": 0.6,
+            "category": "building",
+            "svgPattern": {
+                "width": 150,
+                "height": 150,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "stone",
+            "name": "石",
+            "nameEn": "Stone",
+            "description": "石材のテクスチャ",
+            "descriptionEn": "Stone texture",
+            "image": "stone.png",
+            "scale": 0.7,
+            "category": "material",
+            "svgPattern": {
+                "width": 120,
+                "height": 120,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "fabric",
+            "name": "布",
+            "nameEn": "Fabric",
+            "description": "布地のパターン",
+            "descriptionEn": "Fabric pattern",
+            "image": "fabric.png",
+            "scale": 0.4,
+            "category": "material",
+            "svgPattern": {
+                "width": 80,
+                "height": 80,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "metal",
+            "name": "金属",
+            "nameEn": "Metal",
+            "description": "金属の質感",
+            "descriptionEn": "Metal texture",
+            "image": "metal.png",
+            "scale": 1.0,
+            "category": "material",
+            "svgPattern": {
+                "width": 100,
+                "height": 100,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "paper",
+            "name": "紙",
+            "nameEn": "Paper",
+            "description": "紙のテクスチャ",
+            "descriptionEn": "Paper texture",
+            "image": "paper.png",
+            "scale": 0.9,
+            "category": "material",
+            "svgPattern": {
+                "width": 100,
+                "height": 100,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "water",
+            "name": "水",
+            "nameEn": "Water",
+            "description": "水面のパターン",
+            "descriptionEn": "Water surface pattern",
+            "image": "water.png",
+            "scale": 0.6,
+            "category": "nature",
+            "svgPattern": {
+                "width": 180,
+                "height": 180,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "sand",
+            "name": "砂",
+            "nameEn": "Sand",
+            "description": "砂地のテクスチャ",
+            "descriptionEn": "Sand texture",
+            "image": "sand.png",
+            "scale": 0.5,
+            "category": "nature",
+            "svgPattern": {
+                "width": 100,
+                "height": 100,
+                "patternUnits": "userSpaceOnUse"
+            }
+        },
+        {
+            "id": "custom",
+            "name": "カスタム",
+            "nameEn": "Custom",
+            "description": "ユーザー定義のテクスチャ",
+            "descriptionEn": "User-defined texture",
+            "image": null,
+            "scale": 1.0,
+            "category": "custom",
+            "svgPattern": {
+                "width": 100,
+                "height": 100,
+                "patternUnits": "userSpaceOnUse"
+            }
+        }
+    ],
+    "categories": {
+        "nature": {
+            "name": "自然",
+            "nameEn": "Nature",
+            "icon": "🌿"
+        },
+        "material": {
+            "name": "素材",
+            "nameEn": "Material",
+            "icon": "🏗️"
+        },
+        "building": {
+            "name": "建築",
+            "nameEn": "Building",
+            "icon": "🏢"
+        },
+        "custom": {
+            "name": "カスタム",
+            "nameEn": "Custom",
+            "icon": "⚙️"
+        }
+    },
+    "defaultPattern": "paper",
+    "version": "1.0.0"
+}

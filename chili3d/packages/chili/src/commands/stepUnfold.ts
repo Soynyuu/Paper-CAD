@@ -7,11 +7,11 @@ import {
     Combobox,
     command,
     I18n,
-    IApplication,
     INode,
     Property,
     PubSub,
     ShapeNode,
+    UnfoldOptions,
 } from "chili-core";
 import { SelectNodeWithListStep } from "../step";
 
@@ -45,7 +45,8 @@ export class StepUnfold extends CancelableCommand {
         // TODO: Get stepUnfoldService from application services
         // For now, create directly
         const { StepUnfoldService } = await import("chili-core");
-        const stepUnfoldService = new StepUnfoldService();
+
+        const stepUnfoldService = new StepUnfoldService("http://localhost:8001/api");
 
         const selectedFormat = this.format.selectedItem;
         if (selectedFormat === undefined) {
@@ -77,9 +78,30 @@ export class StepUnfold extends CancelableCommand {
                         return;
                     }
 
-                    // STEPデータをunfoldサービスに送信
+                    // STEPデータをunfoldサービスに送信（オプションを含む）
                     const stepBlob = Array.isArray(stepData) ? stepData[0] : stepData;
-                    const result = await stepUnfoldService.unfoldStepFromData(stepBlob);
+
+                    // StepUnfoldPanelから現在の設定を取得
+                    let unfoldOptions: UnfoldOptions = {
+                        scale: 1,
+                        layoutMode: "canvas",
+                        pageFormat: "A4",
+                        pageOrientation: "portrait",
+                    };
+
+                    // StepUnfoldPanelのインスタンスから設定を取得
+                    try {
+                        const { StepUnfoldPanel } = await import("chili-ui");
+                        const panel = StepUnfoldPanel.getInstance();
+                        if (panel) {
+                            unfoldOptions = panel.getCurrentOptions();
+                            console.log("取得したオプション:", unfoldOptions);
+                        }
+                    } catch (e) {
+                        console.log("デフォルトオプションを使用:", unfoldOptions);
+                    }
+
+                    const result = await stepUnfoldService.unfoldStepFromData(stepBlob, unfoldOptions);
                     if (result.isOk) {
                         // SVGデータを表示パネルに送信
                         (PubSub.default as any).pub("stepUnfold.showResult", result.value);

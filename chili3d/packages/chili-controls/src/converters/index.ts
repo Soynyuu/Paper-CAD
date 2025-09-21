@@ -4,5 +4,6 @@
 export * from "./colorConverter";
 export * from "./numberConverter";
 export * from "./stringConverter";
+export * from "./unitNumberConverter";
 export * from "./xyzConverter";
 export * from "./urlConverter";

@@ -10,7 +10,8 @@ export class StepUnfoldTestUtils {
     static async testBackendConnection(): Promise<void> {
         console.log("Testing backend connection...");
 
-        const service = new StepUnfoldService();
+        const service = new StepUnfoldService("http://localhost:8001/api");
+
         const result = await service.checkBackendHealth();
 
         if (result.isOk) {

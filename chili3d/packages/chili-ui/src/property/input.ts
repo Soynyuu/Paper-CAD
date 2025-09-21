@@ -12,6 +12,7 @@ import {
 } from "chili-controls";
 import {
     Binding,
+    Config,
     IConverter,
     IDocument,
     isPropertyChanged,
@@ -67,6 +68,7 @@ export class InputProperty extends PropertyBase {
         super(objects);
         this.converter = converter ?? this.getConverter();
         const arrayConverter = new ArrayValueConverter(objects, property, this.converter);
+        const placeholder = this.getPlaceholder();
         this.append(
             div(
                 { className: commonStyle.panel },
@@ -74,6 +76,7 @@ export class InputProperty extends PropertyBase {
                 input({
                     className: style.box,
                     value: new Binding(objects[0], property.name, arrayConverter),
+                    placeholder,
                     readOnly: this.isReadOnly(),
                     onkeydown: this.handleKeyDown,
                     onblur: this.handleBlur,
@@ -124,6 +127,26 @@ export class InputProperty extends PropertyBase {
             this.document.visual.update();
         });
     };
+
+    private getPlaceholder(): string {
+        const config = Config.instance;
+        const valueType = this.objects[0][this.property.name];
+
+        if (typeof valueType === "number") {
+            // Try to determine if it's an angle or length based on property name
+            if (
+                this.property.name.toLowerCase().includes("angle") ||
+                this.property.name.toLowerCase().includes("rotation")
+            ) {
+                return config.angleUnit;
+            }
+            return config.lengthUnit;
+        } else if (valueType instanceof XYZ || valueType instanceof XY) {
+            return config.lengthUnit;
+        }
+
+        return "";
+    }
 
     private getConverter(): IConverter | undefined {
         const name = this.objects[0][this.property.name].constructor.name;

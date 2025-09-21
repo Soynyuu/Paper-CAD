@@ -28,9 +28,9 @@
             flex-direction: row;
             align-items: center;
             justify-self: center;
-            border-radius: 8px;
-            padding: 4px 8px;
-            margin: 2px;
+            border-radius: var(--radius-md);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            margin: calc(var(--spacing-xs) / 2);
             cursor: pointer;
 
             &:hover {
@@ -63,23 +63,23 @@
             display: flex;
             flex-direction: row;
             align-items: center;
-            border-radius: 8px;
-            padding: 2px 0px;
+            border-radius: var(--radius-md);
+            padding: calc(var(--spacing-xs) / 2) 0px;
             overflow: hidden;
 
             .tab {
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                border-radius: 6px;
+                border-radius: var(--radius-sm);
                 height: 26px;
                 background-color: var(--title-background);
-                padding: 2px;
+                padding: calc(var(--spacing-xs) / 2);
                 width: 220px;
                 overflow: hidden;
-                margin: 0px 2px;
+                margin: 0px calc(var(--spacing-xs) / 2);
                 cursor: default;
-                transition: width 0.2s ease-out;
+                transition: width var(--transition-base);
 
                 &:hover {
                     background-color: var(--hover-background-color);
@@ -109,8 +109,8 @@
                     width: 12px;
                     height: 12px;
                     margin: 4px;
-                    padding: 6px;
-                    border-radius: 6px;
+                    padding: calc(var(--spacing-xs) * 1.5);
+                    border-radius: var(--radius-sm);
                     flex-shrink: 0;
 
                     &:hover {
@@ -129,8 +129,8 @@
             width: 16px;
             height: 16px;
             margin-left: 2px;
-            padding: 6px;
-            border-radius: 6px;
+            padding: calc(var(--spacing-xs) * 1.5);
+            border-radius: var(--radius-sm);
 
             &:hover {
                 background-color: var(--hover-background-color);
@@ -149,7 +149,7 @@
             width: 24px;
             height: 24px;
             padding: 4px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
 
             &:hover {
                 background-color: var(--hover-background-color);
@@ -168,9 +168,9 @@
     .home {
         width: 14px;
         height: 14px;
-        padding: 6px;
-        border-radius: 4px;
-        margin: 0px 4px;
+        padding: calc(var(--spacing-xs) * 1.5);
+        border-radius: var(--radius-sm);
+        margin: 0px var(--spacing-xs);
 
         &:hover {
             background-color: var(--hover-background-color);
@@ -184,9 +184,9 @@
         svg {
             width: 14px;
             height: 14px;
-            padding: 6px;
-            border-radius: 4px;
-            margin: 0px 6px;
+            padding: calc(var(--spacing-xs) * 1.5);
+            border-radius: var(--radius-sm);
+            margin: 0px calc(var(--spacing-xs) * 1.5);
 
             &:hover {
                 background-color: var(--hover-background-color);
@@ -224,6 +224,7 @@
     flex-direction: row;
     background-color: var(--panel-background-color);
     border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
     overflow-x: auto;
 
     &::-webkit-scrollbar {
@@ -249,6 +250,7 @@
     height: 32px;
     background-color: var(--panel-background-color);
     border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
 }
 
 .ribbonGroup {
@@ -257,6 +259,8 @@
     grid-template-rows: 1fr auto;
     justify-items: center;
     flex-shrink: 0;
+    min-width: fit-content;
+    padding: 0 8px;
 
     .header {
         color: var(--foreground-color);
@@ -264,13 +268,17 @@
     }
 
     .content {
-        height: 72px;
+        min-height: 72px;
+        height: auto;
+        padding: 4px 0;
         flex-shrink: 0;
         display: flex;
         flex-direction: row;
         align-items: center;
         justify-items: center;
-        overflow: hidden;
+        overflow: visible;
+        flex-wrap: wrap;
+        gap: 2px;
     }
 }
 

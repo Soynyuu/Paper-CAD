@@ -123,7 +123,7 @@ export class Ribbon extends HTMLElement {
             { className: style.left },
             div(
                 { className: style.appIcon, onclick: () => PubSub.default.pub("displayHome", true) },
-                span({ id: "appName", textContent: `Diorama-CAD - v${__APP_VERSION__}` }),
+                span({ id: "appName", textContent: `Paper-CAD - v${__APP_VERSION__}` }),
             ),
             div(
                 { className: style.ribbonTitlePanel },
@@ -199,13 +199,7 @@ export class Ribbon extends HTMLElement {
     }
 
     private rightPanel() {
-        return div(
-            { className: style.right },
-            a(
-                { href: "https://github.com/xiangechen/diorama-cad", target: "_blank" },
-                svg({ title: "Github", className: style.icon, icon: "icon-github" }),
-            ),
-        );
+        return div({ className: style.right }, a());
     }
 
     private ribbonTabs() {

@@ -4,33 +4,36 @@
 }
 
 .header {
-    margin: 2px 18px;
-    font-size: 1.15rem;
-    font-weight: bold;
+    margin: var(--spacing-xs) var(--spacing-md);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
     flex: 0;
+    color: var(--foreground-color);
 }
 
 .panel {
     flex: 1;
-    padding: 10px;
+    padding: var(--spacing-md);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--spacing-sm);
     overflow-y: auto;
-    border-top: 2px solid transparent;
-    border-bottom: 2px solid transparent;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
     background-color: var(--panel-background-color);
 }
 
 .properties {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--spacing-xs);
 }
 
 .name {
     display: grid;
     grid-template-columns: auto 1fr;
-    grid-gap: 10px;
+    grid-gap: var(--spacing-md);
     align-items: center;
+    padding: var(--spacing-xs) 0;
+    font-size: var(--font-size-sm);
 }

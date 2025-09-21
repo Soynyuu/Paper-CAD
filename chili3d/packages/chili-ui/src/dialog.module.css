@@ -1,13 +1,15 @@
 dialog {
     border: none;
-    box-shadow: 0px 5px 10px #646464;
+    box-shadow: var(--shadow-lg);
     padding: 0px;
-    background-color: rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(5px);
+    background-color: var(--panel-background-color);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-lg);
 }
 
 dialog::backdrop {
-    background-color: rgba(0, 0, 0, 0.75);
+    background-color: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
 }
 
 .root {
@@ -18,16 +20,17 @@ dialog::backdrop {
 }
 
 .title {
-    padding-top: 16px;
-    padding-bottom: 8px;
-    font-size: 1.5em;
-    font-weight: bold;
+    padding-top: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    font-size: var(--font-size-xl);
+    font-weight: 600;
     margin: 0px auto;
     flex-shrink: 0;
+    color: var(--foreground-color);
 }
 
 .content {
-    padding: 16px;
+    padding: var(--spacing-lg);
     max-width: 1080px;
     max-height: 680px;
     flex: 1 1 auto;
@@ -39,25 +42,46 @@ dialog::backdrop {
     flex-direction: row;
     flex-shrink: 0;
     justify-content: flex-end;
-    padding: 8px;
-    background-color: rgba(255, 255, 255, 0.56);
+    padding: var(--spacing-md);
+    background-color: var(--neutral-50);
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 
     & button {
-        width: 64px;
-        margin: 6px;
-        padding: 4px;
-        font-size: 1em;
+        min-width: 80px;
+        margin: 0 var(--spacing-xs);
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: var(--font-size-sm);
+        font-weight: 500;
         border: 1px solid var(--border-color);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         background-color: var(--panel-background-color);
         color: var(--foreground-color);
+        cursor: pointer;
+        transition: all var(--transition-fast);
 
         &:hover {
             background-color: var(--hover-background-color);
+            border-color: var(--primary-color);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-sm);
         }
+
         &:active {
             background-color: var(--primary-color);
-            color: var(--title-checked);
+            color: white;
+            transform: translateY(0);
+        }
+
+        &:first-child {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+
+            &:hover {
+                background-color: var(--secondary-color);
+                border-color: var(--secondary-color);
+            }
         }
     }
 }

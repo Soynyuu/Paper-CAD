@@ -15,7 +15,7 @@ export class Dialog {
         dialog.appendChild(
             div(
                 { className: style.root },
-                div({ className: style.title }, I18n.translate(title) ?? "diorama-cad"),
+                div({ className: style.title }, I18n.translate(title) ?? "Paper-CAD"),
                 div({ className: style.content }, content),
                 div(
                     { className: style.buttons },

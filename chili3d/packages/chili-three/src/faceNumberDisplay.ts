@@ -9,10 +9,14 @@ export class FaceNumberDisplay extends Group {
     private _visible: boolean = false;
     // バックエンドから受信した面番号データを保存
     private backendFaceNumbers: Map<number, number> = new Map();
+    // モデルのバウンディングボックスサイズ（動的オフセット計算用）
+    private modelSize: number = 0;
 
     constructor() {
         super();
         this.name = "FaceNumbers";
+        // デフォルトモデルサイズを設定
+        this.modelSize = 100;
     }
 
     /**
@@ -69,6 +73,10 @@ export class FaceNumberDisplay extends Group {
             return;
         }
 
+        // モデル全体のサイズを計算（動的オフセット用）
+        this.modelSize = this.calculateModelSize(shape);
+        console.log(`FaceNumberDisplay: Model size calculated: ${this.modelSize}`);
+
         // 各面に対して番号を生成
         const faces = shape.findSubShapes(ShapeType.Face);
         console.log(`FaceNumberDisplay: Found ${faces.length} faces`);
@@ -114,15 +122,19 @@ export class FaceNumberDisplay extends Group {
                 const sprite = this.createNumberSprite(faceNumber);
                 sprite.position.copy(center);
 
-                // スプライトを面の表面に直接表示（面の中心に正確に配置）
+                // スプライトを面の表面から適切な距離に配置
                 if (normal) {
                     const originalPosition = sprite.position.clone();
-                    sprite.position.addScaledVector(normal, 0.5); // オフセットを最小限に
+                    // モデルサイズに基づく動的オフセット（モデルサイズの3%、最小値5）
+                    const offset = Math.max(this.modelSize * 0.03, 5);
+                    sprite.position.addScaledVector(normal, offset);
                     console.log(
                         `FaceNumberDisplay: Face ${faceNumber} - Original:`,
                         originalPosition,
                         "Final:",
                         sprite.position,
+                        "Offset:",
+                        offset,
                     );
                 }
 
@@ -503,6 +515,56 @@ export class FaceNumberDisplay extends Group {
     }
 
     /**
+     * モデル全体のサイズを計算（バウンディングボックスの対角線長）
+     */
+    private calculateModelSize(shape: IShape): number {
+        try {
+            const mesh = shape.mesh;
+            if (!mesh?.faces?.position) {
+                console.log("FaceNumberDisplay: No mesh data for size calculation, using default");
+                return 100; // デフォルトサイズ
+            }
+
+            const positions = mesh.faces.position;
+            let minX = Infinity,
+                maxX = -Infinity;
+            let minY = Infinity,
+                maxY = -Infinity;
+            let minZ = Infinity,
+                maxZ = -Infinity;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                const z = positions[i + 2];
+
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                minZ = Math.min(minZ, z);
+                maxZ = Math.max(maxZ, z);
+            }
+
+            // バウンディングボックスの対角線長を計算
+            const sizeX = maxX - minX;
+            const sizeY = maxY - minY;
+            const sizeZ = maxZ - minZ;
+            const diagonalLength = Math.sqrt(sizeX * sizeX + sizeY * sizeY + sizeZ * sizeZ);
+
+            console.log(
+                `FaceNumberDisplay: Bounding box size: [${sizeX.toFixed(2)}, ${sizeY.toFixed(2)}, ${sizeZ.toFixed(2)}]`,
+            );
+            console.log(`FaceNumberDisplay: Diagonal length: ${diagonalLength.toFixed(2)}`);
+
+            return diagonalLength || 100; // 0の場合はデフォルト値
+        } catch (error) {
+            console.warn("Failed to calculate model size:", error);
+            return 100; // デフォルトサイズ
+        }
+    }
+
+    /**
      * 面の法線ベクトルを取得
      */
     private getFaceNormal(face: IFace): Vector3 | null {
@@ -558,13 +620,15 @@ export class FaceNumberDisplay extends Group {
         const texture = new CanvasTexture(canvas);
         const material = new SpriteMaterial({
             map: texture,
-            sizeAttenuation: true,
+            sizeAttenuation: false, // ズームしても面番号のサイズを一定に保つ
             depthTest: true,
             depthWrite: false,
         });
 
         const sprite = new Sprite(material);
-        sprite.scale.set(30, 30, 1); // 大きくして見やすくする
+        // 画面上で一定のサイズを保つ固定スケール
+        const scale = 0.03; // スクリーン空間での固定サイズ
+        sprite.scale.set(scale, scale, 1);
         sprite.name = `FaceNumber_${number}`;
         sprite.renderOrder = 999; // 最前面に表示
         sprite.frustumCulled = false; // カメラに関係なく常に表示

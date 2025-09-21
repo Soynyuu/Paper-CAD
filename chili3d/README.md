@@ -1,161 +1,165 @@
-# Diorama-CAD
+# Paper‑CAD
 
-A web-based 3D CAD application for online model design and editing.
+High‑performance 3D CAD for the web — powered by WebAssembly (OCCT) + Three.js.
+
+[![Stars](https://img.shields.io/github/stars/xiangechen/chili3d?style=social)](https://github.com/xiangechen/chili3d)
+[![License](https://img.shields.io/github/license/xiangechen/chili3d?label=license)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/xiangechen/chili3d/issues)
+[![Status](https://img.shields.io/badge/status-alpha-orange)](#development-status)
 
 ![Screenshot](./screenshots/screenshot.png)
 
 ## Overview
 
-[Diorama-CAD](https://chili3d.com) is an [open-source](https://github.com/xiangechen/chili3d), browser-based 3D CAD (Computer-Aided Design) application built with TypeScript. It achieves near-native performance by compiling OpenCascade (OCCT) to WebAssembly and integrating with Three.js, enabling powerful online modeling, editing, and rendering—all without the need for local installation.
+[Paper‑CAD](https://chili3d.com) is an [open‑source](https://github.com/xiangechen/chili3d) browser‑based CAD (Computer‑Aided Design) application written in TypeScript. It compiles OpenCascade (OCCT) to WebAssembly and renders via Three.js to deliver near‑native modeling, editing, and visualization — all in the browser, no install required.
 
-You can access Diorama-CAD online at:
+Live deployments:
 
-- Official website: [chili3d.com](https://chili3d.com)
-- Cloudflare deployment: [chili3d.pages.dev](https://chili3d.pages.dev)
+- Official: [chili3d.com](https://chili3d.com)
+- Staging: [chili3d.pages.dev](https://chili3d.pages.dev)
 
 ## Features
 
-### Modeling Tools
+- **Modeling**: Boxes, cylinders, cones, spheres, pyramids, and more
+- **2D Sketching**: Lines, arcs, circles, ellipses, rectangles, polygons, Bézier
+- **Operations**: Booleans (union/diff/intersect), extrude, revolve, sweep, loft, offset, section
+- **Snapping**: Object/workplane snapping, axis tracking, feature detection, visual guides
+- **Editing**: Chamfer, fillet, trim, break, split, feature remove, sub‑shape edit, explode
+- **Measure**: Angles, lengths; sum of length/area/volume
+- **Docs**: New/open/save, full undo/redo with history, STEP/IGES/BREP import/export
+- **UI**: Ribbon‑style UI, assembly hierarchy, dynamic workplanes, 3D viewport + camera recall
+- **i18n**: Chinese & English built‑in; contributions for more languages welcome
 
-- **Basic Shapes**: Create boxes, cylinders, cones, spheres, pyramids, and more
-- **2D Sketching**: Draw lines, arcs, circles, ellipses, rectangles, polygons, and Bezier curves
-- **Advanced Operations**:
-    - Boolean operations (union, difference, intersection)
-    - Extrusion and revolution
-    - Sweeping and lofting
-    - Offset surfaces
-    - Section creation
-
-### Snapping and Tracking
-
-- **Object Snapping**: Precisely snap to geometric features (points, edges, faces)
-- **Workplane Snapping**: Snap to the current workplane for accurate planar operations
-- **Axis Tracking**: Create objects along tracked axes for precise alignment
-- **Feature Point Detection**: Automatically detect and snap to key geometric features
-- **Tracking Visualization**: Visual guides showing tracking lines and reference points
-
-### Editing Tools
-
-- **Modification**: Chamfer, fillet, trim, break, split
-- **Transformation**: Move, rotate, mirror
-- **Advanced Editing**:
-    - Feature removal
-    - Sub-shape manipulation
-    - Explode compound objects
-
-### Measurement Tools
-
-- Measure angles and lengths
-- Calculate the sum of length, area, and volume
-
-### Document Management
-
-- Create, open, and save documents
-- Full undo/redo stack with transaction history
-- Import/export of industry-standard formats (STEP, IGES, BREP)
-
-### User Interface
-
-- Office-style interface with contextual command organization
-- Hierarchical assembly management with flexible grouping capabilities
-- Dynamic workplane support
-- 3D viewport with camera controls
-- Camera position recall
-
-### Localization
-
-- **Multi-Language Interface**: Built-in internationalization (i18n) supporting seamless adaptation to global user bases
-- **Current Languages**: Chinese & English; contributions for additional languages are welcome
-
-## Technology Stack
+## Tech Stack
 
 - **Frontend**: TypeScript, Three.js
-- **3D Engine**: OpenCascade (via WebAssembly)
-- **Build Tools**: Rspack
-- **Testing**: Jest
+- **Geometry**: OpenCascade via WebAssembly
+- **Build**: Rspack
+- **Test**: Jest
 
-## Change Log
+## Quick Start
 
-You can view the full change log [here](https://github.com/xiangechen/chili3d/releases).
-
-For Chinese users, you can also browse the [media](https://space.bilibili.com/539380032/lists/3108412?type=season).
-
-## Getting Started
-
-### Prerequisites
+Prerequisites:
 
 - Node.js
 - npm
 
-### Installation
-
-1. Clone the repository
-
-    ```bash
-    git clone https://github.com/xiangechen/chili3d.git
-    cd Diorama-CAD
-    ```
-
-2. Install dependencies
-
-    ```bash
-    npm install
-    ```
-
-### Development
-
-Start the development server:
+Clone and install:
 
 ```bash
-npm run dev # Launches at http://localhost:8080
+git clone https://github.com/xiangechen/chili3d.git
+cd Diorama-CAD
+npm install
 ```
 
-### Building
+Run in development:
 
-Build the application:
+```bash
+npm run dev    # http://localhost:8080
+```
+
+## Configuration
+
+Environment variables are injected at build time and centralized via `__APP_CONFIG__`.
+
+- Files: `.env.<NODE_ENV>` is loaded first, then `.env` as fallback.
+- Required:
+    - `STEP_UNFOLD_API_URL`: Backend API base URL (e.g., `http://localhost:8001/api` or `https://api.example.com/api`).
+- Optional:
+    - `STEP_UNFOLD_WS_URL`: WebSocket URL for live preview (if used), e.g., `ws://localhost:8001/ws/preview`.
+
+Examples:
+
+1. Local development (`.env` or `.env.development`):
+
+```
+STEP_UNFOLD_API_URL=http://localhost:8001/api
+STEP_UNFOLD_WS_URL=ws://localhost:8001/ws/preview
+```
+
+2. Production (`.env.production` or CI/CD env vars):
+
+```
+STEP_UNFOLD_API_URL=https://api.example.com/api
+# STEP_UNFOLD_WS_URL=wss://api.example.com/ws/preview
+```
+
+Notes:
+
+- Changing env values requires re-build/re-deploy because values are compiled into the bundle via Rspack DefinePlugin.
+- Use HTTPS endpoints for production to avoid mixed content errors under HTTPS pages.
+
+Build for production:
 
 ```bash
 npm run build
 ```
 
-### Building wasm
+## Build WebAssembly (OCCT)
 
-if you want to build wasm by yourself, you can use the following commands:
+If you want to build the OCCT WebAssembly module locally:
 
-1. Set up WebAssembly dependencies(if you have not installed them yet)
+1. Install toolchain and deps
 
-    ```bash
-    npm run setup:wasm
-    ```
+```bash
+npm run setup:wasm
+```
 
-2. Build the WebAssembly module:
+2. Build the module
 
-    ```bash
-    npm run build:wasm
-    ```
+```bash
+npm run build:wasm
+```
+
+The compiled artifacts are copied to `packages/chili-wasm/lib`. See `cpp/README.md` for details.
 
 ## Development Status
 
-⚠️ **Early Development Notice**
+⚠️ Paper‑CAD is in active alpha. Expect:
 
-Diorama-CAD is currently in active alpha development. Key considerations:
+- Possible breaking API/UX changes
+- Ongoing feature development
+- Evolving documentation
 
-- Core APIs may undergo breaking changes
-- Essential features are under implementation
-- Documentation is being progressively developed
+## Changelog
+
+See releases: https://github.com/xiangechen/chili3d/releases
+
+For Chinese users: media playlist on Bilibili — https://space.bilibili.com/539380032/lists/3108412?type=season
 
 ## Contributing
 
-We welcome contributions in the form of code, bug reports, or feedback. Please feel free to submit pull requests or open issues.
+Contributions are welcome — issues, discussions, and PRs.
 
-## Contact
+- Start a thread: https://github.com/xiangechen/chili3d/discussions
+- Report bugs/ideas: https://github.com/xiangechen/chili3d/issues
+- Style/formatting: `prettier` for TS/JS/CSS/JSON/MD, `clang-format` for C/C++
 
-- **Discussions**: Join our [GitHub discussions](https://github.com/xiangechen/chili3d/discussions) for general chat or questions
-- **Issues**: Use [GitHub issues](https://github.com/xiangechen/chili3d/issues) to report public suggestions or bugs
-- **Email**: Contact us privately at xiangetg@msn.cn
+## Deployment
+
+Cloudflare Pages workflows and CLI commands are available. See `CLOUDFLARE_DEPLOY.md` for step‑by‑step instructions.
+
+Quick reference:
+
+- Set environment variables in Cloudflare Pages project settings:
+    - `STEP_UNFOLD_API_URL=https://api.example.com/api`
+    - (optional) `STEP_UNFOLD_WS_URL=wss://api.example.com/ws/preview`
+- Or provide an `.env.production` in CI before running `npm run build`.
+
+Scripts:
+
+```
+npm run deploy            # Deploys current build to default branch environment
+npm run deploy:staging    # Deploys to staging branch
+npm run deploy:production # Deploys to production (main) branch
+```
 
 ## License
 
-Distributed under the GNU Affero General Public License v3.0 (AGPL-3.0). For commercial licensing options, contact xiangetg@msn.cn
+AGPL‑3.0. For commercial licensing, contact: xiangetg@msn.cn
 
-Full license details: [LICENSE](LICENSE)
+Full text: [LICENSE](LICENSE)
+
+---
+
+Made with ❤️ by the Paper‑CAD community.

@@ -11,39 +11,177 @@ body {
 }
 
 :root[theme="light"] {
-    --checked-color: rgba(25, 25, 25, 0.2);
-    --control-background-color: #ffffff;
-    --primary-color: #0e62d7;
-    --secondary-color: #6a9ee6;
-    --foreground-color: #333;
-    --border-color: #dddddd;
-    --background-color: #eeeeee;
-    --panel-background-color: #ffffff;
-    --hover-background-color: rgba(25, 25, 25, 0.15);
-    --titlebar-forground-color: #333;
-    --titlebar-background-color: #eeeeee;
-    --title-background: rgba(25, 25, 25, 0.08);
-    --title-checked: #ffffff;
-    --statusbar-foreground-color: #333;
-    --statusbar-background-color: #eeeeee;
-    --viewport-background-color: #888;
+    /* Brand Colors - Based on Diorama-CAD Design System */
+    --brand-primary: #ff6633;
+    --brand-secondary: #ff5533;
+    --brand-tertiary: #ff8844;
+
+    /* Neutral Palette */
+    --neutral-900: #1a1a1a;
+    --neutral-800: #333333;
+    --neutral-700: #4d4d4d;
+    --neutral-600: #666666;
+    --neutral-500: #808080;
+    --neutral-400: #999999;
+    --neutral-300: #b3b3b3;
+    --neutral-200: #cccccc;
+    --neutral-100: #e6e6e6;
+    --neutral-50: #f5f5f5;
+    --neutral-0: #ffffff;
+
+    /* Semantic Colors */
+    --success-color: #2ecc71;
+    --info-color: #3498db;
+    --warning-color: #ff8b35;
+    --danger-color: #ec5f5f;
+
+    /* Legacy Support & Component Specific */
+    --checked-color: rgba(255, 102, 51, 0.15);
+    --control-background-color: var(--neutral-0);
+    --primary-color: var(--brand-primary);
+    --secondary-color: var(--brand-secondary);
+    --foreground-color: var(--neutral-800);
+    --border-color: var(--neutral-200);
+    --background-color: var(--neutral-50);
+    --panel-background-color: var(--neutral-0);
+    --hover-background-color: rgba(255, 102, 51, 0.08);
+    --active-background-color: rgba(255, 102, 51, 0.12);
+    --titlebar-forground-color: var(--neutral-800);
+    --titlebar-background-color: var(--neutral-50);
+    --title-background: rgba(25, 25, 25, 0.04);
+    --title-checked: var(--neutral-0);
+    --statusbar-foreground-color: var(--neutral-800);
+    --statusbar-background-color: var(--neutral-50);
+    --viewport-background-color: var(--neutral-400);
+
+    /* Button Specific */
+    --button-background: var(--neutral-0);
+    --button-text-color: var(--neutral-800);
+    --button-border-color: var(--neutral-300);
+    --button-hover-background: var(--neutral-50);
+    --panel-header-background: var(--neutral-50);
+    --primary-color-dark: #e65a2e;
+    --primary-color-darker: #cc5028;
+
+    /* Spacing & Layout */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    /* Border Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-full: 9999px;
+
+    /* Typography Scale */
+    --font-size-xs: 12px;
+    --font-size-sm: 14px;
+    --font-size-base: 16px;
+    --font-size-lg: 19px;
+    --font-size-xl: 24px;
+    --font-size-2xl: 30px;
+    --font-size-3xl: 38px;
+    --font-size-4xl: 47px;
+    --font-size-5xl: 59px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 200ms ease;
+    --transition-slow: 300ms ease;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
 }
 
 :root[theme="dark"] {
-    --checked-color: rgba(25, 25, 25, 0.2);
-    --color: red;
-    --border: solid 1px lightgray;
-    --titlebarBackground: #dddddd;
-    --ribbonHeaderBackgound: #dddddd;
-    --ribbonPanelBackground: #eeeeee;
-    --ribbonGroupBackground: #ffffff;
-    --quickbarIcon: #666;
-    --quickbarIconHover: #444;
-    --contextBackground: #eeeeee;
-    --sidebarBackground: #eeeeee;
-    --viewportBackground: #888;
-    --statusbarBackground: #dddddd;
-    --hover: rgba(255, 255, 255, 0.35);
-    --hoverBackground: rgba(25, 25, 25, 0.1);
-    --selected: #eeeeee;
+    /* Brand Colors - Dark Mode Variants */
+    --brand-primary: #ff7744;
+    --brand-secondary: #ff6644;
+    --brand-tertiary: #ff9955;
+
+    /* Neutral Palette - Dark Mode */
+    --neutral-900: #ffffff;
+    --neutral-800: #f5f5f5;
+    --neutral-700: #e6e6e6;
+    --neutral-600: #cccccc;
+    --neutral-500: #999999;
+    --neutral-400: #666666;
+    --neutral-300: #4d4d4d;
+    --neutral-200: #3a3a3a;
+    --neutral-100: #2a2a2a;
+    --neutral-50: #1f1f1f;
+    --neutral-0: #121212;
+
+    /* Semantic Colors - Dark Mode */
+    --success-color: #27ae60;
+    --info-color: #2980b9;
+    --warning-color: #e67e22;
+    --danger-color: #e74c3c;
+
+    /* Legacy Support & Component Specific */
+    --checked-color: rgba(255, 119, 68, 0.25);
+    --control-background-color: var(--neutral-50);
+    --primary-color: var(--brand-primary);
+    --secondary-color: var(--brand-secondary);
+    --foreground-color: var(--neutral-800);
+    --border-color: var(--neutral-200);
+    --background-color: var(--neutral-0);
+    --panel-background-color: var(--neutral-50);
+    --hover-background-color: rgba(255, 119, 68, 0.15);
+    --active-background-color: rgba(255, 119, 68, 0.2);
+    --titlebar-forground-color: var(--neutral-800);
+    --titlebar-background-color: var(--neutral-100);
+    --title-background: rgba(255, 255, 255, 0.05);
+    --title-checked: var(--neutral-100);
+    --statusbar-foreground-color: var(--neutral-800);
+    --statusbar-background-color: var(--neutral-100);
+    --viewport-background-color: var(--neutral-300);
+
+    /* Button Specific */
+    --button-background: var(--neutral-100);
+    --button-text-color: var(--neutral-800);
+    --button-border-color: var(--neutral-300);
+    --button-hover-background: var(--neutral-200);
+    --panel-header-background: var(--neutral-100);
+    --primary-color-dark: #e6682e;
+    --primary-color-darker: #cc5d28;
+
+    /* Spacing & Layout (same as light) */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    /* Border Radius (same as light) */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-full: 9999px;
+
+    /* Typography Scale (same as light) */
+    --font-size-xs: 12px;
+    --font-size-sm: 14px;
+    --font-size-base: 16px;
+    --font-size-lg: 19px;
+    --font-size-xl: 24px;
+    --font-size-2xl: 30px;
+    --font-size-3xl: 38px;
+    --font-size-4xl: 47px;
+    --font-size-5xl: 59px;
+
+    /* Transitions (same as light) */
+    --transition-fast: 150ms ease;
+    --transition-base: 200ms ease;
+    --transition-slow: 300ms ease;
+
+    /* Shadows - Dark Mode */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
 }

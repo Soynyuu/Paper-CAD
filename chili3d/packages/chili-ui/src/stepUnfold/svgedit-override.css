@@ -1,0 +1,592 @@
+/* SVG-Edit Design System Override Styles */
+/* This file overrides SVG-Edit default styles to match our design system */
+
+/* Main SVG-Edit container */
+#svg-edit-container,
+.svg-edit-container,
+#svgroot {
+    font-family: "Noto Sans JP", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+    background-color: transparent !important;
+}
+
+/* SVG Editor wrapper */
+#svg_editor {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Tool panels and toolbars - Flat Integration */
+#tools_left,
+#tools_top,
+#tools_bottom,
+.tools_panel {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+}
+
+/* Toolbar specific adjustments */
+#tools_left {
+    background: var(--panel-background-color) !important;
+    border-right: 1px solid var(--border-color) !important;
+    width: 42px !important;
+    padding: 4px 2px !important;
+    box-shadow: none !important;
+}
+
+#tools_top {
+    background: var(--panel-background-color) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 4px 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    height: auto !important;
+    box-shadow: none !important;
+}
+
+#tools_bottom {
+    background: var(--panel-background-color) !important;
+    border-top: 1px solid var(--border-color) !important;
+    padding: 2px 8px !important;
+    box-shadow: none !important;
+}
+
+/* Tool buttons - Minimal Flat Design */
+.tool_button,
+.push_button,
+.tools_flyout .tool_button {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 4px !important;
+    color: var(--foreground-color) !important;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast) !important;
+    margin: 1px !important;
+    padding: 4px !important;
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+/* Tool button icons */
+.tool_button img,
+.push_button img {
+    width: 16px !important;
+    height: 16px !important;
+    opacity: 0.7 !important;
+    transition: opacity var(--transition-fast) !important;
+}
+
+/* Tool button SVG icons */
+.tool_button svg,
+.push_button svg {
+    width: 16px !important;
+    height: 16px !important;
+    fill: var(--foreground-color) !important;
+    opacity: 0.7 !important;
+}
+
+/* Separator lines between tool groups */
+.tool_sep,
+.separator {
+    background-color: var(--border-color) !important;
+    margin: 2px 4px !important;
+    height: 1px !important;
+    width: calc(100% - 8px) !important;
+    border: none !important;
+    opacity: 0.5 !important;
+}
+
+/* Tool button hover state - Minimal */
+.tool_button:hover,
+.push_button:hover {
+    background: var(--hover-background-color) !important;
+    border-color: transparent !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.tool_button:hover img,
+.push_button:hover img {
+    opacity: 0.9 !important;
+}
+
+/* Active/Selected tool button - Simple highlight */
+.tool_button_current,
+.tool_button.current,
+.tool_button.pressed,
+.push_button.pressed {
+    background: var(--primary-color) !important;
+    color: white !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.tool_button_current img,
+.tool_button.current img,
+.tool_button.pressed img {
+    filter: brightness(0) invert(1) !important;
+    opacity: 1 !important;
+}
+
+/* Active state */
+.tool_button:active,
+.push_button:active {
+    transform: none !important;
+    background: var(--active-background-color) !important;
+}
+
+/* Input fields - Consistent with design system */
+#svg_editor input[type="text"],
+#svg_editor input[type="number"],
+#svg_editor select,
+.svg_editor input[type="text"],
+.svg_editor input[type="number"],
+.svg_editor select,
+input.attr_changer,
+input.spin-button,
+.dropdown {
+    background: var(--control-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 6px 10px !important;
+    color: var(--foreground-color) !important;
+    font-size: var(--font-size-sm) !important;
+    font-family: "Noto Sans JP", "Segoe UI", sans-serif !important;
+    transition: all var(--transition-fast) !important;
+    height: 32px !important;
+    line-height: 1.5 !important;
+}
+
+/* Number input specific */
+input[type="number"],
+input.spin-button {
+    padding-right: 4px !important;
+}
+
+/* Select dropdown arrow styling */
+select {
+    appearance: none !important;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%23666" d="M6 9L2 5h8z"/></svg>') !important;
+    background-repeat: no-repeat !important;
+    background-position: right 8px center !important;
+    padding-right: 28px !important;
+}
+
+#svg_editor input[type="text"]:focus,
+#svg_editor input[type="number"]:focus,
+#svg_editor select:focus,
+.svg_editor input[type="text"]:focus,
+.svg_editor input[type="number"]:focus,
+.svg_editor select:focus {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px rgba(255, 102, 51, 0.1) !important;
+    outline: none !important;
+}
+
+/* Color picker - Flat style */
+.color_block,
+#fill_color,
+#stroke_color {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 3px !important;
+    transition: border-color var(--transition-fast) !important;
+    width: 22px !important;
+    height: 22px !important;
+    box-shadow: none !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.color_block:hover,
+#fill_color:hover,
+#stroke_color:hover {
+    border-color: var(--primary-color) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Color picker popup */
+.color_picker,
+#color_picker {
+    background: var(--panel-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-lg) !important;
+    padding: var(--spacing-sm) !important;
+}
+
+/* Dialogs and modals */
+#dialog_box,
+#dialog_content,
+.dialog_box,
+.ui-dialog {
+    background-color: var(--panel-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+.ui-dialog-titlebar,
+#dialog_box .dialog_title {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+    color: white !important;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    padding: var(--spacing-md) !important;
+    font-weight: 600 !important;
+    font-size: var(--font-size-base) !important;
+}
+
+.ui-dialog-buttonpane button,
+#dialog_box button,
+.dialog_button {
+    min-width: 80px !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: 500 !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    background-color: var(--panel-background-color) !important;
+    color: var(--foreground-color) !important;
+    cursor: pointer !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.ui-dialog-buttonpane button:hover,
+#dialog_box button:hover {
+    background-color: var(--hover-background-color) !important;
+    border-color: var(--primary-color) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.ui-dialog-buttonpane button:first-child,
+#dialog_box button.ok {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    border-color: var(--primary-color) !important;
+}
+
+.ui-dialog-buttonpane button:first-child:hover,
+#dialog_box button.ok:hover {
+    background-color: var(--secondary-color) !important;
+    border-color: var(--secondary-color) !important;
+}
+
+/* Context menus */
+.contextMenu,
+.context-menu,
+#cmenu_canvas {
+    background-color: var(--panel-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-md) !important;
+    padding: var(--spacing-xs) !important;
+}
+
+.contextMenu li,
+.context-menu li,
+#cmenu_canvas li {
+    color: var(--foreground-color) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+    border-radius: var(--radius-sm) !important;
+    transition: all var(--transition-fast) !important;
+    font-size: var(--font-size-sm) !important;
+}
+
+.contextMenu li:hover,
+.context-menu li:hover,
+#cmenu_canvas li:hover {
+    background-color: var(--hover-background-color) !important;
+}
+
+/* Layers panel */
+#layerpanel,
+#sidepanels,
+.sidepanel {
+    background-color: var(--panel-background-color) !important;
+    border-left: 1px solid var(--border-color) !important;
+}
+
+#layerlist,
+.layer {
+    background-color: var(--control-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm) !important;
+    margin: var(--spacing-xs) !important;
+    padding: var(--spacing-xs) !important;
+}
+
+.layer:hover {
+    background-color: var(--hover-background-color) !important;
+}
+
+.layer.layersel,
+.layer.current {
+    background-color: var(--checked-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* Rulers */
+#ruler_x,
+#ruler_y,
+#ruler_corner {
+    background-color: var(--neutral-100) !important;
+    border-color: var(--border-color) !important;
+    color: var(--neutral-600) !important;
+    font-size: var(--font-size-xs) !important;
+}
+
+/* Canvas/workarea */
+#workarea,
+#svgcanvas {
+    background-color: var(--neutral-50) !important;
+}
+
+#canvasBackground,
+#svgcanvas #canvasBackground {
+    fill: white !important;
+}
+
+/* Grid */
+#canvasGrid {
+    stroke: var(--neutral-200) !important;
+    stroke-width: 0.5 !important;
+}
+
+/* Flyout menus - Simple dropdown */
+.tools_flyout {
+    background: var(--panel-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    padding: 2px !important;
+    margin-top: 2px !important;
+    backdrop-filter: none !important;
+}
+
+.flyout_arrow_horiz {
+    display: none !important;
+}
+
+/* Flyout tool buttons */
+.tools_flyout .tool_button {
+    margin: 1px !important;
+    background: transparent !important;
+}
+
+.tools_flyout .tool_button:hover {
+    background: var(--hover-background-color) !important;
+}
+
+/* Scrollbars in SVG-Edit */
+#svg_editor ::-webkit-scrollbar,
+.svg_editor ::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+#svg_editor ::-webkit-scrollbar-track,
+.svg_editor ::-webkit-scrollbar-track {
+    background: var(--neutral-100) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+#svg_editor ::-webkit-scrollbar-thumb,
+.svg_editor ::-webkit-scrollbar-thumb {
+    background: var(--neutral-400) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+#svg_editor ::-webkit-scrollbar-thumb:hover,
+.svg_editor ::-webkit-scrollbar-thumb:hover {
+    background: var(--neutral-500) !important;
+}
+
+/* Tooltips */
+.tooltip,
+#tooltip,
+.ui-tooltip {
+    background-color: var(--neutral-800) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: var(--radius-sm) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+    font-size: var(--font-size-xs) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+/* Status bar */
+#cur_context_panel,
+#selected_panel {
+    background-color: var(--statusbar-background-color) !important;
+    border-top: 1px solid var(--border-color) !important;
+    color: var(--statusbar-foreground-color) !important;
+    font-size: var(--font-size-xs) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+/* Zoom controls - Minimal style */
+#zoom_panel {
+    background: transparent !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+}
+
+#zoom,
+#zoom_select {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 3px !important;
+    color: var(--foreground-color) !important;
+    padding: 2px 6px !important;
+    font-size: 11px !important;
+    font-weight: normal !important;
+    min-width: 50px !important;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast) !important;
+    height: 22px !important;
+}
+
+#zoom:hover,
+#zoom_select:hover {
+    border-color: var(--border-color) !important;
+    background: var(--hover-background-color) !important;
+}
+
+/* Zoom buttons */
+#zoom_panel .push_button {
+    width: 22px !important;
+    height: 22px !important;
+    padding: 2px !important;
+    margin: 0 1px !important;
+}
+
+/* Path node controls */
+#path_node_panel .tool_button {
+    background-color: var(--control-background-color) !important;
+}
+
+#path_node_panel .tool_button:hover {
+    background-color: var(--hover-background-color) !important;
+}
+
+/* Text editing */
+#text_panel,
+#font_family,
+#font_size {
+    background-color: var(--control-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--foreground-color) !important;
+}
+
+/* Gradient editor */
+#gradient_editor {
+    background-color: var(--panel-background-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+}
+
+.gradient_stop {
+    border: 2px solid var(--primary-color) !important;
+    border-radius: 50% !important;
+}
+
+/* Icons - ensure they use our primary color when active */
+.tool_button_current img,
+.tool_button.current img,
+.push_button_pressed img {
+    filter: brightness(0) invert(1) !important; /* Make icons white when button is active */
+}
+
+/* Enhanced interaction feedback */
+.clickable:hover,
+.layer:hover,
+.tool_button:hover,
+.push_button:hover,
+button:hover {
+    cursor: pointer !important;
+}
+
+/* Disabled state */
+.tool_button:disabled,
+.push_button:disabled,
+.tool_button.disabled,
+.push_button.disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+}
+
+/* Loading state */
+.tool_button.loading::after,
+.push_button.loading::after {
+    content: "" !important;
+    position: absolute !important;
+    width: 16px !important;
+    height: 16px !important;
+    border: 2px solid var(--primary-color) !important;
+    border-top-color: transparent !important;
+    border-radius: 50% !important;
+    animation: spin 0.6s linear infinite !important;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Ensure all text uses our typography scale */
+#svg_editor,
+.svg_editor,
+#svg_editor *,
+.svg_editor * {
+    font-family: "Noto Sans JP", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+/* Spinner/loading indicator */
+#workarea.waiting {
+    cursor: wait !important;
+}
+
+.spinner {
+    border-color: var(--primary-color) transparent transparent transparent !important;
+}
+
+/* Make sure our brand colors are used for selections */
+.ui-selected,
+.ui-selecting {
+    background-color: var(--checked-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* Handles for resize/rotate */
+#selectorGrip_resize_nw,
+#selectorGrip_resize_ne,
+#selectorGrip_resize_sw,
+#selectorGrip_resize_se,
+#selectorGrip_rotate {
+    fill: var(--primary-color) !important;
+    stroke: white !important;
+}
+
+/* Selection box */
+#selection_box {
+    stroke: var(--primary-color) !important;
+    stroke-dasharray: 5, 5 !important;
+    fill: none !important;
+}

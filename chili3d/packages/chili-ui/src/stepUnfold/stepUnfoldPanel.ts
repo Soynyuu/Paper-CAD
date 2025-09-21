@@ -538,7 +538,7 @@ export class StepUnfoldPanel extends HTMLElement {
             this._svgEditor = new Editor(this._svgEditContainer);
 
             // Configure SVG-Edit with proper resource paths
-            this._svgEditor.setConfig({
+            const config: any = {
                 // Resource paths - relative to the web root
                 imgPath: "/node_modules/svgedit/dist/editor/images/",
                 extPath: "/node_modules/svgedit/dist/editor/extensions/",
@@ -569,7 +569,12 @@ export class StepUnfoldPanel extends HTMLElement {
                 // Disable some features that might cause issues
                 noDefaultExtensions: false,
                 extensions: [],
-            });
+
+                // Disable SVG sanitization to allow images with data URLs
+                sanitize: false, // Allow all SVG content including images
+                allowedOrigins: ["*"], // Allow all origins
+            };
+            this._svgEditor.setConfig(config);
 
             // Initialize the editor
             console.log("Calling SVG-Edit init()...");
@@ -585,8 +590,19 @@ export class StepUnfoldPanel extends HTMLElement {
                     if (svgContent) {
                         console.log("Loading SVG content into editor...");
 
-                        // Try multiple methods to load SVG
+                        // Try to disable sanitization at canvas level
                         if (this._svgEditor && this._svgEditor.svgCanvas) {
+                            // Try to disable sanitization (use type assertion to bypass type checking)
+                            const canvas = this._svgEditor.svgCanvas as any;
+                            if (canvas.sanitizeSvg) {
+                                // Override sanitizeSvg to be a no-op
+                                const originalSanitize = canvas.sanitizeSvg;
+                                canvas.sanitizeSvg = function (node: any) {
+                                    console.log("Bypassing SVG sanitization for images");
+                                    return node;
+                                };
+                            }
+
                             if (this._svgEditor.svgCanvas.setSvgString) {
                                 const success = this._svgEditor.svgCanvas.setSvgString(svgContent);
                                 console.log("setSvgString result:", success);

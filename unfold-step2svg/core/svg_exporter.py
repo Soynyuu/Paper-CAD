@@ -171,11 +171,14 @@ class SVGExporter:
                     # テクスチャがある場合はパターンを適用
                     if texture_mapping:
                         pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
-                        dwg.add(dwg.polygon(
+                        # パターンのfillに加えて、fillOpacityも設定
+                        polygon = dwg.polygon(
                             points=points,
                             class_="face-polygon-textured",
-                            fill=f"url(#{pattern_id})"
-                        ))
+                            fill=f"url(#{pattern_id})",
+                            fill_opacity="1.0"  # 不透明度を明示的に設定
+                        )
+                        dwg.add(polygon)
                         print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画（テクスチャ: {pattern_id}）")
                     else:
                         dwg.add(dwg.polygon(points=points, class_="face-polygon"))
@@ -284,6 +287,7 @@ class SVGExporter:
     def _generate_texture_patterns(self, dwg, actual_scale):
         """
         テクスチャパターンをSVGのdefs要素に追加する。
+        実際の画像データがある場合はそれを使用し、なければ簡易パターンを生成。
 
         Args:
             dwg: SVG Drawing object
@@ -299,7 +303,8 @@ class SVGExporter:
             if pattern_id not in unique_patterns:
                 unique_patterns[pattern_id] = {
                     'patternId': mapping['patternId'],
-                    'tileCount': mapping['tileCount']
+                    'tileCount': mapping['tileCount'],
+                    'imageData': mapping.get('imageData')  # Base64画像データ（オプション）
                 }
 
         # 各ユニークパターンをdefsに追加
@@ -314,28 +319,66 @@ class SVGExporter:
                 patternUnits="objectBoundingBox"
             )
 
-            # パターンごとに異なる簡易的なデザインを追加
-            if pattern_info['patternId'] == 'brick':
-                # レンガパターン
-                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B4513'))
-                pattern.add(dwg.rect((0, 0), ('95%', '45%'), fill='#A0522D'))
-                pattern.add(dwg.rect((5, '55%'), ('95%', '40%'), fill='#A0522D'))
-            elif pattern_info['patternId'] == 'wood':
-                # 木目パターン
-                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B6F47'))
-                pattern.add(dwg.line((0, '25%'), ('100%', '25%'), stroke='#6F5B3E', stroke_width=1))
-                pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#6F5B3E', stroke_width=1))
-                pattern.add(dwg.line((0, '75%'), ('100%', '75%'), stroke='#6F5B3E', stroke_width=1))
-            elif pattern_info['patternId'] == 'stone':
-                # 石パターン
-                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#808080'))
-                pattern.add(dwg.circle(('30%', '30%'), r='15%', fill='#696969'))
-                pattern.add(dwg.circle(('70%', '70%'), r='10%', fill='#696969'))
+            # 画像データがある場合は実際の画像を使用
+            if pattern_info.get('imageData'):
+                # Base64エンコードされた画像をSVGパターンに埋め込む
+                image = dwg.image(
+                    href=pattern_info['imageData'],  # data:image/png;base64,... 形式
+                    insert=(0, 0),
+                    size=('100%', '100%'),
+                    preserveAspectRatio="xMidYMid slice"  # アスペクト比を保ちながらフィット
+                )
+                pattern.add(image)
+                print(f"[SVGExporter] Generated pattern with embedded image: {pattern_id}")
             else:
-                # デフォルトパターン（グリッド）
-                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#E0E0E0'))
-                pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#C0C0C0', stroke_width=1))
-                pattern.add(dwg.line(('50%', 0), ('50%', '100%'), stroke='#C0C0C0', stroke_width=1))
+                # 画像データがない場合は簡易的なパターンを生成
+                if pattern_info['patternId'] == 'grass':
+                    # 芝生パターン（よりリアルなデザイン）
+                    pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#3a7634'))  # 濃い緑のベース
+                    # 多様な草の描画
+                    for i in range(8):
+                        x = f"{i * 12.5}%"
+                        # 長い草
+                        pattern.add(dwg.line((x, '70%'), (x, '100%'), stroke='#2d5a28', stroke_width=1.5))
+                        # 短い草
+                        pattern.add(dwg.line((f"{i * 12.5 + 4}%", '85%'), (f"{i * 12.5 + 4}%", '100%'), stroke='#4a8c42', stroke_width=1))
+                        # 中間の草
+                        pattern.add(dwg.line((f"{i * 12.5 + 8}%", '78%'), (f"{i * 12.5 + 8}%", '100%'), stroke='#5fa356', stroke_width=1.2))
+                    # ハイライト
+                    for i in range(4):
+                        pattern.add(dwg.circle((f"{i * 25 + 10}%", '95%'), r='2%', fill='#6fb565', opacity='0.5'))
+                elif pattern_info['patternId'] == 'brick':
+                    # レンガパターン
+                    pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B4513'))
+                    pattern.add(dwg.rect((0, 0), ('95%', '45%'), fill='#A0522D'))
+                    pattern.add(dwg.rect((5, '55%'), ('95%', '40%'), fill='#A0522D'))
+                elif pattern_info['patternId'] == 'wood':
+                    # 木目パターン（よりリアルなデザイン）
+                    pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B6F47'))
+                    # 木目の線（不規則な間隔）
+                    wood_lines = [15, 35, 50, 70, 85]
+                    for y in wood_lines:
+                        # 波打つ木目をpathで描画
+                        path_data = f"M 0,{y}% C 20%,{y-2}% 40%,{y+2}% 60%,{y-1}% C 80%,{y+1}% 90%,{y-2}% 100%,{y}%"
+                        pattern.add(dwg.path(d=path_data, stroke='#6F5B3E', stroke_width=0.8, fill='none'))
+                    # 濃い木目
+                    dark_lines = [25, 60]
+                    for y in dark_lines:
+                        path_data = f"M 0,{y}% C 30%,{y+1}% 70%,{y-1}% 100%,{y}%"
+                        pattern.add(dwg.path(d=path_data, stroke='#5a4733', stroke_width=1.2, fill='none'))
+                    # 木の節
+                    pattern.add(dwg.ellipse(center=('75%', '40%'), r=('8%', '4%'), fill='#6F5B3E', opacity='0.7'))
+                    pattern.add(dwg.ellipse(center=('25%', '70%'), r=('6%', '3%'), fill='#5a4733', opacity='0.5'))
+                elif pattern_info['patternId'] == 'stone':
+                    # 石パターン
+                    pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#808080'))
+                    pattern.add(dwg.circle(('30%', '30%'), r='15%', fill='#696969'))
+                    pattern.add(dwg.circle(('70%', '70%'), r='10%', fill='#696969'))
+                else:
+                    # デフォルトパターン（グリッド）
+                    pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#E0E0E0'))
+                    pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#C0C0C0', stroke_width=1))
+                    pattern.add(dwg.line(('50%', 0), ('50%', '100%'), stroke='#C0C0C0', stroke_width=1))
 
             dwg.defs.add(pattern)
             print(f"[SVGExporter] Generated pattern: {pattern_id}")

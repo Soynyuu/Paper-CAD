@@ -101,6 +101,40 @@ export class StepUnfold extends CancelableCommand {
                         console.log("デフォルトオプションを使用:", unfoldOptions);
                     }
 
+                    // FaceTextureServiceからテクスチャマッピングを取得
+                    try {
+                        const { FaceTextureService } = await import("chili-core");
+                        const services = (this.application as any).services;
+                        if (services && Array.isArray(services)) {
+                            const textureService = services.find(
+                                (s: any) => s instanceof FaceTextureService,
+                            );
+                            if (textureService) {
+                                const mappings = textureService.getUnfoldMappings();
+                                if (mappings && mappings.length > 0) {
+                                    // 各マッピングに画像データを追加
+                                    const mappingsWithImages = await Promise.all(
+                                        mappings.map(async (mapping: any) => {
+                                            // テクスチャ画像をBase64エンコード
+                                            const imageData = await this.loadTextureImage(mapping.patternId);
+                                            return {
+                                                ...mapping,
+                                                imageData: imageData,
+                                            };
+                                        }),
+                                    );
+                                    unfoldOptions.textureMappings = mappingsWithImages;
+                                    console.log(
+                                        "[StepUnfold] テクスチャマッピングを送信（画像データ付き）:",
+                                        mappingsWithImages,
+                                    );
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.log("[StepUnfold] テクスチャマッピング取得エラー:", e);
+                    }
+
                     const result = await stepUnfoldService.unfoldStepFromData(stepBlob, unfoldOptions);
                     if (result.isOk) {
                         // SVGデータを表示パネルに送信
@@ -144,5 +178,41 @@ export class StepUnfold extends CancelableCommand {
             return undefined;
         }
         return data.nodes;
+    }
+
+    /**
+     * テクスチャ画像をBase64エンコードして返す
+     * @param patternId パターンID
+     * @returns Base64エンコードされた画像データ（data:image/png;base64,... 形式）
+     */
+    private async loadTextureImage(patternId: string): Promise<string | undefined> {
+        try {
+            // テクスチャ画像のURLを生成
+            const imageUrl = `textures/${patternId}.png`;
+
+            // 画像をフェッチ
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+                console.warn(`[StepUnfold] テクスチャ画像が見つかりません: ${imageUrl}`);
+                return undefined;
+            }
+
+            // Blobとして取得
+            const blob = await response.blob();
+
+            // Base64エンコード
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64Data = reader.result as string;
+                    resolve(base64Data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error(`[StepUnfold] テクスチャ画像の読み込みエラー: ${patternId}`, error);
+            return undefined;
+        }
     }
 }

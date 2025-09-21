@@ -182,6 +182,276 @@ python test_*.py            # Python unit tests
 - `core/` - Processing pipeline modules
 - `api/config.py` - Server configuration
 
+## Commit Message Guidelines
+
+### 基本フォーマット
+
+```
+<タイプ>(<スコープ>): <概要>
+
+[本文]
+
+[フッター]
+```
+
+### タイプ一覧
+
+- `feat` / `機能追加`: 新機能の追加
+- `fix` / `修正`: バグ修正
+- `refactor` / `リファクタリング`: 機能に影響しないコード改善
+- `perf` / `性能改善`: パフォーマンス向上
+- `style` / `スタイル`: フォーマット、セミコロンの追加など
+- `test` / `テスト`: テストの追加・修正
+- `docs` / `ドキュメント`: ドキュメントのみの変更
+- `build` / `ビルド`: ビルドシステムや依存関係の変更
+- `ci` / `CI`: CI/CD設定の変更
+- `chore` / `雑務`: その他の変更
+
+### スコープ一覧
+
+#### chili3d パッケージ
+- `chili-core`: コアインターフェース定義
+- `chili-wasm`: OpenCASCADE WASMバインディング
+- `chili-three`: Three.js 3D表示
+- `chili-ui`: UIフレームワーク
+- `chili`: メインアプリケーションロジック
+- `chili-builder`: アプリケーション初期化
+- `chili-geo`: ジオメトリユーティリティ
+- `chili-storage`: ストレージ管理
+- `chili-vis`: ビジュアライゼーション
+- `chili-controls`: コントロール
+- `chili-web`: Web固有機能
+
+#### unfold-step2svg モジュール
+- `api`: FastAPIエンドポイント
+- `core`: 処理パイプライン
+- `models`: データモデル
+- `services`: サービス層
+- `layout`: レイアウトマネージャー
+- `svg`: SVGエクスポート
+
+#### 共通スコープ
+- `root`: リポジトリ全体
+- `deps`: 依存関係
+- `config`: 設定ファイル
+- `*`: 複数パッケージ（詳細を本文に記載）
+
+### コミットメッセージ例
+
+#### 単一パッケージの変更
+```
+feat(chili-three): 面番号表示機能を追加
+
+- Three.jsのSpriteを使用して3D空間に面番号を表示
+- 面の法線ベクトルに基づいて番号を配置
+- ユーザーが表示/非表示を切り替え可能
+
+Closes #123
+```
+
+```
+修正(unfold-step2svg/core): 展開図生成時のメモリリークを解消
+
+OpenCASCADEオブジェクトのガベージコレクションが
+適切に実行されていなかった問題を修正。
+処理後に明示的にgc()を呼び出すように変更。
+```
+
+#### 複数パッケージの変更
+```
+feat(*): ペーパークラフト統合機能を実装
+
+影響パッケージ:
+- chili: StepUnfoldServiceの追加
+- chili-ui: 展開図ボタンの追加
+- chili-three: 面番号表示の実装
+
+バックエンドと連携してSTEP→SVG変換を実現
+
+Breaking Change: ICommandインターフェースを変更
+```
+
+#### リファクタリング
+```
+リファクタリング(chili-wasm): メモリ管理パターンを統一
+
+全てのOpenCASCADEオブジェクトでRAIIパターンを適用:
+- try-finallyブロックで確実にgc()を実行
+- ヘルパー関数withOccObject()を追加
+- メモリリークのリスクを大幅に削減
+```
+
+#### ビルド・CI関連
+```
+build(chili3d): rspackの設定を最適化
+
+- チャンクサイズを調整（500KB → 200KB）
+- Tree shakingを有効化
+- ビルド時間を40%短縮
+```
+
+```
+ci(root): GitHub Actionsでモノレポ対応のテストを追加
+
+- 変更されたパッケージのみテストを実行
+- 依存パッケージも自動的にテスト対象に含める
+- テスト実行時間を60%削減
+```
+
+### Breaking Changeの記述
+
+Breaking Changeがある場合は、フッターに明記：
+
+```
+feat(chili-core): IDocumentインターフェースを刷新
+
+新しいバージョニングシステムを導入し、
+下位互換性を保ちながら段階的な移行を可能に。
+
+BREAKING CHANGE: IDocument.save()の引数が変更されました。
+旧: save(path: string)
+新: save(options: SaveOptions)
+
+移行方法:
+doc.save(path) → doc.save({ path })
+```
+
+### 日本語と英語の使い分け
+
+- **日本語推奨**: 概要、本文の説明
+- **英語推奨**: タイプ、スコープ、Breaking Change表記
+- **混在OK**: 技術用語は英語のまま使用可能
+
+```
+修正(chili-three): WebGLコンテキストロスト時のリカバリー処理を改善
+
+WebGLRenderingContextのcontextlostイベントを適切に
+ハンドリングし、自動的に再初期化を行うように修正。
+これによりタブ切り替え時の描画エラーが解消される。
+```
+
+### コミット本文の書き方
+
+1. **なぜ変更したか**を最初に説明
+2. **何を変更したか**を具体的に記述
+3. **影響範囲**がある場合は明記
+4. 関連Issue/PRは`Refs #123`や`Closes #456`で参照
+
+### モノレポ特有の注意点
+
+1. **スコープは必須**: どのパッケージへの変更か明確にする
+2. **依存関係の変更**: 複数パッケージに影響する場合は`*`スコープを使用
+3. **バージョニング**: package.jsonの変更時はセマンティックバージョニングに従う
+4. **CI/CDへの配慮**: 変更がビルド・デプロイに与える影響を考慮
+
+## Development Workflow (開発ワークフロー)
+
+### Issue駆動開発
+
+コード追加・修正を行う前に、必ず以下の手順を実施：
+
+1. **GitHubでIssueを作成**
+   ```markdown
+   タイトル: [feat/fix/refactor] 作業内容の簡潔な説明
+
+   ## 概要
+   実装する機能や修正する問題の説明
+
+   ## 実装内容
+   - [ ] タスク1
+   - [ ] タスク2
+   - [ ] タスク3
+
+   ## 影響範囲
+   - 影響を受けるパッケージ/モジュール
+   - 依存関係の変更有無
+   ```
+
+2. **ブランチの作成**
+   ```bash
+   # Issue番号を含むブランチ名を作成
+   git checkout -b feature/#123-add-face-numbers
+   git checkout -b fix/#124-memory-leak
+   git checkout -b refactor/#125-optimize-rendering
+   ```
+
+3. **ブランチ命名規則**
+   - `feature/#<issue番号>-<簡潔な説明>`: 新機能
+   - `fix/#<issue番号>-<簡潔な説明>`: バグ修正
+   - `refactor/#<issue番号>-<簡潔な説明>`: リファクタリング
+   - `docs/#<issue番号>-<簡潔な説明>`: ドキュメント
+   - `test/#<issue番号>-<簡潔な説明>`: テスト追加・修正
+
+### 作業フロー
+
+1. **Issue作成** → 作業内容と目的を明確化
+2. **ブランチ作成** → mainブランチから分岐
+3. **実装** → Issueのタスクリストに沿って開発
+4. **コミット** → 上記のコミットメッセージガイドラインに従う
+5. **プルリクエスト** → Issue番号を参照（`Closes #123`）
+6. **マージ** → レビュー後にmainブランチへ
+
+### プルリクエストのテンプレート
+
+```markdown
+## 概要
+Closes #<issue番号>
+
+実装内容の簡潔な説明
+
+## 変更内容
+- 主要な変更点1
+- 主要な変更点2
+- 主要な変更点3
+
+## 影響範囲
+- [ ] chili3d
+  - [ ] chili-core
+  - [ ] chili-three
+  - [ ] その他: ___
+- [ ] unfold-step2svg
+  - [ ] api
+  - [ ] core
+  - [ ] その他: ___
+
+## テスト
+- [ ] ユニットテストを追加/更新
+- [ ] 手動テストを実施
+- [ ] ビルドが成功することを確認
+
+## スクリーンショット（UIの変更がある場合）
+変更前：
+変更後：
+
+## チェックリスト
+- [ ] コミットメッセージガイドラインに従った
+- [ ] 適切なIssueを参照している
+- [ ] Breaking Changeがある場合は明記した
+- [ ] ドキュメントを更新した（必要な場合）
+```
+
+### Claude Code使用時の注意
+
+Claude Codeで作業を依頼する際は、以下を伝えてください：
+
+1. **作業開始時**: 「Issue #123を作成してブランチを切って作業して」
+2. **ブランチ名**: 自動的にIssue番号を含む適切な名前を生成します
+3. **コミット時**: Issue番号を自動的にコミットメッセージに含めます
+4. **PR作成時**: Issueを自動的に参照し、上記テンプレートを使用します
+
+### 例: Claude Codeへの指示
+
+```
+「面番号表示機能を追加したい。Issue作成してブランチ切って作業して」
+
+→ Claude Codeが自動的に:
+1. Issue「[feat] 面番号表示機能の追加」を作成
+2. ブランチ「feature/#1-add-face-numbers」を作成
+3. 実装を進める
+4. コミット「feat(chili-three): 面番号表示機能を追加 (#1)」
+5. PR作成時にIssue #1を参照
+```
+
 ## License Notes
 - chili3d: AGPL-3.0 (inherited from fork, commercial licensing available)
 - unfold-step2svg: MIT License

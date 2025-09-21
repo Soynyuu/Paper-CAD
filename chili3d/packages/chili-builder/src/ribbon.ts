@@ -91,7 +91,7 @@ export const DefaultRibbon: RibbonTab[] = [
             },
             {
                 groupName: "ribbon.group.other",
-                items: ["test.performace", "settings.units"],
+                items: ["test.performace", "settings.units", "settings.keymap"],
             },
         ],
     },

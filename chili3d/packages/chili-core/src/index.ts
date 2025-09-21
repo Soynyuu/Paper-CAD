@@ -20,6 +20,7 @@ export * from "./selectionFilter";
 export * from "./serialize";
 export * from "./service";
 export * from "./services/citygmlService";
+export * from "./services/faceTextureService";
 export * from "./services/stepUnfoldService";
 export * from "./shape";
 export * from "./snapType";

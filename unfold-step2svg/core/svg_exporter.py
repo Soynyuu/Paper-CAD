@@ -52,10 +52,24 @@ class SVGExporter:
         
         # 印刷マージン (mm)
         self.print_margin_mm = 10
-        
+
         # 現在のページサイズを計算
         self._calculate_page_dimensions()
-    
+
+        # テクスチャマッピング情報
+        self.texture_mappings: List[Dict] = []
+        # [{faceNumber: int, patternId: str, tileCount: int}, ...]
+
+    def set_texture_mappings(self, texture_mappings: List[Dict]):
+        """
+        テクスチャマッピング情報を設定する。
+
+        Args:
+            texture_mappings: [{faceNumber: int, patternId: str, tileCount: int}, ...]
+        """
+        self.texture_mappings = texture_mappings
+        print(f"[SVGExporter] Set {len(texture_mappings)} texture mappings")
+
     def export_to_svg(self, placed_groups: List[Dict], output_path: str,
                      layout_manager=None) -> str:
         """
@@ -114,6 +128,7 @@ class SVGExporter:
         # 商用グレードスタイル定義
         dwg.defs.add(dwg.style("""
             .face-polygon { fill: none; stroke: #000000; stroke-width: 2; }
+            .face-polygon-textured { stroke: #000000; stroke-width: 2; }
             .tab-polygon { fill: none; stroke: #0066cc; stroke-width: 1.5; stroke-dasharray: 4,4; }
             .fold-line { stroke: #ff6600; stroke-width: 1; stroke-dasharray: 6,6; }
             .cut-line { stroke: #ff0000; stroke-width: 0.8; stroke-dasharray: 3,3; }
@@ -122,6 +137,9 @@ class SVGExporter:
             .note-text { font-family: Arial, sans-serif; font-size: 14px; fill: #666666; }
             .face-number { font-family: Arial, sans-serif; font-size: 140px; font-weight: bold; fill: #ff0000; text-anchor: middle; }
         """))
+
+        # テクスチャパターンの定義を生成
+        self._generate_texture_patterns(dwg, actual_scale)
         
         # メインコンテンツを適切にオフセット
         content_offset_x = margin - overall_bbox["min_x"] * actual_scale
@@ -138,9 +156,32 @@ class SVGExporter:
                 if len(polygon) >= 3:
                     # スケールファクターを適用
                     points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
-                    dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+
+                    # 面番号を取得してテクスチャを確認
+                    face_number = None
+                    texture_mapping = None
+                    if "face_numbers" in group and poly_idx < len(group["face_numbers"]):
+                        face_number = group["face_numbers"][poly_idx]
+                        # テクスチャマッピングを検索
+                        for mapping in self.texture_mappings:
+                            if mapping.get("faceNumber") == face_number:
+                                texture_mapping = mapping
+                                break
+
+                    # テクスチャがある場合はパターンを適用
+                    if texture_mapping:
+                        pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
+                        dwg.add(dwg.polygon(
+                            points=points,
+                            class_="face-polygon-textured",
+                            fill=f"url(#{pattern_id})"
+                        ))
+                        print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画（テクスチャ: {pattern_id}）")
+                    else:
+                        dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                        print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画")
+
                     polygon_count += 1
-                    print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画")
                     
                     # 面番号を描画（ポリゴンの中心に配置）
                     print(f"  グループデータ: face_numbers={group.get('face_numbers', 'なし')}")
@@ -240,23 +281,82 @@ class SVGExporter:
         
         return abs(area) / 2
     
+    def _generate_texture_patterns(self, dwg, actual_scale):
+        """
+        テクスチャパターンをSVGのdefs要素に追加する。
+
+        Args:
+            dwg: SVG Drawing object
+            actual_scale: 実際の描画スケール
+        """
+        if not self.texture_mappings:
+            return
+
+        # ユニークなパターンIDのセットを作成
+        unique_patterns = {}
+        for mapping in self.texture_mappings:
+            pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
+            if pattern_id not in unique_patterns:
+                unique_patterns[pattern_id] = {
+                    'patternId': mapping['patternId'],
+                    'tileCount': mapping['tileCount']
+                }
+
+        # 各ユニークパターンをdefsに追加
+        for pattern_id, pattern_info in unique_patterns.items():
+            # パターンサイズを計算（タイル数に基づく）
+            tile_size = 100 / pattern_info['tileCount'] # 基本サイズを分割
+
+            # パターン定義
+            pattern = dwg.pattern(
+                id=pattern_id,
+                size=(f"{tile_size}%", f"{tile_size}%"),
+                patternUnits="objectBoundingBox"
+            )
+
+            # パターンごとに異なる簡易的なデザインを追加
+            if pattern_info['patternId'] == 'brick':
+                # レンガパターン
+                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B4513'))
+                pattern.add(dwg.rect((0, 0), ('95%', '45%'), fill='#A0522D'))
+                pattern.add(dwg.rect((5, '55%'), ('95%', '40%'), fill='#A0522D'))
+            elif pattern_info['patternId'] == 'wood':
+                # 木目パターン
+                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#8B6F47'))
+                pattern.add(dwg.line((0, '25%'), ('100%', '25%'), stroke='#6F5B3E', stroke_width=1))
+                pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#6F5B3E', stroke_width=1))
+                pattern.add(dwg.line((0, '75%'), ('100%', '75%'), stroke='#6F5B3E', stroke_width=1))
+            elif pattern_info['patternId'] == 'stone':
+                # 石パターン
+                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#808080'))
+                pattern.add(dwg.circle(('30%', '30%'), r='15%', fill='#696969'))
+                pattern.add(dwg.circle(('70%', '70%'), r='10%', fill='#696969'))
+            else:
+                # デフォルトパターン（グリッド）
+                pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#E0E0E0'))
+                pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#C0C0C0', stroke_width=1))
+                pattern.add(dwg.line(('50%', 0), ('50%', '100%'), stroke='#C0C0C0', stroke_width=1))
+
+            dwg.defs.add(pattern)
+            print(f"[SVGExporter] Generated pattern: {pattern_id}")
+
     def _calculate_face_number_size(self, polygon_points):
         """
         面の大きさに基づいて適切なフォントサイズを計算
-        
+
         Args:
             polygon_points: ポリゴンの頂点リスト（SVG座標系）
-            
+
         Returns:
             適切なフォントサイズ（px）
         """
         if len(polygon_points) < 3:
             return 12  # デフォルトサイズを小さく
-        
+
         # 境界ボックスを計算
         xs = [p[0] for p in polygon_points]
         ys = [p[1] for p in polygon_points]
-        
+
         bbox_width = max(xs) - min(xs)
         bbox_height = max(ys) - min(ys)
         

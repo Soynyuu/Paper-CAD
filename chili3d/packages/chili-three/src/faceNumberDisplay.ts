@@ -28,6 +28,85 @@ export class FaceNumberDisplay extends Group {
     }
 
     /**
+     * 決定論的な面番号を生成（バックエンドと同じロジック）
+     * 法線ベクトルの向きに基づいて面番号を割り当てる
+     * @param shape 対象の形状
+     * @returns 面インデックスから面番号へのマッピング
+     */
+    public generateDeterministicFaceNumbers(shape: IShape): Map<number, number> {
+        const faceNumberMap = new Map<number, number>();
+        if (!shape) return faceNumberMap;
+
+        const faces = shape.findSubShapes(ShapeType.Face);
+        console.log(`[FaceNumberDisplay] Generating deterministic face numbers for ${faces.length} faces`);
+
+        // 各面の法線と中心を計算
+        const faceData: Array<{
+            index: number;
+            normal: Vector3;
+            center: Vector3;
+        }> = [];
+
+        faces.forEach((face: IShape, index: number) => {
+            const normal = this.getFaceNormal(face as IFace);
+            const center = this.getFaceCenter(face as IFace);
+
+            if (normal && center) {
+                faceData.push({ index, normal, center });
+            }
+        });
+
+        // 法線の主成分に基づいて面を分類し、番号を割り当てる
+        // X軸正方向 -> 1, X軸負方向 -> 2, Y軸正方向 -> 3, Y軸負方向 -> 4, Z軸正方向 -> 5, Z軸負方向 -> 6
+        const threshold = 0.7; // 法線の主成分を判定する閾値
+        let faceNumber = 1;
+
+        // 優先順位: +X, -X, +Y, -Y, +Z, -Z
+        const directions = [
+            { axis: "x", positive: true },
+            { axis: "x", positive: false },
+            { axis: "y", positive: true },
+            { axis: "y", positive: false },
+            { axis: "z", positive: true },
+            { axis: "z", positive: false },
+        ];
+
+        const assigned = new Set<number>();
+
+        for (const dir of directions) {
+            for (const data of faceData) {
+                if (assigned.has(data.index)) continue;
+
+                const normalComponent =
+                    dir.axis === "x" ? data.normal.x : dir.axis === "y" ? data.normal.y : data.normal.z;
+
+                const isAligned = dir.positive ? normalComponent > threshold : normalComponent < -threshold;
+
+                if (isAligned) {
+                    faceNumberMap.set(data.index, faceNumber);
+                    assigned.add(data.index);
+                    console.log(
+                        `[FaceNumberDisplay] Face ${data.index} -> Number ${faceNumber} (${dir.axis}${dir.positive ? "+" : "-"})`,
+                    );
+                    faceNumber++;
+                }
+            }
+        }
+
+        // 主軸に整列していない面には連番を割り当てる
+        for (const data of faceData) {
+            if (!assigned.has(data.index)) {
+                faceNumberMap.set(data.index, faceNumber);
+                console.log(`[FaceNumberDisplay] Face ${data.index} -> Number ${faceNumber} (other)`);
+                faceNumber++;
+            }
+        }
+
+        console.log(`[FaceNumberDisplay] Generated ${faceNumberMap.size} face numbers`);
+        return faceNumberMap;
+    }
+
+    /**
      * バックエンドから受信した面番号データを設定
      * @param faceNumbers 面インデックスと面番号のマッピング
      */

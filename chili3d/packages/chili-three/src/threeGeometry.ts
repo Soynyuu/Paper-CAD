@@ -5,6 +5,7 @@ import {
     BoundingBox,
     EdgeMeshData,
     FaceMeshData,
+    FaceTextureService,
     GeometryNode,
     IShape,
     ISubShape,
@@ -13,10 +14,20 @@ import {
     ShapeMeshRange,
     ShapeNode,
     ShapeType,
+    TextureData,
     VisualConfig,
 } from "chili-core";
 import { MeshUtils } from "chili-geo";
-import { DoubleSide, Material, Mesh, MeshLambertMaterial } from "three";
+import {
+    DoubleSide,
+    Material,
+    Mesh,
+    MeshLambertMaterial,
+    TextureLoader,
+    RepeatWrapping,
+    Vector2,
+    Texture,
+} from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry";
@@ -40,6 +51,9 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
     private _edges?: LineSegments2;
     private _faces?: Mesh;
     private _faceNumbers?: FaceNumberDisplay;
+    private _textureLoader = new TextureLoader();
+    private _texturedMaterials: Map<number, Material> = new Map();
+    private _faceTextureService: FaceTextureService | null = null;
 
     constructor(
         readonly geometryNode: GeometryNode,
@@ -59,6 +73,112 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         if (this._faces) {
             this._faceMaterial = material;
             this._faces.material = material;
+        }
+    }
+
+    /**
+     * FaceTextureServiceを設定
+     */
+    setFaceTextureService(service: FaceTextureService) {
+        this._faceTextureService = service;
+    }
+
+    /**
+     * 面にテクスチャを適用（Multi-Material対応）
+     * @param faceIndex 面のインデックス
+     * @param textureData テクスチャデータ
+     */
+    async applyTextureToFace(faceIndex: number, textureData: TextureData) {
+        if (!this._faces || !this._faces.geometry.groups || this._faces.geometry.groups.length === 0) {
+            console.warn("ThreeGeometry: No face groups available for texture application");
+            return;
+        }
+
+        // テクスチャをロード
+        const texture = await this.loadTexture(textureData.imageUrl);
+        if (!texture) {
+            console.error(`Failed to load texture: ${textureData.imageUrl}`);
+            return;
+        }
+
+        // テクスチャ設定
+        texture.wrapS = texture.wrapT = RepeatWrapping;
+        if (textureData.repeat) {
+            texture.repeat.set(textureData.repeat.x, textureData.repeat.y);
+        }
+        if (textureData.offset) {
+            texture.offset.set(textureData.offset.x, textureData.offset.y);
+        }
+
+        // テクスチャ付きマテリアルを作成
+        const texturedMaterial = new MeshLambertMaterial({
+            map: texture,
+            side: DoubleSide,
+            transparent: true,
+        });
+
+        // マテリアルを保存
+        this._texturedMaterials.set(faceIndex, texturedMaterial);
+
+        // Multi-Material配列を更新
+        this.updateMultiMaterial();
+    }
+
+    /**
+     * テクスチャをロード（キャッシュ付き）
+     */
+    private async loadTexture(url: string): Promise<Texture | null> {
+        return new Promise((resolve) => {
+            this._textureLoader.load(
+                url,
+                (texture) => {
+                    console.log(`Loaded texture: ${url}`);
+                    resolve(texture);
+                },
+                undefined,
+                (error) => {
+                    console.error(`Failed to load texture: ${url}`, error);
+                    resolve(null);
+                },
+            );
+        });
+    }
+
+    /**
+     * Multi-Material配列を更新
+     */
+    private updateMultiMaterial() {
+        if (!this._faces || !this._faces.geometry.groups) return;
+
+        const materials: Material[] = [];
+        const groups = this._faces.geometry.groups;
+
+        // 各グループに対してマテリアルを割り当て
+        groups.forEach((group, index) => {
+            const texturedMaterial = this._texturedMaterials.get(index);
+            if (texturedMaterial) {
+                materials.push(texturedMaterial);
+            } else {
+                // デフォルトマテリアルを使用
+                const defaultMat = Array.isArray(this._faceMaterial)
+                    ? this._faceMaterial[index] || this._faceMaterial[0]
+                    : this._faceMaterial;
+                materials.push(defaultMat);
+            }
+        });
+
+        // Meshのマテリアルを更新
+        this._faces.material = materials;
+        console.log(`Updated multi-material with ${materials.length} materials`);
+    }
+
+    /**
+     * 全てのテクスチャをクリア
+     */
+    clearAllTextures() {
+        this._texturedMaterials.clear();
+        if (this._faces) {
+            this._faces.material = this._faceMaterial;
         }
     }
 

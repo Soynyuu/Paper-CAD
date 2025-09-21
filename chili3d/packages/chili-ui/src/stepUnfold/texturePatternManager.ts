@@ -230,7 +230,8 @@ export class TexturePatternManager {
         const pattern = this.patterns.get(patternId);
         if (!pattern) return patternId;
 
-        const isJapanese = I18n.currentLanguage === "ja-jp" || I18n.currentLanguage === "zh-cn";
+        const currentLang = I18n.currentLanguage();
+        const isJapanese = currentLang === "ja-jp" || currentLang === "zh-cn";
         return isJapanese ? pattern.name : pattern.nameEn;
     }
 
@@ -241,7 +242,8 @@ export class TexturePatternManager {
         const pattern = this.patterns.get(patternId);
         if (!pattern) return "";
 
-        const isJapanese = I18n.currentLanguage === "ja-jp" || I18n.currentLanguage === "zh-cn";
+        const currentLang = I18n.currentLanguage();
+        const isJapanese = currentLang === "ja-jp" || currentLang === "zh-cn";
         return isJapanese ? pattern.description : pattern.descriptionEn;
     }
 

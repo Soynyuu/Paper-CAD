@@ -24,11 +24,12 @@ async def unfold_step_to_svg(
     layout_mode: str = Form("canvas"),
     page_format: str = Form("A4"),
     page_orientation: str = Form("portrait"),
-    scale_factor: float = Form(10.0)
+    scale_factor: float = Form(10.0),
+    texture_mappings: Optional[str] = Form(None)
 ):
     """
     STEPファイル（.step/.stp）を受け取り、展開図（SVG）を生成するAPI。
-    
+
     Args:
         file: STEPファイル (.step/.stp)
         return_face_numbers: 面番号データを含むかどうか (default: True)
@@ -37,7 +38,8 @@ async def unfold_step_to_svg(
         page_format: ページフォーマット - "A4", "A3", "Letter" (default: "A4")
         page_orientation: ページ方向 - "portrait"=縦、"landscape"=横 (default: "portrait")
         scale_factor: 図の縮尺倍率 (default: 10.0) - 例: 150なら1/150スケール
-    
+        texture_mappings: JSON形式のテクスチャマッピング情報 - [{faceNumber, patternId, tileCount}]
+
     Returns:
         - output_format="svg": 単一SVGファイル（pagedモードでは全ページを縦に並べて表示）
         - output_format="json": JSONレスポンス
@@ -65,6 +67,17 @@ async def unfold_step_to_svg(
             raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
         print(f"[UPLOAD] /api/step/unfold: received {total} bytes -> {in_path}")
 
+        # テクスチャマッピングのパース
+        parsed_texture_mappings = []
+        if texture_mappings:
+            try:
+                import json
+                parsed_texture_mappings = json.loads(texture_mappings)
+                print(f"[TEXTURE] Received texture mappings: {parsed_texture_mappings}")
+            except json.JSONDecodeError as e:
+                print(f"[TEXTURE] Failed to parse texture mappings: {e}")
+                # エラーを無視してテクスチャなしで続行
+
         # StepUnfoldGeneratorインスタンスを作成
         step_unfold_generator = StepUnfoldGenerator()
 
@@ -72,7 +85,7 @@ async def unfold_step_to_svg(
         if not step_unfold_generator.load_from_file(in_path):
             raise HTTPException(status_code=400, detail="STEPファイルの読み込みに失敗しました。")
         output_path = os.path.join(tempfile.mkdtemp(), f"step_unfold_{uuid.uuid4()}.svg")
-        
+
         # レイアウトオプションを含むBrepPapercraftRequestを作成
         request = BrepPapercraftRequest(
             layout_mode=layout_mode,
@@ -80,6 +93,11 @@ async def unfold_step_to_svg(
             page_orientation=page_orientation,
             scale_factor=scale_factor
         )
+
+        # テクスチャマッピングを渡す
+        if parsed_texture_mappings:
+            step_unfold_generator.set_texture_mappings(parsed_texture_mappings)
+
         svg_path, stats = step_unfold_generator.generate_brep_papercraft(request, output_path)
         
         # 出力形式に応じてレスポンスを分岐

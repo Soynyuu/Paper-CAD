@@ -12,6 +12,7 @@ import {
     VisualNode,
     I18n,
     UnfoldOptions,
+    FaceTextureService,
 } from "chili-core";
 import Editor from "svgedit";
 import "svgedit/dist/editor/svgedit.css";
@@ -38,6 +39,7 @@ export class StepUnfoldPanel extends HTMLElement {
     private _modelSizeDisplay: HTMLDivElement;
     private _currentScale: number = 1; // Default to 1:1 scale
     private _modelBoundingSize: number = 0; // Model's bounding box max dimension in mm
+    private _textureService: FaceTextureService | null = null;
 
     constructor(app: IApplication) {
         super();
@@ -150,7 +152,32 @@ export class StepUnfoldPanel extends HTMLElement {
         this._updateScaleDisplay();
         this._updateModelSizeFromCurrentDocument();
 
+        // FaceTextureServiceのインスタンスを取得または作成
+        this._initializeTextureService();
+
         console.log("StepUnfoldPanel fully initialized, element:", this);
+    }
+
+    private _initializeTextureService() {
+        // 既存のサービスを検索
+        const services = this._app.services as any;
+        if (services && Array.isArray(services)) {
+            this._textureService = services.find((s: any) => s instanceof FaceTextureService) || null;
+        }
+
+        if (!this._textureService) {
+            // サービスが存在しない場合は作成して登録
+            this._textureService = new FaceTextureService();
+            this._textureService.register(this._app);
+            this._textureService.start();
+
+            if (services && Array.isArray(services)) {
+                services.push(this._textureService);
+            }
+            console.log("[StepUnfoldPanel] Created FaceTextureService");
+        } else {
+            console.log("[StepUnfoldPanel] Found existing FaceTextureService");
+        }
     }
 
     private _render() {
@@ -231,12 +258,22 @@ export class StepUnfoldPanel extends HTMLElement {
                 return;
             }
 
+            // FaceTextureServiceからテクスチャマッピングを取得
+            let textureMappings: any[] = [];
+            if (this._textureService) {
+                textureMappings = this._textureService.getBackendFormat();
+                if (textureMappings.length > 0) {
+                    console.log("[StepUnfoldPanel] Including texture mappings:", textureMappings);
+                }
+            }
+
             // Send STEP data to backend for unfolding with options
             const options: UnfoldOptions = {
                 scale: this._currentScale,
                 layoutMode: this._layoutMode,
                 pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
                 pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+                textureMappings: textureMappings.length > 0 ? textureMappings : undefined,
             };
             const result = await this._service.unfoldStepFromData(stepData[0], options);
 

@@ -17,7 +17,7 @@ export class WeChatGroup implements ICommand {
     private ui() {
         return div(
             label({
-                textContent: "Diorama-CAD交流群",
+                textContent: "Paper-CAD交流群",
                 style: {
                     fontSize: "16px",
                     display: "block",

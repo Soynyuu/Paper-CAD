@@ -11,7 +11,7 @@ body {
 }
 
 :root[theme="light"] {
-    /* Brand Colors - Based on Diorama-CAD Design System */
+    /* Brand Colors - Based on Paper-CAD Design System */
     --brand-primary: #ff6633;
     --brand-secondary: #ff5533;
     --brand-tertiary: #ff8844;

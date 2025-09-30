@@ -2,7 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 export class Constants {
-    static readonly DBName = "diorama-cad-db";
+    static readonly DBName = "paper-cad-db";
     static readonly DocumentTable = "documents";
     static readonly RecentTable = "recents";
 }

@@ -221,7 +221,7 @@ class SVGExporter:
         print(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
         
         # タイトル描画 (ページ上部中央)
-        title = f"Diorama-CAD(mitou-jr) - {len(placed_groups)} Groups"
+        title = f"Paper-CAD(mitou-jr) - {len(placed_groups)} Groups"
         title_x = svg_width / 2
         title_y = 40
         dwg.add(dwg.text(title, insert=(title_x, title_y), text_anchor="middle", class_="title-text"))
@@ -620,7 +620,7 @@ class SVGExporter:
             
             # タイトル（各ページの上部）
             dwg.add(dwg.text(
-                f"Diorama-CAD (mitou-jr)",
+                f"Paper-CAD (mitou-jr)",
                 insert=(self.page_width_px / 2, page_y_offset + 25),
                 text_anchor="middle",
                 style="font-family: Arial, sans-serif; font-size: 16px; fill: #000000; font-weight: bold;"
@@ -760,7 +760,7 @@ class SVGExporter:
             
             # タイトルとプロジェクト情報
             dwg.add(dwg.text(
-                f"Diorama-CAD (mitou-jr) - {self.page_format} {self.page_orientation.capitalize()}",
+                f"Paper-CAD (mitou-jr) - {self.page_format} {self.page_orientation.capitalize()}",
                 insert=(self.page_width_px / 2, 20),
                 text_anchor="middle",
                 style="font-family: Arial, sans-serif; font-size: 14px; fill: #000000;"

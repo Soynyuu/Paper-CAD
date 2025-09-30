@@ -48,7 +48,7 @@ Clone and install:
 
 ```bash
 git clone https://github.com/xiangechen/chili3d.git
-cd Diorama-CAD
+cd Paper-CAD
 npm install
 ```
 

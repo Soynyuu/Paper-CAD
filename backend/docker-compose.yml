@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  unfold-step2svg:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: unfold-step2svg:latest
+    container_name: unfold-step2svg
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8001}:8001"
+    volumes:
+      - ./core/debug_files:/app/core/debug_files
+      - conda-cache:/opt/conda/pkgs
+    environment:
+      - PORT=8001
+      - PYTHONUNBUFFERED=1
+      - CONDA_PKGS_DIRS=/opt/conda/pkgs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - unfold-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Nginx reverse proxy for local development
+  nginx:
+    image: nginx:alpine
+    container_name: unfold-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/unfold-step2svg.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - unfold-step2svg
+    networks:
+      - unfold-network
+    profiles:
+      - with-nginx
+
+networks:
+  unfold-network:
+    driver: bridge
+
+volumes:
+  conda-cache:
+    driver: local

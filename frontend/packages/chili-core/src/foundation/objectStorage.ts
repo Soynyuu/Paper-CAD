@@ -2,7 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 export class ObjectStorage {
-    static readonly default = new ObjectStorage("diorama-cad", "app");
+    static readonly default = new ObjectStorage("paper-cad", "app");
 
     private readonly prefix: string;
 

@@ -76,7 +76,7 @@ export class Home extends HTMLElement {
     private logoSection() {
         return div(
             { className: style.logo },
-            span({ textContent: "DIORAMA-CAD" }),
+            span({ textContent: "PAPER-CAD" }),
             span({ className: style.version, textContent: __APP_VERSION__ }),
         );
     }

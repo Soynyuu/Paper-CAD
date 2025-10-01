@@ -11,6 +11,7 @@ export interface UnfoldOptions {
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
+    returnFaceNumbers?: boolean;
     textureMappings?: Array<{
         faceNumber: number;
         patternId: string;

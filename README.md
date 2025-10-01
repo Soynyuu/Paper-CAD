@@ -41,11 +41,6 @@ Paper-CADは建物模型制作のためのWebベースCADツールです。3D建
 
 ### インストール手順
 
-#### 1. リポジトリのクローン
-```bash
-git clone https://github.com/yourusername/Paper-CAD.git
-cd Paper-CAD
-```
 
 #### 2. バックエンドのセットアップ
 ```bash
@@ -54,12 +49,6 @@ cd backend
 # Conda環境の作成（推奨）
 conda env create -f environment.yml
 conda activate paper-cad
-
-# または、pip環境の作成
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
 # サーバー起動
 python main.py  # http://localhost:8001
 ```
@@ -71,12 +60,8 @@ cd ../frontend
 # 依存パッケージのインストール
 npm install
 
-# WebAssemblyのビルド（初回のみ）
-npm run setup:wasm
-npm run build:wasm
-
 # 開発サーバー起動
-npm run dev  # http://localhost:3000
+npm run dev
 ```
 
 ## 使い方

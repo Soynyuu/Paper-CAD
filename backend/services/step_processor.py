@@ -9,7 +9,6 @@ from typing import List, Optional, Dict, Any, Union, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
-import networkx as nx
 import io
 
 from config import OCCT_AVAILABLE
@@ -117,6 +116,11 @@ class StepUnfoldGenerator:
         self.texture_mappings: List[Dict[str, Any]] = []
         # [{faceNumber: int, patternId: str, tileCount: int}, ...]
 
+        # ═══ 展開ネット生成モード：隣接する面を繋げて展開図を生成 ═══
+        # 注意: 現在の実装は簡易版のため、正確な展開ネットを生成できません
+        # 各面を個別に展開する方が正確です
+        self.generate_unfolding_net = False  # デフォルトで展開ネットモードを無効化
+
 
     def set_texture_mappings(self, texture_mappings: List[Dict[str, Any]]):
         """
@@ -197,9 +201,12 @@ class StepUnfoldGenerator:
         # 展開エンジンの設定を更新
         self.unfold_engine.scale_factor = self.scale_factor
         self.unfold_engine.tab_width = self.tab_width
-        
+
         # 展開エンジンに処理を委譲
-        self.unfold_groups = self.unfold_engine.group_faces_for_unfolding(max_faces)
+        self.unfold_groups = self.unfold_engine.group_faces_for_unfolding(
+            max_faces=max_faces,
+            generate_unfolding_net=self.generate_unfolding_net
+        )
         return self.unfold_groups
 
     def unfold_face_groups(self) -> List[Dict]:

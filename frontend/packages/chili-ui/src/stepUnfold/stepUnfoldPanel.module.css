@@ -357,4 +357,69 @@
     opacity: 1;
 }
 
+/* PDF Export button */
+.pdfExportButton {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--button-background);
+    color: var(--button-text-color);
+    border: 1px solid var(--button-border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.pdfExportButton:hover {
+    background-color: var(--button-hover-background);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.pdfExportButton:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.pdfExportButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* PDF Settings container */
+.pdfSettingsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background-color: var(--neutral-50);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    margin-top: var(--spacing-sm);
+}
+
+.pdfScaleInput {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    color: var(--neutral-800);
+    transition: all var(--transition-fast);
+}
+
+.pdfScaleInput:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.pdfScaleInput:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
+}
+
 /* Override SVG-Edit default styles - moved to svgedit-override.css */

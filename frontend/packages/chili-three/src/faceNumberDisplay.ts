@@ -11,6 +11,10 @@ export class FaceNumberDisplay extends Group {
     private backendFaceNumbers: Map<number, number> = new Map();
     // モデルのバウンディングボックスサイズ（動的オフセット計算用）
     private modelSize: number = 0;
+    // ハイライトされた面番号を追跡
+    private highlightedFaces: Set<number> = new Set();
+    // 面インデックスから面番号へのマッピング（ハイライト時に使用）
+    private faceIndexToNumber: Map<number, number> = new Map();
 
     constructor() {
         super();
@@ -183,6 +187,9 @@ export class FaceNumberDisplay extends Group {
             const backendNumber = this.backendFaceNumbers.get(index);
             const faceNumber = backendNumber !== undefined ? backendNumber : index + 1; // フォールバック：インデックス+1
 
+            // 面インデックスから面番号へのマッピングを保存
+            this.faceIndexToNumber.set(index, faceNumber);
+
             console.log("🟡 generateFromShape: 面", index, "の番号決定:", {
                 backendNumber: backendNumber,
                 finalFaceNumber: faceNumber,
@@ -204,8 +211,8 @@ export class FaceNumberDisplay extends Group {
                 // スプライトを面の表面から適切な距離に配置
                 if (normal) {
                     const originalPosition = sprite.position.clone();
-                    // モデルサイズに基づく動的オフセット（モデルサイズの3%、最小値5）
-                    const offset = Math.max(this.modelSize * 0.03, 5);
+                    // モデルサイズに基づく動的オフセット（モデルサイズの1%、最小値2）
+                    const offset = Math.max(this.modelSize * 0.01, 2);
                     sprite.position.addScaledVector(normal, offset);
                     console.log(
                         `FaceNumberDisplay: Face ${faceNumber} - Original:`,
@@ -666,7 +673,7 @@ export class FaceNumberDisplay extends Group {
     /**
      * 番号スプライトを作成
      */
-    private createNumberSprite(number: number): Sprite {
+    private createNumberSprite(number: number, isHighlighted: boolean = false): Sprite {
         const canvas = document.createElement("canvas");
         const size = 256;
         canvas.width = size;
@@ -677,19 +684,37 @@ export class FaceNumberDisplay extends Group {
             throw new Error("Failed to get canvas context");
         }
 
-        // 背景を白色の円で描画
-        context.fillStyle = "white";
-        context.beginPath();
-        context.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
-        context.fill();
+        // ハイライト時は背景色を変更
+        if (isHighlighted) {
+            // 背景を黄色の円で描画（ハイライト時）
+            context.fillStyle = "#ffff00";
+            context.beginPath();
+            context.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+            context.fill();
 
-        // 枠線を描画
-        context.strokeStyle = "red";
-        context.lineWidth = 8;
-        context.stroke();
+            // 枠線を描画（ハイライト時は太くて濃い色）
+            context.strokeStyle = "#ff0000";
+            context.lineWidth = 12;
+            context.stroke();
 
-        // 番号を描画
-        context.fillStyle = "red";
+            // 番号を描画（ハイライト時は濃い赤）
+            context.fillStyle = "#cc0000";
+        } else {
+            // 背景を白色の円で描画（通常時）
+            context.fillStyle = "white";
+            context.beginPath();
+            context.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+            context.fill();
+
+            // 枠線を描画（通常時）
+            context.strokeStyle = "red";
+            context.lineWidth = 8;
+            context.stroke();
+
+            // 番号を描画（通常時）
+            context.fillStyle = "red";
+        }
+
         context.font = "bold 120px Arial";
         context.textAlign = "center";
         context.textBaseline = "middle";
@@ -706,7 +731,8 @@ export class FaceNumberDisplay extends Group {
 
         const sprite = new Sprite(material);
         // 画面上で一定のサイズを保つ固定スケール
-        const scale = 0.03; // スクリーン空間での固定サイズ
+        // ハイライト時は少し大きくする
+        const scale = isHighlighted ? 0.04 : 0.03;
         sprite.scale.set(scale, scale, 1);
         sprite.name = `FaceNumber_${number}`;
         sprite.renderOrder = 999; // 最前面に表示
@@ -781,9 +807,118 @@ export class FaceNumberDisplay extends Group {
     }
 
     /**
+     * 特定の面番号をハイライト
+     * @param faceNumber ハイライトする面番号
+     */
+    highlightFace(faceNumber: number): void {
+        if (this.highlightedFaces.has(faceNumber)) {
+            console.log(`Face ${faceNumber} is already highlighted`);
+            return;
+        }
+
+        this.highlightedFaces.add(faceNumber);
+        this.updateSpriteHighlight(faceNumber, true);
+        console.log(`Highlighted face ${faceNumber}`);
+    }
+
+    /**
+     * 特定の面番号のハイライトを解除
+     * @param faceNumber ハイライトを解除する面番号
+     */
+    unhighlightFace(faceNumber: number): void {
+        if (!this.highlightedFaces.has(faceNumber)) {
+            console.log(`Face ${faceNumber} is not highlighted`);
+            return;
+        }
+
+        this.highlightedFaces.delete(faceNumber);
+        this.updateSpriteHighlight(faceNumber, false);
+        console.log(`Unhighlighted face ${faceNumber}`);
+    }
+
+    /**
+     * すべての面のハイライトを解除
+     */
+    clearHighlights(): void {
+        this.highlightedFaces.forEach((faceNumber) => {
+            this.updateSpriteHighlight(faceNumber, false);
+        });
+        this.highlightedFaces.clear();
+        console.log("Cleared all highlights");
+    }
+
+    /**
+     * 現在ハイライトされている面番号を取得
+     * @returns ハイライトされている面番号の配列
+     */
+    getHighlightedFaces(): number[] {
+        return Array.from(this.highlightedFaces);
+    }
+
+    /**
+     * 面番号のハイライト状態を切り替え
+     * @param faceNumber 切り替える面番号
+     */
+    toggleHighlight(faceNumber: number): void {
+        if (this.highlightedFaces.has(faceNumber)) {
+            this.unhighlightFace(faceNumber);
+        } else {
+            this.highlightFace(faceNumber);
+        }
+    }
+
+    /**
+     * スプライトのハイライト状態を更新
+     * @param faceNumber 更新する面番号
+     * @param isHighlighted ハイライト状態
+     */
+    private updateSpriteHighlight(faceNumber: number, isHighlighted: boolean): void {
+        const sprite = this.sprites.get(faceNumber);
+        if (!sprite) {
+            console.warn(`Sprite for face ${faceNumber} not found`);
+            return;
+        }
+
+        // 既存のスプライトの位置を保存
+        const position = sprite.position.clone();
+
+        // 古いスプライトを削除
+        sprite.material.dispose();
+        (sprite.material as SpriteMaterial).map?.dispose();
+        this.remove(sprite);
+        this.sprites.delete(faceNumber);
+
+        // 新しいスプライトを作成（ハイライト状態を反映）
+        const newSprite = this.createNumberSprite(faceNumber, isHighlighted);
+        newSprite.position.copy(position);
+
+        this.sprites.set(faceNumber, newSprite);
+        this.add(newSprite);
+    }
+
+    /**
+     * 面インデックスから面番号を取得
+     * @param faceIndex 面インデックス
+     * @returns 対応する面番号（見つからない場合はundefined）
+     */
+    getFaceNumberByIndex(faceIndex: number): number | undefined {
+        return this.faceIndexToNumber.get(faceIndex);
+    }
+
+    /**
+     * 利用可能なすべての面番号を取得
+     * @returns 面番号の配列
+     */
+    getAllFaceNumbers(): number[] {
+        return Array.from(this.sprites.keys()).sort((a, b) => a - b);
+    }
+
+    /**
      * クリーンアップ
      */
     dispose(): void {
         this.clearNumbers();
+        this.highlightedFaces.clear();
+        this.faceIndexToNumber.clear();
     }
 }

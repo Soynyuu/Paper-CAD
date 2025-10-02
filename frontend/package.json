@@ -47,6 +47,8 @@
         "typescript-plugin-css-modules": "^5.1.0"
     },
     "dependencies": {
+        "jspdf": "^3.0.3",
+        "svg2pdf.js": "^2.6.0",
         "svgedit": "^7.3.8"
     }
 }

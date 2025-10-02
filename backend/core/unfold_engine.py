@@ -44,36 +44,87 @@ class UnfoldEngine:
         self.faces_data = faces_data
         self.edges_data = edges_data
     
-    def group_faces_for_unfolding(self, max_faces: int = 20) -> List[List[int]]:
+    def group_faces_for_unfolding(self, max_faces: int = 20, enable_grouping: bool = True,
+                                 normal_threshold: float = 0.95, generate_unfolding_net: bool = False) -> List[List[int]]:
         """
         展開可能な面をグループ化。
-        立方体のような単純な形状では全ての面を個別に展開。
-        
+        隣接する同一平面の面をグループ化し、異なる角度の面は個別のグループとする。
+
         Args:
             max_faces: 最大面数
-        
+            enable_grouping: グループ化を有効にするか（Falseの場合は各面を個別のグループとする）
+            normal_threshold: 法線の類似度閾値（cos値、約18度 = 0.95）
+            generate_unfolding_net: 展開ネット生成モード（Trueの場合、すべての面を1グループとして繋がった展開図を生成）
+
         Returns:
             List[List[int]]: 展開グループのリスト
         """
         if self.faces_data is None:
             raise ValueError("faces_dataが設定されていません")
-        
+
         unfoldable_faces = [i for i, face in enumerate(self.faces_data) if face["unfoldable"]]
-        
+
         if not unfoldable_faces:
             print("展開可能な面がありません")
             return []
-        
+
         print(f"展開可能な面: {len(unfoldable_faces)}個")
-        
-        # 立方体のような単純な形状では、各面を個別のグループとして扱う
+
+        # 展開ネット生成モードの場合、すべての面を1つのグループとする
+        if generate_unfolding_net:
+            print(f"展開ネット生成モード: すべての面を1グループ化")
+            groups = [unfoldable_faces]
+            self.unfold_groups = groups
+            print(f"作成されたグループ数: {len(groups)}（展開ネットモード）")
+            return groups
+
+        if not enable_grouping:
+            # グループ化無効の場合は各面を個別のグループとする
+            groups = [[face_idx] for face_idx in unfoldable_faces]
+            self.unfold_groups = groups
+            print(f"作成されたグループ数: {len(groups)}（グループ化無効）")
+            return groups
+
+        # グループ化有効の場合：隣接する同一平面の面をグループ化
         groups = []
-        
-        for face_idx in unfoldable_faces:
-            # 各面を個別のグループとして追加
-            groups.append([face_idx])
-            print(f"面{face_idx}をグループ{len(groups)-1}に追加")
-        
+        processed = set()
+
+        for start_face_idx in unfoldable_faces:
+            if start_face_idx in processed:
+                continue
+
+            # 新しいグループを開始
+            current_group = [start_face_idx]
+            processed.add(start_face_idx)
+
+            # BFS（幅優先探索）で隣接する同一平面の面を収集
+            queue = [start_face_idx]
+
+            while queue:
+                current_face_idx = queue.pop(0)
+
+                # すべての展開可能な面をチェック
+                for candidate_idx in unfoldable_faces:
+                    if candidate_idx in processed:
+                        continue
+
+                    # 隣接しているかチェック
+                    if not self._are_faces_adjacent(current_face_idx, candidate_idx):
+                        continue
+
+                    # 同一平面かチェック（法線の類似度）
+                    if not self._are_coplanar(current_face_idx, candidate_idx, normal_threshold):
+                        continue
+
+                    # グループに追加
+                    current_group.append(candidate_idx)
+                    processed.add(candidate_idx)
+                    queue.append(candidate_idx)
+                    print(f"    面{candidate_idx}を面{current_face_idx}のグループに追加（同一平面）")
+
+            groups.append(current_group)
+            print(f"  グループ{len(groups)-1}: {len(current_group)}面 {current_group}")
+
         self.unfold_groups = groups
         print(f"作成されたグループ数: {len(groups)}")
         return groups
@@ -167,48 +218,264 @@ class UnfoldEngine:
     def _unfold_planar_group(self, group_idx: int, face_indices: List[int]) -> Dict:
         """
         平面グループの展開（面の正確な形状に基づく）。
-        
+        グループ内の面が複数ある場合は、隣接する面を繋げて展開ネットを生成。
+
         Args:
             group_idx: グループインデックス
             face_indices: 面インデックスのリスト
-        
+
+        Returns:
+            Dict: 展開結果
+        """
+        print(f"      平面グループ{group_idx}を展開中（{len(face_indices)}面）...")
+
+        if len(face_indices) == 1:
+            # 単一面の場合は従来通り個別に展開
+            return self._unfold_single_face(group_idx, face_indices[0])
+        else:
+            # 複数面の場合は展開ネットを生成
+            return self._unfold_connected_faces(group_idx, face_indices)
+
+    def _unfold_single_face(self, group_idx: int, face_idx: int) -> Dict:
+        """
+        単一面の展開。
+
+        Args:
+            group_idx: グループインデックス
+            face_idx: 面インデックス
+
         Returns:
             Dict: 展開結果
         """
         polygons = []
-        
-        print(f"      平面グループ{group_idx}を展開中...")
-        
+        face_data = self.faces_data[face_idx]
+
+        # 平面情報を取得
+        normal = np.array(face_data["plane_normal"])
+        origin = np.array(face_data["plane_origin"])
+
+        print(f"        面{face_idx}: 法線={normal}, 原点={origin}")
+
+        # 面の正確な境界形状を取得
+        face_polygons = self._extract_face_2d_shape(face_idx, normal, origin)
+        print(f"        面{face_idx}: {len(face_polygons) if face_polygons else 0}個の2D形状を抽出")
+
+        if face_polygons:
+            polygons.extend(face_polygons)
+
+        # 面番号のマッピングを追加
+        face_number = face_data.get("face_number", face_idx + 1)
+
+        return {
+            "group_index": group_idx,
+            "surface_type": "plane",
+            "polygons": polygons,
+            "face_indices": [face_idx],
+            "face_numbers": [face_number],
+            "tabs": [],
+            "fold_lines": [],
+            "cut_lines": []
+        }
+
+    def _unfold_connected_faces(self, group_idx: int, face_indices: List[int]) -> Dict:
+        """
+        複数の面を繋げて展開ネットを生成。
+        スパニングツリーを使用して、隣接する面を共有エッジを基準に配置。
+
+        Args:
+            group_idx: グループインデックス
+            face_indices: 面インデックスのリスト
+
+        Returns:
+            Dict: 展開結果
+        """
+        print(f"        展開ネット生成中（{len(face_indices)}面）...")
+
+        # 最初の面が同一平面かチェック
+        if self._are_all_coplanar(face_indices):
+            # 同一平面の場合は同じ座標系で展開
+            return self._unfold_coplanar_faces(group_idx, face_indices)
+        else:
+            # 異なる角度の面を含む場合は、スパニングツリーベースで展開
+            return self._unfold_spanning_tree(group_idx, face_indices)
+
+    def _are_all_coplanar(self, face_indices: List[int], threshold: float = 0.95) -> bool:
+        """
+        すべての面が同一平面かチェック。
+
+        Args:
+            face_indices: 面インデックスのリスト
+            threshold: 法線の類似度閾値
+
+        Returns:
+            bool: すべて同一平面の場合True
+        """
+        if len(face_indices) <= 1:
+            return True
+
+        for i in range(len(face_indices) - 1):
+            if not self._are_coplanar(face_indices[i], face_indices[i+1], threshold):
+                return False
+
+        return True
+
+    def _unfold_coplanar_faces(self, group_idx: int, face_indices: List[int]) -> Dict:
+        """
+        同一平面の面を展開。
+
+        Args:
+            group_idx: グループインデックス
+            face_indices: 面インデックスのリスト
+
+        Returns:
+            Dict: 展開結果
+        """
+        print(f"          同一平面の面を展開中...")
+
+        polygons = []
+
+        # 最初の面の法線と原点を使用
+        first_face = self.faces_data[face_indices[0]]
+        normal = np.array(first_face["plane_normal"])
+        origin = np.array(first_face["plane_origin"])
+
+        # すべての面を同じ座標系で展開
         for face_idx in face_indices:
-            face_data = self.faces_data[face_idx]
-            
-            # 平面情報を取得
-            normal = np.array(face_data["plane_normal"])
-            origin = np.array(face_data["plane_origin"])
-            
-            print(f"        面{face_idx}: 法線={normal}, 原点={origin}")
-            
-            # 面の正確な境界形状を取得
             face_polygons = self._extract_face_2d_shape(face_idx, normal, origin)
-            print(f"        面{face_idx}: {len(face_polygons) if face_polygons else 0}個の2D形状を抽出")
-            
             if face_polygons:
                 polygons.extend(face_polygons)
-        
-        print(f"      平面グループ{group_idx}: 合計{len(polygons)}個のポリゴン")
-        
+                print(f"            面{face_idx}: {len(face_polygons)}個のポリゴンを追加")
+
         # 面番号のマッピングを追加
         face_numbers = []
         for face_idx in face_indices:
             face_data = self.faces_data[face_idx]
             face_numbers.append(face_data.get("face_number", face_idx + 1))
-        
+
+        print(f"          展開完成: 合計{len(polygons)}個のポリゴン")
+
         return {
             "group_index": group_idx,
             "surface_type": "plane",
             "polygons": polygons,
-            "face_indices": face_indices,  # 元の面インデックス
-            "face_numbers": face_numbers,  # ユーザー向け面番号
+            "face_indices": face_indices,
+            "face_numbers": face_numbers,
+            "tabs": [],
+            "fold_lines": [],
+            "cut_lines": []
+        }
+
+    def _unfold_spanning_tree(self, group_idx: int, face_indices: List[int]) -> Dict:
+        """
+        スパニングツリーを使用して展開ネットを生成。
+        異なる角度の面を共有エッジを基準に配置。
+
+        Args:
+            group_idx: グループインデックス
+            face_indices: 面インデックスのリスト
+
+        Returns:
+            Dict: 展開結果
+        """
+        print(f"          スパニングツリーベースの展開を開始...")
+
+        if not face_indices:
+            return {
+                "group_index": group_idx,
+                "surface_type": "plane",
+                "polygons": [],
+                "face_indices": [],
+                "face_numbers": [],
+                "tabs": [],
+                "fold_lines": [],
+                "cut_lines": []
+            }
+
+        # ルート面を選択（最初の面）
+        root_face_idx = face_indices[0]
+        print(f"            ルート面: 面{root_face_idx}")
+
+        # ルート面を2D平面に投影
+        root_face = self.faces_data[root_face_idx]
+        root_normal = np.array(root_face["plane_normal"])
+        root_origin = np.array(root_face["plane_origin"])
+
+        # 展開済み面の情報を保存
+        unfolded_faces = {}
+        unfolded_faces[root_face_idx] = {
+            "polygons": self._extract_face_2d_shape(root_face_idx, root_normal, root_origin),
+            "offset": (0.0, 0.0),  # ルート面はオフセットなし
+            "normal": root_normal,
+            "origin": root_origin
+        }
+
+        print(f"            ルート面を展開: {len(unfolded_faces[root_face_idx]['polygons'])}個のポリゴン")
+
+        # BFSで隣接する面を展開
+        queue = [root_face_idx]
+        processed = {root_face_idx}
+
+        while queue:
+            current_face_idx = queue.pop(0)
+
+            # 隣接する未処理の面を探す
+            for candidate_idx in face_indices:
+                if candidate_idx in processed:
+                    continue
+
+                # 隣接しているかチェック
+                if self._are_faces_adjacent(current_face_idx, candidate_idx):
+                    # 隣接する面を展開（簡易版：オフセットを適用）
+                    candidate_face = self.faces_data[candidate_idx]
+                    candidate_normal = np.array(candidate_face["plane_normal"])
+                    candidate_origin = np.array(candidate_face["plane_origin"])
+
+                    # 候補面を展開
+                    candidate_polygons = self._extract_face_2d_shape(candidate_idx, candidate_normal, candidate_origin)
+
+                    # 簡易版：オフセットを計算（現在の面の右側に配置）
+                    # より高度な実装では、共有エッジを基準に回転・配置する
+                    current_offset = unfolded_faces[current_face_idx]["offset"]
+                    new_offset = (current_offset[0] + 50.0, current_offset[1])  # 簡易的なオフセット
+
+                    unfolded_faces[candidate_idx] = {
+                        "polygons": candidate_polygons,
+                        "offset": new_offset,
+                        "normal": candidate_normal,
+                        "origin": candidate_origin
+                    }
+
+                    processed.add(candidate_idx)
+                    queue.append(candidate_idx)
+
+                    print(f"            面{candidate_idx}を展開: {len(candidate_polygons)}個のポリゴン、オフセット={new_offset}")
+
+        # すべてのポリゴンを収集し、オフセットを適用
+        all_polygons = []
+        face_numbers = []
+
+        for face_idx in face_indices:
+            if face_idx not in unfolded_faces:
+                print(f"            警告: 面{face_idx}は展開できませんでした")
+                continue
+
+            offset = unfolded_faces[face_idx]["offset"]
+            for polygon in unfolded_faces[face_idx]["polygons"]:
+                # オフセットを適用
+                offset_polygon = [(x + offset[0], y + offset[1]) for x, y in polygon]
+                all_polygons.append(offset_polygon)
+
+            face_data = self.faces_data[face_idx]
+            face_numbers.append(face_data.get("face_number", face_idx + 1))
+
+        print(f"          展開ネット完成: {len(all_polygons)}個のポリゴン（{len(unfolded_faces)}面）")
+
+        return {
+            "group_index": group_idx,
+            "surface_type": "plane",
+            "polygons": all_polygons,
+            "face_indices": list(unfolded_faces.keys()),
+            "face_numbers": face_numbers,
             "tabs": [],
             "fold_lines": [],
             "cut_lines": []
@@ -421,55 +688,118 @@ class UnfoldEngine:
     
     def _simplify_boundary_polygon(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        境界線ポリゴンを簡略化（形状に応じて適切な点数に削減）。
-        
+        境界線ポリゴンを簡略化（凹型多角形に対応、形状を保持）。
+        角度変化が大きい重要な頂点を検出して保持する。
+
         Args:
             points_2d: 2D点群
-        
+
         Returns:
             List[Tuple[float, float]]: 簡略化された2D点群
         """
         if len(points_2d) < 3:
             return points_2d
-        
+
         # 重複点を除去
         cleaned_points = self._remove_duplicate_points_2d(points_2d)
-        
+
         if len(cleaned_points) < 3:
             return cleaned_points
-        
+
         print(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
-        
-        # 三角形の場合
-        if self._is_triangular_boundary(cleaned_points):
-            result = self._extract_triangle_corners(cleaned_points)
-            print(f"{len(result)}点（三角形）")
-            return result
-            
-        # 四角形の場合
-        if self._is_rectangular_boundary(cleaned_points):
-            result = self._extract_rectangle_corners(cleaned_points)
-            print(f"{len(result)}点（四角形）")
-            return result
-        
-        # 五角形の場合（家の形状）
-        if self._is_pentagonal_boundary(cleaned_points):
-            result = self._extract_pentagon_corners(cleaned_points)
-            print(f"{len(result)}点（五角形）")
-            return result
-        
-        # 六角形以上の多角形を検出
-        detected_corners = self._detect_polygon_corners(cleaned_points)
-        if detected_corners > 5:
-            result = self._extract_corners_by_angle(cleaned_points, detected_corners)
-            print(f"{len(result)}点（{detected_corners}角形）")
-            return result
-        
-        # その他の多角形は適度に間引く
-        result = self._thin_out_points(cleaned_points, max_points=12)
-        print(f"{len(result)}点（一般多角形）")
+
+        # 角度変化ベースで重要な頂点を検出（凹型多角形対応）
+        result = self._simplify_by_angle_detection(cleaned_points)
+        print(f"{len(result)}点（角度検出ベース）")
         return result
     
+    def _simplify_by_angle_detection(self, points_2d: List[Tuple[float, float]],
+                                     angle_threshold: float = 10.0,
+                                     min_edge_length: float = 0.1) -> List[Tuple[float, float]]:
+        """
+        角度変化ベースで境界線を簡略化（凹型多角形対応）。
+        角度変化が大きい頂点（コーナー）を検出して保持する。
+
+        Args:
+            points_2d: 2D点群
+            angle_threshold: 角度変化の閾値（度）。この値以上の角度変化がある点を保持
+            min_edge_length: 最小エッジ長（この長さ未満の短いエッジは除去）
+
+        Returns:
+            List[Tuple[float, float]]: 簡略化された2D点群
+        """
+        if len(points_2d) < 3:
+            return points_2d
+
+        # 閉じたポリゴンかチェック
+        is_closed = (abs(points_2d[0][0] - points_2d[-1][0]) < 1e-6 and
+                     abs(points_2d[0][1] - points_2d[-1][1]) < 1e-6)
+
+        # 閉じている場合は最後の点を除去（重複を避ける）
+        work_points = points_2d[:-1] if is_closed else points_2d
+
+        if len(work_points) < 3:
+            return points_2d
+
+        # 各頂点の角度変化を計算
+        important_indices = []
+        n = len(work_points)
+
+        for i in range(n):
+            # 前後の点
+            prev_idx = (i - 1) % n
+            next_idx = (i + 1) % n
+
+            prev_point = np.array(work_points[prev_idx])
+            current_point = np.array(work_points[i])
+            next_point = np.array(work_points[next_idx])
+
+            # 前の辺と次の辺のベクトル
+            vec1 = current_point - prev_point
+            vec2 = next_point - current_point
+
+            # エッジ長をチェック
+            len1 = np.linalg.norm(vec1)
+            len2 = np.linalg.norm(vec2)
+
+            # 短いエッジはスキップ
+            if len1 < min_edge_length or len2 < min_edge_length:
+                continue
+
+            # 角度を計算
+            if len1 > 1e-6 and len2 > 1e-6:
+                vec1_normalized = vec1 / len1
+                vec2_normalized = vec2 / len2
+
+                # 内積から角度を計算
+                dot_product = np.dot(vec1_normalized, vec2_normalized)
+                dot_product = np.clip(dot_product, -1.0, 1.0)
+                angle_rad = math.acos(dot_product)
+                angle_deg = math.degrees(angle_rad)
+
+                # 角度変化が閾値以上なら重要な頂点
+                if angle_deg >= angle_threshold:
+                    important_indices.append(i)
+
+        # 重要な頂点がない場合は、等間隔で点を選択
+        if len(important_indices) < 3:
+            # 最低3点は保持（三角形の最小構成）
+            step = max(1, n // 6)  # 最大6点程度に削減
+            important_indices = list(range(0, n, step))
+
+        # 重要な頂点を抽出
+        simplified_points = [work_points[i] for i in sorted(important_indices)]
+
+        # 3点未満の場合は元の点をそのまま返す
+        if len(simplified_points) < 3:
+            return points_2d
+
+        # 閉じたポリゴンとして返す
+        if is_closed and simplified_points[0] != simplified_points[-1]:
+            simplified_points.append(simplified_points[0])
+
+        return simplified_points
+
     def _remove_duplicate_points_2d(self, points_2d: List[Tuple[float, float]], tolerance: float = 1e-6) -> List[Tuple[float, float]]:
         """
         重複点を除去（2D点用）。
@@ -1133,20 +1463,93 @@ class UnfoldEngine:
                         self._expand_face_group(current_group, used_faces, available_faces, max_group_size)
                     break
     
-    def _are_faces_adjacent(self, face_idx1: int, face_idx2: int, threshold: float = 10.0) -> bool:
+    def _are_coplanar(self, face_idx1: int, face_idx2: int, normal_threshold: float = 0.95) -> bool:
         """
-        2つの面が隣接しているか判定（簡易版）。
-        実際の商用実装では共有エッジの存在を正確に判定する必要がある。
-        
+        2つの面が同一平面（または非常に近い角度）かどうかを判定。
+
         Args:
             face_idx1: 面1のインデックス
             face_idx2: 面2のインデックス
-            threshold: 距離の閾値
-        
+            normal_threshold: 法線の類似度閾値（cos値、0.95 ≈ 18度）
+
+        Returns:
+            bool: 同一平面の場合True
+        """
+        face1 = self.faces_data[face_idx1]
+        face2 = self.faces_data[face_idx2]
+
+        # 平面でない場合は同一平面とみなさない
+        if face1.get("surface_type") != "plane" or face2.get("surface_type") != "plane":
+            return False
+
+        # 法線ベクトルを取得
+        normal1 = np.array(face1.get("plane_normal", [0, 0, 1]))
+        normal2 = np.array(face2.get("plane_normal", [0, 0, 1]))
+
+        # 法線を正規化
+        normal1 = normal1 / np.linalg.norm(normal1)
+        normal2 = normal2 / np.linalg.norm(normal2)
+
+        # 内積（cos値）を計算
+        dot_product = np.dot(normal1, normal2)
+
+        # cos値が閾値以上なら同一平面（角度が小さい）
+        # 反対向きの平面も考慮（abs）
+        is_coplanar = abs(dot_product) >= normal_threshold
+
+        return is_coplanar
+
+    def _are_faces_adjacent(self, face_idx1: int, face_idx2: int, tolerance: float = 0.01) -> bool:
+        """
+        2つの面が隣接しているか判定（エッジ共有ベース）。
+        2つ以上の頂点を共有していれば、エッジを共有している = 隣接している。
+
+        Args:
+            face_idx1: 面1のインデックス
+            face_idx2: 面2のインデックス
+            tolerance: 頂点マッチングの許容誤差（mm単位）
+
         Returns:
             bool: 隣接している場合True
         """
-        centroid1 = np.array(self.faces_data[face_idx1]["centroid"])
-        centroid2 = np.array(self.faces_data[face_idx2]["centroid"])
-        distance = np.linalg.norm(centroid1 - centroid2)
-        return distance < threshold
+        face1 = self.faces_data[face_idx1]
+        face2 = self.faces_data[face_idx2]
+
+        # 各面の境界線から全頂点を抽出
+        vertices1 = []
+        for boundary in face1.get("boundary_curves", []):
+            for point in boundary:
+                vertices1.append(np.array(point))
+
+        vertices2 = []
+        for boundary in face2.get("boundary_curves", []):
+            for point in boundary:
+                vertices2.append(np.array(point))
+
+        if not vertices1 or not vertices2:
+            return False
+
+        # 共有頂点を検出
+        shared_vertices = []
+        for v1 in vertices1:
+            for v2 in vertices2:
+                distance = np.linalg.norm(v1 - v2)
+                if distance < tolerance:
+                    # 重複チェック：すでに同じ頂点を追加していないか
+                    is_duplicate = False
+                    for shared_v in shared_vertices:
+                        if np.linalg.norm(v1 - shared_v) < tolerance:
+                            is_duplicate = True
+                            break
+                    if not is_duplicate:
+                        shared_vertices.append(v1)
+                    break
+
+        # 2つ以上の頂点を共有していればエッジを共有
+        is_adjacent = len(shared_vertices) >= 2
+
+        # デバッグログ
+        if is_adjacent:
+            print(f"      面{face_idx1} <-> 面{face_idx2}: 隣接（共有頂点数={len(shared_vertices)}）")
+
+        return is_adjacent

@@ -688,8 +688,8 @@ class UnfoldEngine:
     
     def _simplify_boundary_polygon(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        境界線ポリゴンを簡略化（凹型多角形に対応、形状を保持）。
-        角度変化が大きい重要な頂点を検出して保持する。
+        境界線ポリゴンを簡略化（凸型・凹型多角形に対応、形状を保持）。
+        凸包ベースの形状判定 → Douglas-Peucker アルゴリズムの2層アプローチ。
 
         Args:
             points_2d: 2D点群
@@ -708,9 +708,30 @@ class UnfoldEngine:
 
         print(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
 
-        # 角度変化ベースで重要な頂点を検出（凹型多角形対応）
-        result = self._simplify_by_angle_detection(cleaned_points)
-        print(f"{len(result)}点（角度検出ベース）")
+        # Layer 1: 凸型多角形の場合、凸包で正確な頂点を抽出
+        is_convex = self._is_convex_polygon(cleaned_points)
+        print(f"凸型={is_convex}, ", end="")
+
+        if is_convex:
+            num_corners = self._detect_polygon_corners(cleaned_points)
+            print(f"角数={num_corners}, ", end="")
+
+            if num_corners == 3:
+                result = self._extract_triangle_corners(cleaned_points)
+                print(f"{len(result)}点（三角形）")
+                return result
+            elif num_corners == 4:
+                result = self._extract_rectangle_corners(cleaned_points)
+                print(f"{len(result)}点（四角形）")
+                return result
+            elif 5 <= num_corners <= 12:
+                result = self._extract_convex_hull_corners(cleaned_points)
+                print(f"{len(result)}点（{num_corners}角形・凸包）")
+                return result
+
+        # Layer 2: 凹型・複雑な形状 → Douglas-Peucker アルゴリズム
+        result = self._simplify_rdp(cleaned_points, epsilon=0.5)
+        print(f"{len(result)}点（Douglas-Peucker）")
         return result
     
     def _simplify_by_angle_detection(self, points_2d: List[Tuple[float, float]],
@@ -838,29 +859,131 @@ class UnfoldEngine:
     def _ensure_counterclockwise_order(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
         境界線の点を反時計回りに並び替え（SVG描画に適した順序）。
-        
+
         Args:
             points_2d: 2D点群
-        
+
         Returns:
             List[Tuple[float, float]]: 反時計回りの2D点群
         """
         if len(points_2d) < 3:
             return points_2d
-        
+
         # 符号付き面積を計算（反時計回りなら正）
         signed_area = 0.0
         n = len(points_2d)
-        
+
         for i in range(n):
             j = (i + 1) % n
             signed_area += (points_2d[j][0] - points_2d[i][0]) * (points_2d[j][1] + points_2d[i][1])
-        
+
         # 時計回りの場合は順序を反転
         if signed_area > 0:
             return list(reversed(points_2d))
         else:
             return points_2d
+
+    def _is_convex_polygon(self, points_2d: List[Tuple[float, float]]) -> bool:
+        """
+        多角形が凸型かどうかを判定（凸包の頂点数ベース、最もシンプルで確実）。
+
+        Args:
+            points_2d: 2D点群
+
+        Returns:
+            bool: 凸型の場合True（凸包の頂点数が少ない = 凸型）
+        """
+        if len(points_2d) < 4:
+            return True  # 3点以下は常に凸型
+
+        try:
+            points_array = np.array(points_2d)
+
+            # 重複点を除去（凸包計算のため）
+            unique_points = []
+            for point in points_array:
+                is_duplicate = False
+                for unique_point in unique_points:
+                    if np.linalg.norm(point - unique_point) < 1e-6:
+                        is_duplicate = True
+                        break
+                if not is_duplicate:
+                    unique_points.append(point)
+
+            if len(unique_points) < 3:
+                return True
+
+            unique_array = np.array(unique_points)
+            hull = ConvexHull(unique_array)
+
+            # 凸包の頂点数をチェック
+            hull_vertices_count = len(hull.vertices)
+            total_unique_points = len(unique_points)
+
+            # 凸包の頂点数が全体の30%以下なら凸型と判定
+            # （例：44点の四角形 → 凸包は4頂点 → 4/44 = 9% < 30% → 凸型）
+            vertex_ratio = hull_vertices_count / total_unique_points
+
+            is_convex = vertex_ratio <= 0.3
+
+            print(f"凸包頂点={hull_vertices_count}/{total_unique_points}, 比率={vertex_ratio:.2f}, ", end="")
+
+            return is_convex
+
+        except Exception as e:
+            # 凸包計算に失敗した場合はフォールバック（外積ベース）
+            print(f"凸包計算エラー: {e}, フォールバック, ", end="")
+            return self._is_convex_polygon_fallback(points_2d)
+
+    def _is_convex_polygon_fallback(self, points_2d: List[Tuple[float, float]]) -> bool:
+        """
+        外積ベースの凸型判定（フォールバック）。
+
+        Args:
+            points_2d: 2D点群
+
+        Returns:
+            bool: 凸型の場合True
+        """
+        if len(points_2d) < 4:
+            return True
+
+        # 閉じたポリゴンかチェック
+        is_closed = (abs(points_2d[0][0] - points_2d[-1][0]) < 1e-6 and
+                     abs(points_2d[0][1] - points_2d[-1][1]) < 1e-6)
+
+        work_points = points_2d[:-1] if is_closed else points_2d
+        n = len(work_points)
+
+        if n < 3:
+            return True
+
+        # 外積の符号カウント
+        positive_count = 0
+        negative_count = 0
+
+        for i in range(n):
+            p1 = np.array(work_points[i])
+            p2 = np.array(work_points[(i + 1) % n])
+            p3 = np.array(work_points[(i + 2) % n])
+
+            vec1 = p2 - p1
+            vec2 = p3 - p2
+            cross = vec1[0] * vec2[1] - vec1[1] * vec2[0]
+
+            # 明確な符号変化のみカウント
+            if cross > 1e-8:
+                positive_count += 1
+            elif cross < -1e-8:
+                negative_count += 1
+
+        # 一方の符号が支配的（95%以上）なら凸型と判定
+        total = positive_count + negative_count
+        if total == 0:
+            return True
+
+        dominant_ratio = max(positive_count, negative_count) / total
+        return dominant_ratio >= 0.95
     
     def _is_triangular_boundary(self, points_2d: List[Tuple[float, float]]) -> bool:
         """
@@ -1121,17 +1244,17 @@ class UnfoldEngine:
     def _extract_pentagon_corners(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
         点群から五角形の5つの角を抽出。
-        
+
         Args:
             points_2d: 2D点群
-        
+
         Returns:
             List[Tuple[float, float]]: 五角形の角
         """
         try:
             points_array = np.array(points_2d)
             hull = ConvexHull(points_array)
-            
+
             if len(hull.vertices) == 5:
                 # 凸包の頂点を時計回りに並び替え
                 pentagon_corners = [tuple(points_array[i]) for i in hull.vertices]
@@ -1145,24 +1268,170 @@ class UnfoldEngine:
         except:
             # エラーの場合は元の点をそのまま返す
             return points_2d
+
+    def _extract_convex_hull_corners(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        """
+        凸包を使って多角形の頂点を抽出（汎用版）。
+
+        Args:
+            points_2d: 2D点群
+
+        Returns:
+            List[Tuple[float, float]]: 抽出された頂点（閉じた形状）
+        """
+        try:
+            points_array = np.array(points_2d)
+            hull = ConvexHull(points_array)
+
+            # 凸包の頂点を抽出
+            corners = [tuple(points_array[i]) for i in hull.vertices]
+
+            # 時計回りに並び替え
+            corners = self._sort_points_clockwise(corners)
+
+            # 閉じた多角形にする
+            if corners and corners[0] != corners[-1]:
+                corners.append(corners[0])
+
+            return corners
+        except Exception as e:
+            print(f"凸包抽出エラー: {e}")
+            # フォールバックとして元の点を返す
+            return points_2d
     
     def _thin_out_points(self, points_2d: List[Tuple[float, float]], max_points: int = 12) -> List[Tuple[float, float]]:
         """
         点群を適度に間引く。
-        
+
         Args:
             points_2d: 2D点群
             max_points: 最大点数
-        
+
         Returns:
             List[Tuple[float, float]]: 間引いた2D点群
         """
         if len(points_2d) <= max_points:
             return points_2d
-            
+
         # 等間隔で点を選択
         step = len(points_2d) // max_points
         return [points_2d[i] for i in range(0, len(points_2d), step)]
+
+    def _simplify_rdp(self, points_2d: List[Tuple[float, float]], epsilon: float = 0.5) -> List[Tuple[float, float]]:
+        """
+        Ramer-Douglas-Peucker アルゴリズムで境界線を簡略化。
+        形状を保持しつつ、不要な中間点を削除する（凸型・凹型両方に対応）。
+
+        Args:
+            points_2d: 2D点群
+            epsilon: 許容誤差（点から線分までの最大距離、mm単位）
+
+        Returns:
+            List[Tuple[float, float]]: 簡略化された2D点群
+        """
+        if len(points_2d) < 3:
+            return points_2d
+
+        # 閉じたポリゴンかチェック
+        is_closed = (abs(points_2d[0][0] - points_2d[-1][0]) < 1e-6 and
+                     abs(points_2d[0][1] - points_2d[-1][1]) < 1e-6)
+
+        # 閉じている場合は最後の点を除去して処理
+        work_points = points_2d[:-1] if is_closed else points_2d
+
+        # Douglas-Peucker アルゴリズムを実行
+        simplified = self._rdp_recursive(work_points, epsilon)
+
+        # 閉じたポリゴンとして返す
+        if is_closed and simplified and simplified[0] != simplified[-1]:
+            simplified.append(simplified[0])
+
+        return simplified
+
+    def _rdp_recursive(self, points: List[Tuple[float, float]], epsilon: float) -> List[Tuple[float, float]]:
+        """
+        Douglas-Peucker アルゴリズムの再帰実装。
+
+        Args:
+            points: 2D点群
+            epsilon: 許容誤差
+
+        Returns:
+            List[Tuple[float, float]]: 簡略化された2D点群
+        """
+        if len(points) < 3:
+            return points
+
+        # 始点と終点
+        start = np.array(points[0])
+        end = np.array(points[-1])
+
+        # 各点から線分（start-end）までの距離を計算
+        max_distance = 0.0
+        max_index = 0
+
+        for i in range(1, len(points) - 1):
+            point = np.array(points[i])
+            distance = self._point_to_line_distance(point, start, end)
+
+            if distance > max_distance:
+                max_distance = distance
+                max_index = i
+
+        # 最大距離が閾値以上なら分割して再帰
+        if max_distance > epsilon:
+            # 分割して再帰的に簡略化
+            left_part = self._rdp_recursive(points[:max_index + 1], epsilon)
+            right_part = self._rdp_recursive(points[max_index:], epsilon)
+
+            # 結合（重複を避ける）
+            return left_part[:-1] + right_part
+        else:
+            # 閾値以下なら始点と終点のみを返す
+            return [points[0], points[-1]]
+
+    def _point_to_line_distance(self, point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
+        """
+        点から線分までの垂直距離を計算。
+
+        Args:
+            point: 点
+            line_start: 線分の始点
+            line_end: 線分の終点
+
+        Returns:
+            float: 垂直距離
+        """
+        # 線分の方向ベクトル
+        line_vec = line_end - line_start
+        line_len = np.linalg.norm(line_vec)
+
+        if line_len < 1e-10:
+            # 線分の長さがゼロに近い場合は点間の距離を返す
+            return np.linalg.norm(point - line_start)
+
+        # 線分を正規化
+        line_vec_normalized = line_vec / line_len
+
+        # 点から線分始点へのベクトル
+        point_vec = point - line_start
+
+        # 線分上の最近点を計算
+        projection_length = np.dot(point_vec, line_vec_normalized)
+
+        # 投影点が線分の範囲内かチェック
+        if projection_length < 0:
+            # 始点より前
+            closest_point = line_start
+        elif projection_length > line_len:
+            # 終点より後
+            closest_point = line_end
+        else:
+            # 線分上
+            closest_point = line_start + projection_length * line_vec_normalized
+
+        # 点から最近点までの距離
+        return np.linalg.norm(point - closest_point)
     
     def _extract_cylindrical_face_2d(self, face_idx: int, axis: np.ndarray, center: np.ndarray, 
                                     radius: float) -> List[List[Tuple[float, float]]]:

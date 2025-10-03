@@ -1,0 +1,181 @@
+.root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: var(--background-color-primary);
+    overflow: hidden;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--background-color-secondary);
+    border-bottom: 1px solid var(--border-color-primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.titleIcon {
+    font-size: 24px;
+}
+
+.controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.closeButton {
+    padding: 6px 12px;
+    background: var(--button-background);
+    color: var(--button-color);
+    border: 1px solid var(--border-color-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.closeButton:hover {
+    background: var(--button-background-hover);
+    border-color: var(--border-color-hover);
+}
+
+.helpText {
+    padding: 8px 12px;
+    background: var(--info-background);
+    color: var(--info-color);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--background-color-tertiary);
+    overflow: hidden;
+}
+
+.viewContainer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-color-primary);
+    border: 1px solid var(--border-color-primary);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.viewHeader {
+    padding: 8px 12px;
+    background: var(--background-color-secondary);
+    border-bottom: 1px solid var(--border-color-primary);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-primary);
+}
+
+.view3D {
+    flex: 1;
+    position: relative;
+    background: var(--viewport-background);
+}
+
+.view2D {
+    flex: 1;
+    position: relative;
+    background: #ffffff;
+}
+
+.svgContainer {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.highlightOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.faceHighlight {
+    fill: rgba(255, 220, 0, 0.5);
+    stroke: #ffa500;
+    stroke-width: 3;
+    animation: pulseHighlight 1s infinite;
+}
+
+@keyframes pulseHighlight {
+    0% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 0.5;
+    }
+}
+
+.statusBar {
+    display: flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: var(--background-color-secondary);
+    border-top: 1px solid var(--border-color-primary);
+    font-size: 12px;
+    color: var(--color-secondary);
+    gap: 16px;
+}
+
+.statusItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.statusLabel {
+    font-weight: 500;
+}
+
+.statusValue {
+    color: var(--color-primary);
+}
+
+/* Responsive layout for smaller screens */
+@media (max-width: 768px) {
+    .content {
+        flex-direction: column;
+    }
+}
+
+/* Dark theme adjustments */
+[theme="dark"] .view2D {
+    background: #2a2a2a;
+}
+
+[theme="dark"] .svgContainer {
+    filter: invert(1) hue-rotate(180deg);
+}

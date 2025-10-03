@@ -20,9 +20,10 @@ dependencies:
   - lxml
   - shapely
   - svgwrite
-  
+
   # IFC処理（CityGMLパイプライン用）
-  - ifcopenshell=0.8.0
+  # 注：ifcopenshell 0.8.0はOCCT 7.9.0と互換性がないため一時的に無効化
+  # - ifcopenshell=0.8.0
   
   # pip経由でインストール
   - pip

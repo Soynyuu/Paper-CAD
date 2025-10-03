@@ -129,6 +129,8 @@ class SVGExporter:
         dwg.defs.add(dwg.style("""
             .face-polygon { fill: none; stroke: #000000; stroke-width: 2; }
             .face-polygon-textured { stroke: #000000; stroke-width: 2; }
+            path.face-polygon { fill: none; stroke: #000000; stroke-width: 2; }
+            path.face-polygon-textured { stroke: #000000; stroke-width: 2; }
             .tab-polygon { fill: none; stroke: #0066cc; stroke-width: 1.5; stroke-dasharray: 4,4; }
             .fold-line { stroke: #ff6600; stroke-width: 1; stroke-dasharray: 6,6; }
             .cut-line { stroke: #ff0000; stroke-width: 0.8; stroke-dasharray: 3,3; }
@@ -150,65 +152,124 @@ class SVGExporter:
         for group_idx, group in enumerate(placed_groups):
             print(f"グループ{group_idx}をSVGに描画中...")
             print(f"  ポリゴン数: {len(group['polygons'])}")
-            
-            # 面ポリゴン描画
-            for poly_idx, polygon in enumerate(group["polygons"]):
-                if len(polygon) >= 3:
-                    # スケールファクターを適用
-                    points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
 
-                    # 面番号を取得してテクスチャを確認
-                    face_number = None
-                    texture_mapping = None
-                    if "face_numbers" in group and poly_idx < len(group["face_numbers"]):
-                        face_number = group["face_numbers"][poly_idx]
-                        # テクスチャマッピングを検索
-                        for mapping in self.texture_mappings:
-                            if mapping.get("faceNumber") == face_number:
-                                texture_mapping = mapping
-                                break
+            polygons = group["polygons"]
 
-                    # テクスチャがある場合はパターンを適用
-                    if texture_mapping:
-                        pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
-                        # パターンのfillに加えて、fillOpacityも設定
-                        polygon = dwg.polygon(
-                            points=points,
-                            class_="face-polygon-textured",
-                            fill=f"url(#{pattern_id})",
-                            fill_opacity="1.0"  # 不透明度を明示的に設定
-                        )
-                        dwg.add(polygon)
-                        print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画（テクスチャ: {pattern_id}）")
-                    else:
-                        dwg.add(dwg.polygon(points=points, class_="face-polygon"))
-                        print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画")
+            # 面番号を取得
+            face_number = None
+            texture_mapping = None
+            if "face_numbers" in group and len(group["face_numbers"]) > 0:
+                face_number = group["face_numbers"][0]
+                # テクスチャマッピングを検索
+                for mapping in self.texture_mappings:
+                    if mapping.get("faceNumber") == face_number:
+                        texture_mapping = mapping
+                        break
 
-                    polygon_count += 1
-                    
-                    # 面番号を描画（ポリゴンの中心に配置）
-                    print(f"  グループデータ: face_numbers={group.get('face_numbers', 'なし')}")
-                    if "face_numbers" in group and poly_idx < len(group["face_numbers"]):
-                        # ポリゴンの中心を計算
-                        center_x = sum(p[0] for p in points) / len(points)
-                        center_y = sum(p[1] for p in points) / len(points)
-                        
-                        # 面のサイズに基づいてフォントサイズを計算
-                        font_size = self._calculate_face_number_size(points)
-                        
-                        # 面番号テキストを追加（動的サイズで）
-                        face_number = group["face_numbers"][poly_idx]
-                        dwg.add(dwg.text(
-                            str(face_number),
-                            insert=(center_x, center_y),
-                            style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                            dominant_baseline="middle"  # 垂直中央揃え
-                        ))
-                        print(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
-                    else:
-                        print(f"    面番号なし: poly_idx={poly_idx}, face_numbers存在={('face_numbers' in group)}")
+            # 複数のポリゴンがある場合は穴付きポリゴンとして描画（SVG path使用）
+            if len(polygons) > 1:
+                print(f"  複数ポリゴン検出（{len(polygons)}個）→ 穴付き形状として描画")
+                path_parts = []
+                all_points = []  # 面番号配置用
+
+                for poly_idx, polygon in enumerate(polygons):
+                    if len(polygon) >= 3:
+                        # スケールファクターを適用
+                        points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
+                        all_points.extend(points)
+
+                        # Mで移動、Lで線を引く、Zで閉じる
+                        path_parts.append(f"M {points[0][0]},{points[0][1]}")
+                        for x, y in points[1:]:
+                            path_parts.append(f"L {x},{y}")
+                        path_parts.append("Z")
+
+                        print(f"    ポリゴン{poly_idx}: {len(points)}点を追加（{'外形線' if poly_idx == 0 else '内形線（穴）'}）")
+
+                # pathを作成して描画
+                full_path = " ".join(path_parts)
+
+                if texture_mapping:
+                    pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
+                    dwg.add(dwg.path(
+                        d=full_path,
+                        class_="face-polygon-textured",
+                        fill=f"url(#{pattern_id})",
+                        fill_opacity="1.0",
+                        fill_rule="evenodd"  # 穴を正しく処理
+                    ))
+                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd）")
                 else:
-                    print(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
+                    dwg.add(dwg.path(
+                        d=full_path,
+                        class_="face-polygon",
+                        fill_rule="evenodd"  # 穴を正しく処理
+                    ))
+                    print(f"  穴付きパスを描画（fill-rule: evenodd）")
+
+                polygon_count += 1
+
+                # 面番号を描画（最初のポリゴン＝外形線の中心に配置）
+                if face_number is not None and all_points:
+                    # 外形線（最初のポリゴン）の中心を計算
+                    first_polygon_points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygons[0]]
+                    center_x = sum(p[0] for p in first_polygon_points) / len(first_polygon_points)
+                    center_y = sum(p[1] for p in first_polygon_points) / len(first_polygon_points)
+
+                    font_size = self._calculate_face_number_size(first_polygon_points)
+
+                    dwg.add(dwg.text(
+                        str(face_number),
+                        insert=(center_x, center_y),
+                        style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                        dominant_baseline="middle"
+                    ))
+                    print(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
+
+            else:
+                # 単一ポリゴンの場合は従来通り
+                for poly_idx, polygon in enumerate(polygons):
+                    if len(polygon) >= 3:
+                        # スケールファクターを適用
+                        points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
+
+                        # テクスチャがある場合はパターンを適用
+                        if texture_mapping:
+                            pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
+                            # パターンのfillに加えて、fillOpacityも設定
+                            polygon_elem = dwg.polygon(
+                                points=points,
+                                class_="face-polygon-textured",
+                                fill=f"url(#{pattern_id})",
+                                fill_opacity="1.0"  # 不透明度を明示的に設定
+                            )
+                            dwg.add(polygon_elem)
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}）")
+                        else:
+                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画")
+
+                        polygon_count += 1
+
+                        # 面番号を描画（ポリゴンの中心に配置）
+                        if face_number is not None:
+                            # ポリゴンの中心を計算
+                            center_x = sum(p[0] for p in points) / len(points)
+                            center_y = sum(p[1] for p in points) / len(points)
+
+                            # 面のサイズに基づいてフォントサイズを計算
+                            font_size = self._calculate_face_number_size(points)
+
+                            # 面番号テキストを追加（動的サイズで）
+                            dwg.add(dwg.text(
+                                str(face_number),
+                                insert=(center_x, center_y),
+                                style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                                dominant_baseline="middle"  # 垂直中央揃え
+                            ))
+                            print(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
+                    else:
+                        print(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
             
             # タブ描画
             for tab_idx, tab in enumerate(group.get("tabs", [])):
@@ -575,30 +636,78 @@ class SVGExporter:
             
             # グループを描画（mm単位の座標をpxに変換）
             for group in page_groups:
-                # 面ポリゴン描画
-                for poly_idx, polygon in enumerate(group.get("polygons", [])):
-                    if len(polygon) >= 3:
-                        # mm単位の座標をピクセルに変換（scale_factorは使わず、mm_to_pxで変換）
-                        points = [
-                            (x * self.mm_to_px + margin_px, 
-                             y * self.mm_to_px + margin_px + page_y_offset) 
-                            for x, y in polygon
+                polygons = group.get("polygons", [])
+
+                # 面番号を取得
+                face_number = None
+                if "face_numbers" in group and len(group["face_numbers"]) > 0:
+                    face_number = group["face_numbers"][0]
+
+                # 複数のポリゴンがある場合は穴付きポリゴンとして描画
+                if len(polygons) > 1:
+                    path_parts = []
+
+                    for polygon in polygons:
+                        if len(polygon) >= 3:
+                            # mm単位の座標をピクセルに変換
+                            points = [
+                                (x * self.mm_to_px + margin_px,
+                                 y * self.mm_to_px + margin_px + page_y_offset)
+                                for x, y in polygon
+                            ]
+
+                            # pathデータを追加
+                            path_parts.append(f"M {points[0][0]},{points[0][1]}")
+                            for x, y in points[1:]:
+                                path_parts.append(f"L {x},{y}")
+                            path_parts.append("Z")
+
+                    # pathを作成して描画
+                    full_path = " ".join(path_parts)
+                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+
+                    # 面番号を描画（外形線の中心）
+                    if face_number is not None:
+                        first_polygon_points = [
+                            (x * self.mm_to_px + margin_px,
+                             y * self.mm_to_px + margin_px + page_y_offset)
+                            for x, y in polygons[0]
                         ]
-                        dwg.add(dwg.polygon(points=points, class_="face-polygon"))
-                        
-                        # 面番号を描画
-                        if "face_numbers" in group and poly_idx < len(group["face_numbers"]):
-                            center_x = sum(p[0] for p in points) / len(points)
-                            center_y = sum(p[1] for p in points) / len(points)
-                            font_size = self._calculate_face_number_size(points)
-                            face_number = group["face_numbers"][poly_idx]
-                            
-                            dwg.add(dwg.text(
-                                str(face_number),
-                                insert=(center_x, center_y),
-                                style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                                dominant_baseline="middle"
-                            ))
+                        center_x = sum(p[0] for p in first_polygon_points) / len(first_polygon_points)
+                        center_y = sum(p[1] for p in first_polygon_points) / len(first_polygon_points)
+                        font_size = self._calculate_face_number_size(first_polygon_points)
+
+                        dwg.add(dwg.text(
+                            str(face_number),
+                            insert=(center_x, center_y),
+                            style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                            dominant_baseline="middle"
+                        ))
+
+                else:
+                    # 単一ポリゴンの場合
+                    for poly_idx, polygon in enumerate(polygons):
+                        if len(polygon) >= 3:
+                            # mm単位の座標をピクセルに変換（scale_factorは使わず、mm_to_pxで変換）
+                            points = [
+                                (x * self.mm_to_px + margin_px,
+                                 y * self.mm_to_px + margin_px + page_y_offset)
+                                for x, y in polygon
+                            ]
+                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+
+                            # 面番号を描画
+                            if face_number is not None:
+                                center_x = sum(p[0] for p in points) / len(points)
+                                center_y = sum(p[1] for p in points) / len(points)
+                                font_size = self._calculate_face_number_size(points)
+
+                                dwg.add(dwg.text(
+                                    str(face_number),
+                                    insert=(center_x, center_y),
+                                    style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                                    dominant_baseline="middle"
+                                ))
                 
                 # タブ描画
                 for tab in group.get("tabs", []):
@@ -715,30 +824,78 @@ class SVGExporter:
             
             # グループを描画
             for group in page_groups:
-                # 面ポリゴン描画
-                for poly_idx, polygon in enumerate(group.get("polygons", [])):
-                    if len(polygon) >= 3:
-                        # ページマージンを考慮した配置
-                        points = [
-                            (x * actual_scale + margin_px, 
-                             y * actual_scale + margin_px) 
-                            for x, y in polygon
+                polygons = group.get("polygons", [])
+
+                # 面番号を取得
+                face_number = None
+                if "face_numbers" in group and len(group["face_numbers"]) > 0:
+                    face_number = group["face_numbers"][0]
+
+                # 複数のポリゴンがある場合は穴付きポリゴンとして描画
+                if len(polygons) > 1:
+                    path_parts = []
+
+                    for polygon in polygons:
+                        if len(polygon) >= 3:
+                            # ページマージンを考慮した配置
+                            points = [
+                                (x * actual_scale + margin_px,
+                                 y * actual_scale + margin_px)
+                                for x, y in polygon
+                            ]
+
+                            # pathデータを追加
+                            path_parts.append(f"M {points[0][0]},{points[0][1]}")
+                            for x, y in points[1:]:
+                                path_parts.append(f"L {x},{y}")
+                            path_parts.append("Z")
+
+                    # pathを作成して描画
+                    full_path = " ".join(path_parts)
+                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+
+                    # 面番号を描画（外形線の中心）
+                    if face_number is not None:
+                        first_polygon_points = [
+                            (x * actual_scale + margin_px,
+                             y * actual_scale + margin_px)
+                            for x, y in polygons[0]
                         ]
-                        dwg.add(dwg.polygon(points=points, class_="face-polygon"))
-                        
-                        # 面番号を描画
-                        if "face_numbers" in group and poly_idx < len(group["face_numbers"]):
-                            center_x = sum(p[0] for p in points) / len(points)
-                            center_y = sum(p[1] for p in points) / len(points)
-                            font_size = self._calculate_face_number_size(points)
-                            face_number = group["face_numbers"][poly_idx]
-                            
-                            dwg.add(dwg.text(
-                                str(face_number),
-                                insert=(center_x, center_y),
-                                style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                                dominant_baseline="middle"
-                            ))
+                        center_x = sum(p[0] for p in first_polygon_points) / len(first_polygon_points)
+                        center_y = sum(p[1] for p in first_polygon_points) / len(first_polygon_points)
+                        font_size = self._calculate_face_number_size(first_polygon_points)
+
+                        dwg.add(dwg.text(
+                            str(face_number),
+                            insert=(center_x, center_y),
+                            style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                            dominant_baseline="middle"
+                        ))
+
+                else:
+                    # 単一ポリゴンの場合
+                    for poly_idx, polygon in enumerate(polygons):
+                        if len(polygon) >= 3:
+                            # ページマージンを考慮した配置
+                            points = [
+                                (x * actual_scale + margin_px,
+                                 y * actual_scale + margin_px)
+                                for x, y in polygon
+                            ]
+                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+
+                            # 面番号を描画
+                            if face_number is not None:
+                                center_x = sum(p[0] for p in points) / len(points)
+                                center_y = sum(p[1] for p in points) / len(points)
+                                font_size = self._calculate_face_number_size(points)
+
+                                dwg.add(dwg.text(
+                                    str(face_number),
+                                    insert=(center_x, center_y),
+                                    style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
+                                    dominant_baseline="middle"
+                                ))
                 
                 # タブ描画
                 for tab in group.get("tabs", []):

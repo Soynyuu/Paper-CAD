@@ -1,8 +1,11 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import jsPDF from "jspdf";
-import { svg2pdf } from "svg2pdf.js";
+// Use SVG-Edit's bundled versions to avoid version conflicts
+// @ts-ignore - These imports are from SVG-Edit's node_modules
+import jsPDF from "svgedit/node_modules/jspdf";
+// @ts-ignore - These imports are from SVG-Edit's node_modules
+import { svg2pdf } from "svgedit/node_modules/svg2pdf.js";
 
 export interface SimplePDFExportOptions {
     pageFormat: "A4" | "A3" | "Letter";

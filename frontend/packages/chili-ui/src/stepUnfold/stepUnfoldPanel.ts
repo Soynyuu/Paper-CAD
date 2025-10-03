@@ -14,6 +14,7 @@ import {
     UnfoldOptions,
     FaceTextureService,
 } from "chili-core";
+import { config } from "chili-core/src/config/config";
 import Editor from "svgedit";
 import "svgedit/dist/editor/svgedit.css";
 import "./svgedit-override.css"; // Apply our design system overrides
@@ -59,7 +60,7 @@ export class StepUnfoldPanel extends HTMLElement {
         this._app = app;
         StepUnfoldPanel._instance = this;
 
-        this._service = new StepUnfoldService("http://localhost:8001/api");
+        this._service = new StepUnfoldService(config.stepUnfoldApiUrl);
 
         this._svgWrapper = div({
             className: style.svgWrapper,

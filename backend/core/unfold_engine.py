@@ -1088,10 +1088,10 @@ class UnfoldEngine:
     def _extract_rectangle_corners(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
         点群から四角形の4つの角を抽出。
-        
+
         Args:
             points_2d: 2D点群
-        
+
         Returns:
             List[Tuple[float, float]]: 四角形の角
         """
@@ -1099,23 +1099,34 @@ class UnfoldEngine:
             # 凸包を使用して角を抽出
             points_array = np.array(points_2d)
             hull = ConvexHull(points_array)
-            
-            if len(hull.vertices) == 4:
-                # 凸包の頂点を時計回りに並び替え
-                rectangle_corners = [tuple(points_array[i]) for i in hull.vertices]
-                rectangle_corners = self._sort_points_clockwise(rectangle_corners)
-                # 閉じた四角形にする
-                rectangle_corners.append(rectangle_corners[0])
-                return rectangle_corners
-        except:
-            pass
-        
+
+            # 凸包の頂点を抽出
+            corners = [tuple(points_array[i]) for i in hull.vertices]
+
+            # 凸包の頂点が4点に近い場合（4-8点）
+            if 4 <= len(corners) <= 8:
+                # 時計回りに並び替え
+                corners = self._sort_points_clockwise(corners)
+                # 閉じた形状にする
+                if corners[0] != corners[-1]:
+                    corners.append(corners[0])
+
+                # Douglas-Peuckerで正確に4点に簡略化
+                corners = self._simplify_rdp(corners, epsilon=1.0)
+
+                # 4-5点（閉じた四角形）になったか確認
+                if 4 <= len(corners) <= 5:
+                    return corners
+
+        except Exception as e:
+            print(f"凸包四角形抽出エラー: {e}, ", end="")
+
         # フォールバック：境界ボックスベースの抽出
         xs = [p[0] for p in points_2d]
         ys = [p[1] for p in points_2d]
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
-        
+
         # 4つの角を時計回りに並べる
         corners = [
             (min_x, min_y),  # 左下
@@ -1124,7 +1135,7 @@ class UnfoldEngine:
             (min_x, max_y),  # 左上
             (min_x, min_y)   # 閉じる
         ]
-        
+
         return corners
     
     def _sort_points_clockwise(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
@@ -1271,7 +1282,7 @@ class UnfoldEngine:
 
     def _extract_convex_hull_corners(self, points_2d: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        凸包を使って多角形の頂点を抽出（汎用版）。
+        凸包を使って多角形の頂点を抽出し、さらにDouglas-Peuckerで簡略化（汎用版）。
 
         Args:
             points_2d: 2D点群
@@ -1292,6 +1303,11 @@ class UnfoldEngine:
             # 閉じた多角形にする
             if corners and corners[0] != corners[-1]:
                 corners.append(corners[0])
+
+            # 凸包の頂点が多すぎる場合（>12）、Douglas-Peuckerでさらに簡略化
+            if len(corners) > 12:
+                corners = self._simplify_rdp(corners, epsilon=1.0)
+                print(f"→{len(corners)}点に再簡略化, ", end="")
 
             return corners
         except Exception as e:

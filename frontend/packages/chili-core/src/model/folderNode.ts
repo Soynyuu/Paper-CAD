@@ -30,7 +30,16 @@ export class FolderNode extends Node implements INodeLinkedList {
     }
 
     add(...items: INode[]): void {
-        const records = items.map((item) => ({
+        // Filter out any items that would create circular references
+        const validItems = items.filter(item => {
+            if (item instanceof FolderNode && this.isAncestorOf(item, this)) {
+                Logger.warn(`Cannot add ${item.name} to ${this.name} - would create circular reference`);
+                return false;
+            }
+            return true;
+        });
+
+        const records = validItems.map((item) => ({
             action: NodeAction.add,
             node: item,
             oldParent: undefined,
@@ -39,7 +48,7 @@ export class FolderNode extends Node implements INodeLinkedList {
             newPrevious: this._lastChild,
         }));
 
-        items.forEach((item) => {
+        validItems.forEach((item) => {
             if (this.initNode(item)) {
                 this.addToLast(item);
             }
@@ -158,6 +167,12 @@ export class FolderNode extends Node implements INodeLinkedList {
     insertBefore(target: INode | undefined, node: INode): void {
         if (target && !this.validateChild(target)) return;
 
+        // Check for circular reference
+        if (node instanceof FolderNode && this.isAncestorOf(node, this)) {
+            Logger.warn(`Cannot insert ${node.name} before ${target?.name || 'first'} - would create circular reference`);
+            return;
+        }
+
         const record = {
             action: NodeAction.insertBefore,
             node,
@@ -194,6 +209,12 @@ export class FolderNode extends Node implements INodeLinkedList {
     insertAfter(target: INode | undefined, node: INode): void {
         if (target && !this.validateChild(target)) return;
 
+        // Check for circular reference
+        if (node instanceof FolderNode && this.isAncestorOf(node, this)) {
+            Logger.warn(`Cannot insert ${node.name} after ${target?.name || 'last'} - would create circular reference`);
+            return;
+        }
+
         const record = {
             action: NodeAction.insertAfter,
             oldParent: undefined,
@@ -219,6 +240,12 @@ export class FolderNode extends Node implements INodeLinkedList {
     move(child: INode, newParent: FolderNode, previousSibling?: INode): void {
         if (previousSibling && previousSibling.parent !== newParent) {
             Logger.warn(`${previousSibling.name} is not a child node of the ${newParent.name} node`);
+            return;
+        }
+
+        // Check for circular reference - prevent moving a parent into its own descendant
+        if (this.isAncestorOf(child, newParent)) {
+            Logger.warn(`Cannot move ${child.name} into ${newParent.name} - would create circular reference`);
             return;
         }
 
@@ -285,5 +312,28 @@ export class FolderNode extends Node implements INodeLinkedList {
             child.parentVisible = this.visible && this.parentVisible;
             child = child.nextSibling;
         }
+    }
+
+    /**
+     * Check if the given node is an ancestor of the target node
+     * (i.e., if target is a descendant of node)
+     */
+    private isAncestorOf(node: INode, target: INode): boolean {
+        // If the node is a FolderNode, check all its descendants
+        if (node instanceof FolderNode) {
+            let child = node.firstChild;
+            while (child) {
+                // Direct child match
+                if (child === target) {
+                    return true;
+                }
+                // Recursive check for deeper descendants
+                if (child instanceof FolderNode && this.isAncestorOf(child, target)) {
+                    return true;
+                }
+                child = child.nextSibling;
+            }
+        }
+        return false;
     }
 }

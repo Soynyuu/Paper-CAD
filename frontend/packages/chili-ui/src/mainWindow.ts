@@ -11,6 +11,7 @@ import {
     RibbonTab,
     debounce,
 } from "chili-core";
+import { AssemblyPanel } from "./assembly";
 import { Dialog } from "./dialog";
 import { Editor } from "./editor";
 import { Home } from "./home";
@@ -25,6 +26,7 @@ export class MainWindow implements IWindow {
     private _inited: boolean = false;
     private _home?: Home;
     private _editor?: Editor;
+    private _assemblyPanel?: AssemblyPanel;
 
     constructor(readonly tabs: RibbonTab[]) {
         this.setTheme("light");
@@ -37,6 +39,7 @@ export class MainWindow implements IWindow {
         this._inited = true;
         this._initHome(app);
         this._initEditor(app);
+        this._initAssemblyPanel(app);
         this._initSubs(app);
     }
 
@@ -67,6 +70,11 @@ export class MainWindow implements IWindow {
 
     private async _initEditor(app: IApplication) {
         this._editor = new Editor(app, this.tabs);
+    }
+
+    private _initAssemblyPanel(app: IApplication) {
+        // Create assembly panel instance (will be shown when assembly mode is activated)
+        this._assemblyPanel = new AssemblyPanel(app);
     }
 
     registerHomeCommand(groupName: I18nKeys, command: CommandKeys | Button): void {

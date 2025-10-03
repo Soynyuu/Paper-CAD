@@ -15,6 +15,8 @@ import { Result } from "./result";
 
 export interface PubSubEventMap {
     activeViewChanged: (view: IView | undefined) => void;
+    "assemblyMode.showPanel": (data: any) => void;
+    "assemblyMode.closed": () => void;
     clearFloatTip: () => void;
     clearInput: () => void;
     clearSelectionControl: () => void;

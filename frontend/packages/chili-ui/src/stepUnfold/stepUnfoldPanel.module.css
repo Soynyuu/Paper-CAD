@@ -103,17 +103,86 @@
     border: none;
 }
 
-/* Controls section */
-.controls {
+/* Horizontal top bar for compact controls */
+.topBar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 2px var(--spacing-md) var(--spacing-xs) var(--spacing-md);
+    background-color: var(--panel-header-background);
+    border-bottom: 1px solid var(--border-color);
+    min-height: 36px;
+}
+
+/* Button group in top bar */
+.buttonGroup {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* Compact page settings for top bar */
+.compactPageSettings {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.compactPageSettings select {
+    padding: 2px 6px;
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    height: 28px;
+}
+
+/* Compact scale controls for top bar */
+.compactScaleControls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 150px;
+    flex-shrink: 0;
+}
+
+.compactScaleLabel {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--neutral-700);
+    white-space: nowrap;
+}
+
+.compactScaleControls .scaleSlider {
+    width: 100px;
+    height: 4px;
+}
+
+/* Secondary controls area */
+.secondaryControls {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
-    background-color: var(--panel-header-background);
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--neutral-50);
     border-bottom: 1px solid var(--border-color);
 }
 
-/* Button row for inline buttons */
+/* Info section for model size and experimental badge */
+.infoSection {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    font-size: var(--font-size-xs);
+    color: var(--neutral-600);
+}
+
+/* Button row for inline buttons (legacy - keeping for backwards compatibility) */
 .buttonRow {
     display: flex;
     gap: var(--spacing-sm);
@@ -122,7 +191,7 @@
 
 /* Face number button */
 .faceNumberButton {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 4px 8px;
     background-color: var(--button-background);
     color: var(--button-text-color);
     border: 1px solid var(--button-border-color);
@@ -132,6 +201,7 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     white-space: nowrap;
+    height: 28px;
 }
 
 .faceNumberButton:hover {
@@ -159,7 +229,7 @@
 
 /* Layout mode button */
 .layoutModeButton {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 4px 8px;
     background-color: var(--button-background);
     color: var(--button-text-color);
     border: 1px solid var(--button-border-color);
@@ -169,6 +239,7 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     white-space: nowrap;
+    height: 28px;
 }
 
 .layoutModeButton:hover {
@@ -325,13 +396,12 @@
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
+    padding: 2px var(--spacing-xs);
     background-color: var(--warning-light);
     color: var(--warning-dark);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     font-weight: 600;
-    margin-bottom: var(--spacing-sm);
 }
 
 .experimentalTooltip {
@@ -355,6 +425,72 @@
 
 .experimentalBadge:hover .experimentalTooltip {
     opacity: 1;
+}
+
+/* PDF Export button */
+.pdfExportButton {
+    padding: 4px 8px;
+    background-color: var(--button-background);
+    color: var(--button-text-color);
+    border: 1px solid var(--button-border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+    height: 28px;
+}
+
+.pdfExportButton:hover {
+    background-color: var(--button-hover-background);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.pdfExportButton:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.pdfExportButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* PDF Settings container */
+.pdfSettingsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background-color: var(--neutral-50);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    margin-top: var(--spacing-sm);
+}
+
+.pdfScaleInput {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    color: var(--neutral-800);
+    transition: all var(--transition-fast);
+}
+
+.pdfScaleInput:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.pdfScaleInput:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
 }
 
 /* Override SVG-Edit default styles - moved to svgedit-override.css */

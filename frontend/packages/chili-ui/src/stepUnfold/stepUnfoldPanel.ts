@@ -42,6 +42,7 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _pdfSplitPagesCheckbox: HTMLInputElement;
     private readonly _pdfScaleInput: HTMLInputElement;
     private readonly _pdfSettingsContainer: HTMLDivElement;
+    private _secondaryControlsContainer: HTMLDivElement = null as any; // Will be initialized in _render()
     private _svgEditor: Editor | null = null;
     private _svgEditContainer: HTMLDivElement | null = null;
     private readonly _app: IApplication;
@@ -102,7 +103,12 @@ export class StepUnfoldPanel extends HTMLElement {
         this._faceHighlightContainer = div(
             {
                 className: style.faceHighlightContainer,
-                style: { marginTop: "8px", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" },
+                style: {
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    display: "none"  // Hidden by default
+                },
             },
             div(
                 { style: { display: "flex", alignItems: "center" } },
@@ -146,19 +152,11 @@ export class StepUnfoldPanel extends HTMLElement {
 
         this._pageSettingsContainer = div(
             {
-                className: style.pageSettingsContainer,
+                className: style.compactPageSettings,
                 style: { display: "none" }, // Hidden by default
             },
-            label(
-                { className: style.pageSettingLabel },
-                span({ textContent: I18n.translate("stepUnfold.pageFormat") + ": " }),
-                this._pageFormatSelect,
-            ),
-            label(
-                { className: style.pageSettingLabel },
-                span({ textContent: I18n.translate("stepUnfold.pageOrientation") + ": " }),
-                this._pageOrientationSelect,
-            ),
+            this._pageFormatSelect,
+            this._pageOrientationSelect,
         );
 
         // Create scale slider
@@ -307,38 +305,57 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     private _render() {
+        // Create secondary controls container
+        this._secondaryControlsContainer = div(
+            {
+                className: style.secondaryControls,
+                style: { display: "none" } // Hidden by default
+            },
+            this._faceHighlightContainer,
+            this._pdfSettingsContainer,
+            // Model size info and experimental badge (moved to secondary area)
+            div(
+                { className: style.infoSection },
+                div(
+                    { className: style.experimentalBadge },
+                    span({ textContent: I18n.translate("stepUnfold.experimental") }),
+                    span({
+                        className: style.experimentalTooltip,
+                        textContent: I18n.translate("stepUnfold.experimentalWarning"),
+                    }),
+                ),
+                this._modelSizeDisplay,
+            ),
+        );
+
         this.append(
             div(
                 { className: style.root },
+                // Horizontal top bar containing all controls
                 div(
-                    { className: style.controls },
-                    div({ className: style.buttonRow },
+                    { className: style.topBar },
+                    // Left section: Buttons
+                    div({ className: style.buttonGroup },
                         this._showFaceNumbersButton,
                         this._layoutModeButton,
                         this._pdfExportButton
                     ),
-                    this._faceHighlightContainer,
+                    // Spacer to push right controls to the end
+                    div({ style: { flex: "1" } }),
+                    // Right section: Page settings and scale controls
                     this._pageSettingsContainer,
-                    this._pdfSettingsContainer,
                     div(
-                        { className: style.scaleControls },
-                        div(
-                            { className: style.experimentalBadge },
-                            span({ textContent: I18n.translate("stepUnfold.experimental") }),
-                            span({
-                                className: style.experimentalTooltip,
-                                textContent: I18n.translate("stepUnfold.experimentalWarning"),
-                            }),
-                        ),
+                        { className: style.compactScaleControls },
                         label(
-                            { className: style.scaleLabel },
+                            { className: style.compactScaleLabel },
                             span({ textContent: I18n.translate("stepUnfold.scale") + ": " }),
                             this._scaleValueDisplay,
                         ),
                         this._scaleSlider,
-                        this._modelSizeDisplay,
                     ),
                 ),
+                // Secondary controls (face highlight and PDF settings)
+                this._secondaryControlsContainer,
                 this._svgWrapper,
             ),
         );
@@ -729,7 +746,11 @@ export class StepUnfoldPanel extends HTMLElement {
     private async _displaySVG(svgContent: string) {
         // Destroy existing editor if present
         if (this._svgEditContainer) {
-            this._svgEditContainer.remove();
+            try {
+                this._svgEditContainer.remove();
+            } catch (e) {
+                console.warn("Error removing existing SVG-Edit container:", e);
+            }
             this._svgEditContainer = null;
             this._svgEditor = null;
         }
@@ -737,7 +758,30 @@ export class StepUnfoldPanel extends HTMLElement {
         // Clear container
         this._svgContainer.innerHTML = "";
 
-        // Create a container div for SVG-Edit
+        // Enable SVG-Edit for editing capability
+        const USE_SVGEDIT = true; // Toggle this to enable/disable SVG-Edit
+
+        if (!USE_SVGEDIT) {
+            // Simple SVG display without editing capability
+            console.log("Displaying SVG without SVG-Edit");
+            this._svgContainer.innerHTML = svgContent;
+
+            // Store the SVG element for PDF export
+            const svgElement = this._svgContainer.querySelector('svg');
+            if (svgElement) {
+                // Ensure SVG has proper dimensions
+                if (!svgElement.getAttribute('width')) {
+                    svgElement.setAttribute('width', '100%');
+                }
+                if (!svgElement.getAttribute('height')) {
+                    svgElement.setAttribute('height', '100%');
+                }
+                console.log("SVG displayed successfully");
+            }
+            return;
+        }
+
+        // Initialize SVG-Edit
         this._svgEditContainer = document.createElement("div");
         this._svgEditContainer.style.width = "100%";
         this._svgEditContainer.style.height = "100%";
@@ -1068,10 +1112,16 @@ export class StepUnfoldPanel extends HTMLElement {
             this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.paged");
             this._layoutModeButton.classList.add(style.active);
             this._pageSettingsContainer.style.display = "flex";
+            // Show secondary controls to display info when in paged mode
+            this._secondaryControlsContainer.style.display = "flex";
         } else {
             this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.canvas");
             this._layoutModeButton.classList.remove(style.active);
             this._pageSettingsContainer.style.display = "none";
+            // Hide secondary controls if nothing else is showing
+            if (this._pdfSettingsContainer.style.display === "none") {
+                this._secondaryControlsContainer.style.display = "none";
+            }
         }
 
         console.log(`Layout mode changed to: ${this._layoutMode}`);
@@ -1195,6 +1245,7 @@ export class StepUnfoldPanel extends HTMLElement {
         // Toggle settings visibility
         if (this._pdfSettingsContainer.style.display === "none") {
             this._pdfSettingsContainer.style.display = "block";
+            this._secondaryControlsContainer.style.display = "flex"; // Show container
 
             // Add export button inside settings
             const existingExportBtn = this._pdfSettingsContainer.querySelector(".pdf-export-action");
@@ -1218,6 +1269,10 @@ export class StepUnfoldPanel extends HTMLElement {
             }
         } else {
             this._pdfSettingsContainer.style.display = "none";
+            // Hide secondary controls if nothing else is showing
+            if (this._layoutMode === "canvas") {
+                this._secondaryControlsContainer.style.display = "none";
+            }
         }
     }
 

@@ -12,6 +12,7 @@ import {
     UnfoldOptions,
     IView,
 } from "chili-core";
+import { config } from "chili-core/src/config/config";
 import style from "./assemblyPanel.module.css";
 
 export class AssemblyPanel extends HTMLElement {
@@ -33,7 +34,7 @@ export class AssemblyPanel extends HTMLElement {
         this._app = app;
         AssemblyPanel._instance = this;
 
-        this._service = new StepUnfoldService("http://localhost:8001/api");
+        this._service = new StepUnfoldService(config.stepUnfoldApiUrl);
 
         this._view3D = div({
             className: style.view3D,

@@ -45,8 +45,9 @@ export class StepUnfold extends CancelableCommand {
         // TODO: Get stepUnfoldService from application services
         // For now, create directly
         const { StepUnfoldService } = await import("chili-core");
+        const { config } = await import("chili-core/src/config/config");
 
-        const stepUnfoldService = new StepUnfoldService("http://localhost:8001/api");
+        const stepUnfoldService = new StepUnfoldService(config.stepUnfoldApiUrl);
 
         const selectedFormat = this.format.selectedItem;
         if (selectedFormat === undefined) {

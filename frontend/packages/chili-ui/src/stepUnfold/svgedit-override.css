@@ -451,7 +451,7 @@ select {
     border-radius: 3px !important;
     color: var(--foreground-color) !important;
     padding: 2px 6px !important;
-    font-size: 11px !important;
+    font-size: var(--font-size-xs) !important;
     font-weight: normal !important;
     min-width: 50px !important;
     transition:

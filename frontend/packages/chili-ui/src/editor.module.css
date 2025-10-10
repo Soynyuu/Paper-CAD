@@ -57,7 +57,7 @@
         justify-content: center;
         z-index: var(--z-dropdown);
         transition: all 0.3s ease-in-out;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: #666;
     }
 

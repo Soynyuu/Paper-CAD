@@ -34,7 +34,7 @@
             height: 48px;
             width: auto;
             font-size: var(--font-size-base);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             margin: var(--spacing-sm) var(--spacing-xl);
             padding: 0px var(--spacing-xl);
             border-radius: var(--radius-md);
@@ -57,9 +57,9 @@
 
         .back {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
+            color: var(--neutral-0);
             border: none;
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
 
             &:hover {
                 background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
@@ -82,7 +82,7 @@
                 color: var(--primary-color);
                 letter-spacing: 6px;
                 font-size: var(--font-size-xl);
-                font-weight: 700;
+                font-weight: var(--font-weight-bold);
                 font-family: "Noto Sans JP", "Helvetica Neue", Helvetica, Arial, sans-serif;
             }
 
@@ -121,7 +121,7 @@
             font-size: var(--font-size-base);
             margin-right: var(--spacing-md);
             white-space: nowrap;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
 
         & .settingControl {
@@ -164,8 +164,8 @@
             flex: 1;
             color: var(--foreground-color);
             text-decoration: none;
-            font-weight: bold;
-            font-size: 14px;
+            font-weight: var(--font-weight-bold);
+            font-size: var(--font-size-sm);
             padding: 4px;
             border-radius: var(--radius-md);
             border: 1px solid var(--border-color);
@@ -199,14 +199,14 @@
         font-size: var(--font-size-2xl);
         margin-top: calc(var(--spacing-xl) * 1.5);
         align-self: center;
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         color: var(--foreground-color);
     }
 
     & .recent {
         display: flex;
         font-size: var(--font-size-lg);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         margin: var(--spacing-lg) calc(var(--spacing-xl) * 2);
         color: var(--foreground-color);
     }
@@ -227,7 +227,7 @@
             display: flex;
             flex: 1 1 240px;
             flex-direction: column;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             overflow: hidden;
 
             &:hover {
@@ -253,7 +253,7 @@
 
                 & .title {
                     font-size: var(--font-size-sm);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     color: var(--foreground-color);
                 }
 

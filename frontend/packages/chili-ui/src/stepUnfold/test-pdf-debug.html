@@ -1,268 +1,289 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Export Debug Test</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.1/svg2pdf.umd.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
-        }
-        #svgContainer {
-            border: 2px solid #ddd;
-            padding: 20px;
-            background: white;
-            margin: 20px 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 5px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        .debug-info {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-family: monospace;
-            white-space: pre;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>PDF Export Debug Test</h1>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>PDF Export Debug Test</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.1/svg2pdf.umd.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                background-color: #f5f5f5;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                color: #333;
+                border-bottom: 2px solid #007bff;
+                padding-bottom: 10px;
+            }
+            #svgContainer {
+                border: 2px solid #ddd;
+                padding: 20px;
+                background: white;
+                margin: 20px 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            button {
+                background: #007bff;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                margin: 5px;
+            }
+            button:hover {
+                background: #0056b3;
+            }
+            .debug-info {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 15px;
+                margin: 10px 0;
+                border-radius: 5px;
+                font-family: monospace;
+                white-space: pre;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>PDF Export Debug Test</h1>
 
-        <div id="svgContainer">
-            <!-- Simple SVG with known dimensions -->
-            <svg id="testSvg" width="400" height="300" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
-                <!-- Background -->
-                <rect width="400" height="300" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+            <div id="svgContainer">
+                <!-- Simple SVG with known dimensions -->
+                <svg
+                    id="testSvg"
+                    width="400"
+                    height="300"
+                    viewBox="0 0 400 300"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <!-- Background -->
+                    <rect width="400" height="300" fill="#f0f0f0" stroke="#333" stroke-width="2" />
 
-                <!-- Grid for reference -->
-                <g stroke="#ccc" stroke-width="0.5">
-                    <line x1="100" y1="0" x2="100" y2="300"/>
-                    <line x1="200" y1="0" x2="200" y2="300"/>
-                    <line x1="300" y1="0" x2="300" y2="300"/>
-                    <line x1="0" y1="75" x2="400" y2="75"/>
-                    <line x1="0" y1="150" x2="400" y2="150"/>
-                    <line x1="0" y1="225" x2="400" y2="225"/>
-                </g>
+                    <!-- Grid for reference -->
+                    <g stroke="#ccc" stroke-width="0.5">
+                        <line x1="100" y1="0" x2="100" y2="300" />
+                        <line x1="200" y1="0" x2="200" y2="300" />
+                        <line x1="300" y1="0" x2="300" y2="300" />
+                        <line x1="0" y1="75" x2="400" y2="75" />
+                        <line x1="0" y1="150" x2="400" y2="150" />
+                        <line x1="0" y1="225" x2="400" y2="225" />
+                    </g>
 
-                <!-- Test shapes -->
-                <rect x="50" y="50" width="100" height="80" fill="#ff6b6b" stroke="#333" stroke-width="2"/>
-                <circle cx="250" cy="90" r="40" fill="#4ecdc4" stroke="#333" stroke-width="2"/>
-                <polygon points="150,180 250,180 200,250" fill="#45b7d1" stroke="#333" stroke-width="2"/>
+                    <!-- Test shapes -->
+                    <rect
+                        x="50"
+                        y="50"
+                        width="100"
+                        height="80"
+                        fill="#ff6b6b"
+                        stroke="#333"
+                        stroke-width="2"
+                    />
+                    <circle cx="250" cy="90" r="40" fill="#4ecdc4" stroke="#333" stroke-width="2" />
+                    <polygon
+                        points="150,180 250,180 200,250"
+                        fill="#45b7d1"
+                        stroke="#333"
+                        stroke-width="2"
+                    />
 
-                <!-- Text labels -->
-                <text x="200" y="30" text-anchor="middle" font-size="20" font-weight="bold">Test SVG (400x300px)</text>
-                <text x="100" y="90" text-anchor="middle" font-size="14">Rectangle</text>
-                <text x="250" y="90" text-anchor="middle" font-size="14">Circle</text>
-                <text x="200" y="215" text-anchor="middle" font-size="14">Triangle</text>
-            </svg>
+                    <!-- Text labels -->
+                    <text x="200" y="30" text-anchor="middle" font-size="20" font-weight="bold">
+                        Test SVG (400x300px)
+                    </text>
+                    <text x="100" y="90" text-anchor="middle" font-size="14">Rectangle</text>
+                    <text x="250" y="90" text-anchor="middle" font-size="14">Circle</text>
+                    <text x="200" y="215" text-anchor="middle" font-size="14">Triangle</text>
+                </svg>
+            </div>
+
+            <div>
+                <button onclick="testExport1()">Test 1: Basic Export</button>
+                <button onclick="testExport2()">Test 2: With viewBox only</button>
+                <button onclick="testExport3()">Test 3: Large SVG</button>
+                <button onclick="testExport4()">Test 4: Direct svg2pdf</button>
+            </div>
+
+            <div id="debugOutput" class="debug-info"></div>
         </div>
 
-        <div>
-            <button onclick="testExport1()">Test 1: Basic Export</button>
-            <button onclick="testExport2()">Test 2: With viewBox only</button>
-            <button onclick="testExport3()">Test 3: Large SVG</button>
-            <button onclick="testExport4()">Test 4: Direct svg2pdf</button>
-        </div>
-
-        <div id="debugOutput" class="debug-info"></div>
-    </div>
-
-    <script>
-        function log(message) {
-            const debugDiv = document.getElementById('debugOutput');
-            debugDiv.textContent += message + '\n';
-            console.log(message);
-        }
-
-        async function testExport1() {
-            log('\n=== Test 1: Basic Export ===');
-            const svg = document.getElementById('testSvg');
-            const { jsPDF } = window.jspdf;
-
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const pageWidth = 210;
-            const pageHeight = 297;
-            const margin = 10;
-            const printableWidth = pageWidth - (margin * 2);
-            const printableHeight = pageHeight - (margin * 2);
-
-            log(`Page: ${pageWidth}x${pageHeight}mm`);
-            log(`Printable: ${printableWidth}x${printableHeight}mm`);
-            log(`SVG: ${svg.getAttribute('width')}x${svg.getAttribute('height')}px`);
-
-            // Clone and prepare SVG
-            const svgClone = svg.cloneNode(true);
-            svgClone.removeAttribute('id');
-
-            try {
-                await svg2pdf(svgClone, pdf, {
-                    x: margin,
-                    y: margin,
-                    width: printableWidth,
-                    height: printableHeight
-                });
-                pdf.save('test1-basic.pdf');
-                log('✓ PDF saved as test1-basic.pdf');
-            } catch (error) {
-                log('✗ Error: ' + error.message);
+        <script>
+            function log(message) {
+                const debugDiv = document.getElementById("debugOutput");
+                debugDiv.textContent += message + "\n";
+                console.log(message);
             }
-        }
 
-        async function testExport2() {
-            log('\n=== Test 2: With viewBox only ===');
-            const svg = document.getElementById('testSvg');
-            const { jsPDF } = window.jspdf;
+            async function testExport1() {
+                log("\n=== Test 1: Basic Export ===");
+                const svg = document.getElementById("testSvg");
+                const { jsPDF } = window.jspdf;
 
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const margin = 10;
-            const printableWidth = 190;
-            const printableHeight = 277;
-
-            // Clone and remove width/height
-            const svgClone = svg.cloneNode(true);
-            svgClone.removeAttribute('id');
-            svgClone.removeAttribute('width');
-            svgClone.removeAttribute('height');
-
-            log(`SVG viewBox: ${svgClone.getAttribute('viewBox')}`);
-
-            try {
-                await svg2pdf(svgClone, pdf, {
-                    x: margin,
-                    y: margin,
-                    width: printableWidth,
-                    height: printableHeight / 2  // Use only half the page
+                const pdf = new jsPDF({
+                    orientation: "portrait",
+                    unit: "mm",
+                    format: "a4",
                 });
-                pdf.save('test2-viewbox.pdf');
-                log('✓ PDF saved as test2-viewbox.pdf');
-            } catch (error) {
-                log('✗ Error: ' + error.message);
+
+                const pageWidth = 210;
+                const pageHeight = 297;
+                const margin = 10;
+                const printableWidth = pageWidth - margin * 2;
+                const printableHeight = pageHeight - margin * 2;
+
+                log(`Page: ${pageWidth}x${pageHeight}mm`);
+                log(`Printable: ${printableWidth}x${printableHeight}mm`);
+                log(`SVG: ${svg.getAttribute("width")}x${svg.getAttribute("height")}px`);
+
+                // Clone and prepare SVG
+                const svgClone = svg.cloneNode(true);
+                svgClone.removeAttribute("id");
+
+                try {
+                    await svg2pdf(svgClone, pdf, {
+                        x: margin,
+                        y: margin,
+                        width: printableWidth,
+                        height: printableHeight,
+                    });
+                    pdf.save("test1-basic.pdf");
+                    log("✓ PDF saved as test1-basic.pdf");
+                } catch (error) {
+                    log("✗ Error: " + error.message);
+                }
             }
-        }
 
-        async function testExport3() {
-            log('\n=== Test 3: Large SVG ===');
+            async function testExport2() {
+                log("\n=== Test 2: With viewBox only ===");
+                const svg = document.getElementById("testSvg");
+                const { jsPDF } = window.jspdf;
 
-            // Create a large SVG
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('width', '2000');
-            svg.setAttribute('height', '3000');
-            svg.setAttribute('viewBox', '0 0 2000 3000');
-
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('width', '2000');
-            rect.setAttribute('height', '3000');
-            rect.setAttribute('fill', '#f0f0f0');
-            rect.setAttribute('stroke', '#333');
-            rect.setAttribute('stroke-width', '5');
-            svg.appendChild(rect);
-
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', '1000');
-            text.setAttribute('y', '1500');
-            text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('font-size', '100');
-            text.textContent = 'Large SVG (2000x3000)';
-            svg.appendChild(text);
-
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const margin = 10;
-            const printableWidth = 190;
-            const printableHeight = 277;
-
-            log(`Large SVG: 2000x3000px`);
-            log(`Fitting to: ${printableWidth}x${printableHeight}mm`);
-
-            try {
-                await svg2pdf(svg, pdf, {
-                    x: margin,
-                    y: margin,
-                    width: printableWidth,
-                    height: printableHeight
+                const pdf = new jsPDF({
+                    orientation: "portrait",
+                    unit: "mm",
+                    format: "a4",
                 });
-                pdf.save('test3-large.pdf');
-                log('✓ PDF saved as test3-large.pdf');
-            } catch (error) {
-                log('✗ Error: ' + error.message);
+
+                const margin = 10;
+                const printableWidth = 190;
+                const printableHeight = 277;
+
+                // Clone and remove width/height
+                const svgClone = svg.cloneNode(true);
+                svgClone.removeAttribute("id");
+                svgClone.removeAttribute("width");
+                svgClone.removeAttribute("height");
+
+                log(`SVG viewBox: ${svgClone.getAttribute("viewBox")}`);
+
+                try {
+                    await svg2pdf(svgClone, pdf, {
+                        x: margin,
+                        y: margin,
+                        width: printableWidth,
+                        height: printableHeight / 2, // Use only half the page
+                    });
+                    pdf.save("test2-viewbox.pdf");
+                    log("✓ PDF saved as test2-viewbox.pdf");
+                } catch (error) {
+                    log("✗ Error: " + error.message);
+                }
             }
-        }
 
-        async function testExport4() {
-            log('\n=== Test 4: Direct svg2pdf (no clone) ===');
-            const svg = document.getElementById('testSvg');
-            const { jsPDF } = window.jspdf;
+            async function testExport3() {
+                log("\n=== Test 3: Large SVG ===");
 
-            const pdf = new jsPDF('p', 'mm', 'a4');
+                // Create a large SVG
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.setAttribute("width", "2000");
+                svg.setAttribute("height", "3000");
+                svg.setAttribute("viewBox", "0 0 2000 3000");
 
-            log(`Direct export of original SVG`);
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("width", "2000");
+                rect.setAttribute("height", "3000");
+                rect.setAttribute("fill", "#f0f0f0");
+                rect.setAttribute("stroke", "#333");
+                rect.setAttribute("stroke-width", "5");
+                svg.appendChild(rect);
 
-            try {
-                // Use exact A4 dimensions minus margins
-                await svg2pdf(svg, pdf, {
-                    x: 10,
-                    y: 10,
-                    width: 100,  // Smaller size to test
-                    height: 75
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", "1000");
+                text.setAttribute("y", "1500");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("font-size", "100");
+                text.textContent = "Large SVG (2000x3000)";
+                svg.appendChild(text);
+
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: "portrait",
+                    unit: "mm",
+                    format: "a4",
                 });
-                pdf.save('test4-direct.pdf');
-                log('✓ PDF saved as test4-direct.pdf');
-            } catch (error) {
-                log('✗ Error: ' + error.message);
-            }
-        }
 
-        // Clear debug output on load
-        document.getElementById('debugOutput').textContent = 'Debug output will appear here...\n';
-    </script>
-</body>
+                const margin = 10;
+                const printableWidth = 190;
+                const printableHeight = 277;
+
+                log(`Large SVG: 2000x3000px`);
+                log(`Fitting to: ${printableWidth}x${printableHeight}mm`);
+
+                try {
+                    await svg2pdf(svg, pdf, {
+                        x: margin,
+                        y: margin,
+                        width: printableWidth,
+                        height: printableHeight,
+                    });
+                    pdf.save("test3-large.pdf");
+                    log("✓ PDF saved as test3-large.pdf");
+                } catch (error) {
+                    log("✗ Error: " + error.message);
+                }
+            }
+
+            async function testExport4() {
+                log("\n=== Test 4: Direct svg2pdf (no clone) ===");
+                const svg = document.getElementById("testSvg");
+                const { jsPDF } = window.jspdf;
+
+                const pdf = new jsPDF("p", "mm", "a4");
+
+                log(`Direct export of original SVG`);
+
+                try {
+                    // Use exact A4 dimensions minus margins
+                    await svg2pdf(svg, pdf, {
+                        x: 10,
+                        y: 10,
+                        width: 100, // Smaller size to test
+                        height: 75,
+                    });
+                    pdf.save("test4-direct.pdf");
+                    log("✓ PDF saved as test4-direct.pdf");
+                } catch (error) {
+                    log("✗ Error: " + error.message);
+                }
+            }
+
+            // Clear debug output on load
+            document.getElementById("debugOutput").textContent = "Debug output will appear here...\n";
+        </script>
+    </body>
 </html>

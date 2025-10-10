@@ -58,7 +58,7 @@
     text-align: center;
     line-height: 1.2;
     max-width: 100%;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     word-break: keep-all;
     display: -webkit-box;
     -webkit-box-orient: vertical;

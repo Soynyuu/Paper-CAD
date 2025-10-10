@@ -71,9 +71,11 @@ body {
     --spacing-xl: 32px;
 
     /* Border Radius */
+    --radius-xs: 2px;
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
     --radius-full: 9999px;
 
     /* Typography Scale */
@@ -86,6 +88,13 @@ body {
     --font-size-3xl: 38px;
     --font-size-4xl: 47px;
     --font-size-5xl: 59px;
+
+    /* Font Weights */
+    --font-weight-light: 300;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
 
     /* Transitions */
     --transition-fast: 150ms ease;
@@ -159,9 +168,11 @@ body {
     --spacing-xl: 32px;
 
     /* Border Radius (same as light) */
+    --radius-xs: 2px;
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
     --radius-full: 9999px;
 
     /* Typography Scale (same as light) */
@@ -174,6 +185,13 @@ body {
     --font-size-3xl: 38px;
     --font-size-4xl: 47px;
     --font-size-5xl: 59px;
+
+    /* Font Weights (same as light) */
+    --font-weight-light: 300;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
 
     /* Transitions (same as light) */
     --transition-fast: 150ms ease;

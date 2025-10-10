@@ -19,7 +19,7 @@
 
 .header {
     padding: 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
 }
 
 .header:hover {

@@ -17,5 +17,5 @@
 }
 
 .parent-hidden {
-    opacity: 0.56;
+    opacity: var(--opacity-readonly);
 }

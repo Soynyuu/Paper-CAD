@@ -480,20 +480,29 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
         return None
 
 
-def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]]) -> float:
-    """Compute appropriate tolerance based on coordinate extent.
+def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]], precision_mode: str = "auto") -> float:
+    """Compute appropriate tolerance based on coordinate extent and precision mode.
 
-    The tolerance is set to approximately 0.1% of the bounding box extent.
-    This ensures that tolerance scales appropriately with coordinate magnitude.
+    The tolerance scales with coordinate extent and precision requirements.
+    Higher precision means smaller tolerance (more detail preservation).
 
     Args:
         coords: List of (x, y, z) coordinate tuples
+        precision_mode: Precision level ("auto", "high", or "maximum")
+            - "auto"/"standard": 0.01% of extent (default, good balance)
+            - "high": 0.001% of extent (preserves fine details)
+            - "maximum": 0.0001% of extent (maximum detail preservation)
 
     Returns:
-        Computed tolerance value (minimum 1e-6, maximum 10.0)
+        Computed tolerance value (minimum 1e-7, maximum 10.0)
     """
     if not coords:
-        return 0.01  # Default fallback
+        # Fallback values based on precision mode
+        fallback = {
+            "maximum": 0.0001,
+            "high": 0.001,
+        }
+        return fallback.get(precision_mode, 0.01)
 
     # Compute bounding box
     xs = [c[0] for c in coords]
@@ -507,20 +516,28 @@ def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]]) -> 
     # Maximum extent across all dimensions
     extent = max(x_extent, y_extent, z_extent)
 
-    # Tolerance as 0.1% of extent
-    tolerance = extent * 0.001
+    # Tolerance percentage based on precision mode
+    # Higher precision = smaller percentage = more detail preserved
+    percentage = {
+        "maximum": 0.000001,  # 0.0001%
+        "high": 0.00001,      # 0.001%
+    }.get(precision_mode, 0.0001)  # default: 0.01%
 
-    # Clamp to reasonable range
-    tolerance = max(1e-6, min(tolerance, 10.0))
+    tolerance = extent * percentage
+
+    # Clamp to reasonable range (tighter bounds for higher precision)
+    min_tol = 1e-7 if precision_mode == "maximum" else 1e-6
+    tolerance = max(min_tol, min(tolerance, 10.0))
 
     return tolerance
 
 
-def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"]) -> float:
+def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"], precision_mode: str = "auto") -> float:
     """Compute tolerance from a list of faces by sampling their vertices.
 
     Args:
         faces: List of TopoDS_Face objects
+        precision_mode: Precision level ("auto", "high", or "maximum")
 
     Returns:
         Computed tolerance value
@@ -552,9 +569,14 @@ def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"]) -> float:
             wire_exp.Next()
 
     if coords:
-        return _compute_tolerance_from_coords(coords)
+        return _compute_tolerance_from_coords(coords, precision_mode)
     else:
-        return 0.01  # Default fallback
+        # Fallback values based on precision mode
+        fallback = {
+            "maximum": 0.0001,
+            "high": 0.001,
+        }
+        return fallback.get(precision_mode, 0.01)
 
 
 def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
@@ -713,13 +735,17 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
 
 
 def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
-                            debug: bool = False) -> Optional["TopoDS_Shell"]:
+                            debug: bool = False, shape_fix_level: str = "standard") -> Optional["TopoDS_Shell"]:
     """Build a shell from a list of faces using sewing and fixing.
 
     Args:
         faces: List of TopoDS_Face objects
         tolerance: Sewing tolerance
         debug: Enable debug output
+        shape_fix_level: Shape fixing aggressiveness
+            - "minimal": Skip shape fixing to preserve maximum detail
+            - "standard": Standard shape fixing (default)
+            - "aggressive": More aggressive shape fixing for robustness
 
     Returns:
         TopoDS_Shell or None if construction fails
@@ -734,14 +760,29 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     sewing.Perform()
     sewn_shape = sewing.SewedShape()
 
-    # Try to fix the shape
-    try:
-        fixer = ShapeFix_Shape(sewn_shape)
-        fixer.Perform()
-        sewn_shape = fixer.Shape()
-    except Exception as e:
-        if debug:
-            print(f"ShapeFix_Shape failed: {e}")
+    # Apply shape fixing based on level
+    if shape_fix_level != "minimal":
+        try:
+            fixer = ShapeFix_Shape(sewn_shape)
+
+            # Configure fixer based on level
+            if shape_fix_level == "standard":
+                # Standard fixing - balance between robustness and detail preservation
+                fixer.SetPrecision(tolerance)
+                fixer.SetMaxTolerance(tolerance * 10.0)
+            elif shape_fix_level == "aggressive":
+                # Aggressive fixing - prioritize robustness over detail
+                fixer.SetPrecision(tolerance * 10.0)
+                fixer.SetMaxTolerance(tolerance * 100.0)
+
+            fixer.Perform()
+            sewn_shape = fixer.Shape()
+
+            if debug:
+                print(f"Shape fixing applied (level: {shape_fix_level})")
+        except Exception as e:
+            if debug:
+                print(f"ShapeFix_Shape failed: {e}")
 
     # Extract shell from sewn shape
     exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
@@ -776,7 +817,9 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
 def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                                interior_shells_faces: List[List["TopoDS_Face"]],
                                tolerance: Optional[float] = None,
-                               debug: bool = False) -> Optional["TopoDS_Shape"]:
+                               debug: bool = False,
+                               precision_mode: str = "auto",
+                               shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Build a solid with cavities from exterior and interior shells.
 
     Args:
@@ -784,6 +827,8 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
         interior_shells_faces: List of face lists, each forming an interior shell (cavity)
         tolerance: Sewing tolerance (auto-computed if None)
         debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
 
     Returns:
         TopoDS_Solid or TopoDS_Shape (if solid construction fails)
@@ -792,12 +837,12 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
 
     # Auto-compute tolerance if not provided
     if tolerance is None:
-        tolerance = _compute_tolerance_from_face_list(exterior_faces)
+        tolerance = _compute_tolerance_from_face_list(exterior_faces, precision_mode)
         if debug:
-            print(f"Auto-computed tolerance: {tolerance:.6f}")
+            print(f"Auto-computed tolerance: {tolerance:.6f} (precision_mode: {precision_mode})")
 
     # Build exterior shell
-    exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug)
+    exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug, shape_fix_level)
     if exterior_shell is None:
         if debug:
             print("Failed to build exterior shell")
@@ -817,7 +862,7 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
     # Build interior shells
     interior_shells: List[TopoDS_Shell] = []
     for i, int_faces in enumerate(interior_shells_faces):
-        int_shell = _build_shell_from_faces(int_faces, tolerance, debug)
+        int_shell = _build_shell_from_faces(int_faces, tolerance, debug, shape_fix_level)
         if int_shell is not None:
             try:
                 if BRep_Tool.IsClosed(int_shell):
@@ -868,7 +913,9 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
 
 def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = None,
                           id_index: Optional[dict[str, ET.Element]] = None,
-                          debug: bool = False) -> Optional["TopoDS_Shape"]:
+                          debug: bool = False,
+                          precision_mode: str = "auto",
+                          shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Extract a single solid from a building or building part element.
 
     This is a helper function that extracts LOD1 or LOD2 solid from a single element.
@@ -878,6 +925,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
         xyz_transform: Optional coordinate transformation function
         id_index: Optional XLink resolution index
         debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
 
     Returns:
         TopoDS_Shape or None
@@ -899,7 +948,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             if exterior_faces:
                 # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
                     return result
@@ -921,7 +971,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             if exterior_faces:
                 # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
                     return result
@@ -931,7 +982,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
 def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
                                 id_index: Optional[dict[str, ET.Element]] = None,
-                                debug: bool = False) -> List["TopoDS_Shape"]:
+                                debug: bool = False,
+                                precision_mode: str = "auto",
+                                shape_fix_level: str = "standard") -> List["TopoDS_Shape"]:
     """Extract geometry from a Building and all its BuildingParts.
 
     This function recursively extracts:
@@ -943,6 +996,8 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
         xyz_transform: Optional coordinate transformation function
         id_index: Optional XLink resolution index
         debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
 
     Returns:
         List of TopoDS_Shape objects (one per Building/BuildingPart)
@@ -950,7 +1005,8 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
     shapes: List[TopoDS_Shape] = []
 
     # Extract from main Building
-    main_shape = _extract_single_solid(building, xyz_transform, id_index, debug)
+    main_shape = _extract_single_solid(building, xyz_transform, id_index, debug,
+                                       precision_mode, shape_fix_level)
     if main_shape is not None:
         shapes.append(main_shape)
         if debug:
@@ -963,7 +1019,8 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
             print(f"Found {len(building_parts)} BuildingPart(s)")
 
         for i, part in enumerate(building_parts):
-            part_shape = _extract_single_solid(part, xyz_transform, id_index, debug)
+            part_shape = _extract_single_solid(part, xyz_transform, id_index, debug,
+                                               precision_mode, shape_fix_level)
             if part_shape is not None:
                 shapes.append(part_shape)
                 if debug:
@@ -975,7 +1032,9 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
 
 def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
                                     id_index: Optional[dict[str, ET.Element]] = None,
-                                    debug: bool = False) -> Optional["TopoDS_Shape"]:
+                                    debug: bool = False,
+                                    precision_mode: str = "auto",
+                                    shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Extract LOD1 or LOD2 solid geometry from a building element.
 
     Now supports:
@@ -983,6 +1042,7 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
     - bldg:BuildingPart extraction and merging
     - XLink reference resolution (xlink:href)
     - Proper distinction between exterior and interior geometry
+    - Precision mode control for detail preservation
 
     If the building has BuildingParts, all parts are extracted and merged into a Compound.
 
@@ -990,13 +1050,22 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
     1. LOD2 Solid (most detailed)
     2. LOD1 Solid (simplified)
 
+    Args:
+        building: bldg:Building element
+        xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
+        debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
+
     Returns the solid shape, compound of shapes, or None if not found.
     """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
 
     # Extract from Building and all BuildingParts
-    shapes = extract_building_and_parts(building, xyz_transform, id_index, debug)
+    shapes = extract_building_and_parts(building, xyz_transform, id_index, debug,
+                                        precision_mode, shape_fix_level)
 
     if not shapes:
         return None
@@ -1023,8 +1092,10 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
     return compound
 
 
-def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 1e-6, debug: bool = False, 
-                                   xyz_transform: Optional[Callable] = None) -> Optional["TopoDS_Shape"]:
+def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional[float] = None,
+                                   debug: bool = False, xyz_transform: Optional[Callable] = None,
+                                   precision_mode: str = "auto",
+                                   shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Build a sewn shape (and solids if possible) from LOD2 surfaces of a building.
 
     - Collect bldg:WallSurface, bldg:RoofSurface, bldg:GroundSurface polygons
@@ -1032,6 +1103,14 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     - Sew faces; try to close shells into solids
     - Return compound of solids if any; otherwise the sewn shell/compound
     - Optionally transform coordinates if xyz_transform is provided
+
+    Args:
+        building: bldg:Building element
+        sew_tolerance: Sewing tolerance (auto-computed if None)
+        debug: Enable debug output
+        xyz_transform: Optional coordinate transformation function
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
     """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for surface sewing")
@@ -1046,7 +1125,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
             ext, holes = _extract_polygon_xyz(poly)
             if len(ext) < 3:
                 continue
-            
+
             # Apply coordinate transformation if provided
             if xyz_transform:
                 try:
@@ -1059,7 +1138,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
                     if debug:
                         print(f"Transform failed: {e}")
                     continue
-            
+
             fc = _face_from_xyz_rings(ext, holes)
             if fc is not None and not fc.IsNull():
                 faces.append(fc)
@@ -1067,19 +1146,39 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     if not faces:
         return None
 
+    # Auto-compute tolerance if not provided
+    if sew_tolerance is None:
+        sew_tolerance = _compute_tolerance_from_face_list(faces, precision_mode)
+        if debug:
+            print(f"Auto-computed sewing tolerance: {sew_tolerance:.6f} (precision_mode: {precision_mode})")
+
     sewing = BRepBuilderAPI_Sewing(sew_tolerance, True, True, True, False)
     for fc in faces:
         sewing.Add(fc)
     sewing.Perform()
     sewn = sewing.SewedShape()
 
-    # Optional shape fix
-    try:
-        fixer = ShapeFix_Shape(sewn)
-        fixer.Perform()
-        sewn = fixer.Shape()
-    except Exception:
-        pass
+    # Apply shape fixing based on level
+    if shape_fix_level != "minimal":
+        try:
+            fixer = ShapeFix_Shape(sewn)
+
+            # Configure fixer based on level
+            if shape_fix_level == "standard":
+                fixer.SetPrecision(sew_tolerance)
+                fixer.SetMaxTolerance(sew_tolerance * 10.0)
+            elif shape_fix_level == "aggressive":
+                fixer.SetPrecision(sew_tolerance * 10.0)
+                fixer.SetMaxTolerance(sew_tolerance * 100.0)
+
+            fixer.Perform()
+            sewn = fixer.Shape()
+
+            if debug:
+                print(f"Shape fixing applied to sewn shape (level: {shape_fix_level})")
+        except Exception as e:
+            if debug:
+                print(f"ShapeFix_Shape failed: {e}")
 
     # Try to make solids from shells
     solids: List[TopoDS_Shape] = []
@@ -1288,21 +1387,41 @@ def export_step_from_citygml(
     limit: Optional[int] = None,
     debug: bool = False,
     method: str = "auto",
-    sew_tolerance: float = 1e-6,
+    sew_tolerance: Optional[float] = None,
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
     auto_reproject: bool = True,
+    precision_mode: str = "auto",
+    shape_fix_level: str = "standard",
 ) -> Tuple[bool, str]:
-    """High-level pipeline: CityGML → STEP
+    """High-level pipeline: CityGML → STEP with precision control.
 
-    method:
-      - "solid": LOD1/LOD2のSolidデータを直接使用（PLATEAUに最適）
-      - "extrude": footprint+height extrusion (LOD0系)
-      - "sew": LOD2の各サーフェスを縫合してソリッド化（可能なら）
-      - "auto": solid→sew→extrudeの順でフォールバック
-    auto_reproject:
-      - If True and no reproject_to specified, automatically select appropriate projection
-    Returns (success, message or output_path).
+    Args:
+        gml_path: Path to CityGML file
+        out_step: Output STEP file path
+        default_height: Default height for extrusion when not available
+        limit: Limit number of buildings to process (None for all)
+        debug: Enable debug output
+        method: Conversion strategy
+            - "solid": Use LOD1/LOD2 Solid data directly (best for PLATEAU)
+            - "extrude": Footprint+height extrusion (LOD0 systems)
+            - "sew": Sew LOD2 surfaces into solids
+            - "auto": Fallback solid→sew→extrude (recommended)
+        sew_tolerance: Sewing tolerance (auto-computed if None based on precision_mode)
+        reproject_to: Target CRS (e.g., 'EPSG:6676')
+        source_crs: Source CRS (auto-detected if None)
+        auto_reproject: Auto-select projection for geographic CRS
+        precision_mode: Precision level for detail preservation
+            - "auto"/"standard": 0.01% of extent (balanced, default)
+            - "high": 0.001% of extent (preserves fine details like windows)
+            - "maximum": 0.0001% of extent (maximum detail preservation)
+        shape_fix_level: Shape fixing aggressiveness
+            - "minimal": Skip fixing to preserve maximum detail
+            - "standard": Balanced fixing (default)
+            - "aggressive": Prioritize robustness over detail
+
+    Returns:
+        Tuple of (success, message or output_path)
     """
     if not OCCT_AVAILABLE:
         return False, "OCCT is not available; cannot export STEP."
@@ -1350,20 +1469,10 @@ def export_step_from_citygml(
         except Exception as e:
             return False, f"Reprojection setup failed: {e}"
 
-    # Adjust sew tolerance based on reprojection
-    # If reprojecting from geographic to projected coordinates, scale tolerance appropriately
-    adjusted_tolerance = sew_tolerance
-    if reproject_to and is_geographic_crs(src):
-        # Scale tolerance for meter-based coordinates (typical projected systems)
-        # Geographic coords are in degrees (~0.00001 degree), projected in meters (~1 meter)
-        adjusted_tolerance = 0.1  # 10cm tolerance for meter-based coordinates
-        if debug:
-            print(f"Adjusted sew tolerance from {sew_tolerance} to {adjusted_tolerance} for projected coordinates")
-    
     shapes: List[TopoDS_Shape] = []
     tried_solid = False
     tried_sew = False
-    
+
     # Try solid method first (for PLATEAU data with LOD1/LOD2 solids)
     if method in ("solid", "auto"):
         tried_solid = True
@@ -1372,7 +1481,14 @@ def export_step_from_citygml(
             if limit is not None and count >= limit:
                 break
             try:
-                shp = extract_lod_solid_from_building(b, xyz_transform=xyz_transform, id_index=id_index, debug=debug)
+                shp = extract_lod_solid_from_building(
+                    b,
+                    xyz_transform=xyz_transform,
+                    id_index=id_index,
+                    debug=debug,
+                    precision_mode=precision_mode,
+                    shape_fix_level=shape_fix_level
+                )
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)
                     count += 1
@@ -1382,7 +1498,7 @@ def export_step_from_citygml(
                 if debug:
                     print(f"Solid extraction failed for building {i}: {e}")
                 continue
-    
+
     # Try sew method if solid didn't work
     if not shapes and method in ("sew", "auto"):
         tried_sew = True
@@ -1392,10 +1508,12 @@ def export_step_from_citygml(
                 break
             try:
                 shp = build_sewn_shape_from_building(
-                    b, 
-                    sew_tolerance=adjusted_tolerance, 
+                    b,
+                    sew_tolerance=sew_tolerance,  # Will be auto-computed if None
                     debug=debug,
-                    xyz_transform=xyz_transform
+                    xyz_transform=xyz_transform,
+                    precision_mode=precision_mode,
+                    shape_fix_level=shape_fix_level
                 )
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)

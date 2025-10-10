@@ -195,6 +195,16 @@ async def citygml_to_step(
         True,
         description="地理座標系を検出した場合、自動的に適切な投影座標系に変換",
     ),
+    precision_mode: str = Form(
+        "auto",
+        description="精度モード: auto（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）",
+        example="auto",
+    ),
+    shape_fix_level: str = Form(
+        "standard",
+        description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）",
+        example="standard",
+    ),
 ):
     """
     CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
@@ -203,7 +213,7 @@ async def citygml_to_step(
     - gml:Solid ジオメトリ抽出（exterior/interior shells、cavity対応）
     - bldg:BuildingPart 階層構造の自動抽出とマージ
     - XLink参照（xlink:href）の自動解決
-    - 適応的tolerance管理（座標範囲の0.1%を自動計算）
+    - 適応的tolerance管理（座標範囲の0.01%を自動計算、精度モードで調整可能）
     - 地理座標系を検出した場合、自動的に適切な平面直角座標系に変換
     - 日本のPLATEAUデータの場合、地域に応じた日本平面直角座標系を自動選択
     - STEP出力最適化（AP214CD schema、MM単位、1e-6精度）
@@ -216,6 +226,16 @@ async def citygml_to_step(
     - solid: LOD1/2 Solid データを直接使用（PLATEAUに最適）
     - sew: LOD2の各サーフェスを縫合してソリッド化
     - extrude: フットプリント＋高さ推定から押し出し（LOD0向け）
+
+    **精度制御** (新機能):
+    - precision_mode: 座標範囲に対するtoleranceの割合を制御
+      * auto: 0.01% (デフォルト、バランス重視)
+      * high: 0.001% (細かいディティール保持)
+      * maximum: 0.0001% (最大限の精度、窓枠・階段・バルコニーなどの細部を保持)
+    - shape_fix_level: 形状修正の強度を制御
+      * minimal: 修正を最小限に抑え、細部を優先
+      * standard: 標準的な修正 (デフォルト)
+      * aggressive: 修正を強化し、堅牢性を優先
     """
     try:
         # Normalize limit parameter (handle empty string from form)
@@ -236,6 +256,26 @@ async def citygml_to_step(
         normalized_source_crs = source_crs if source_crs and source_crs.strip() else None
         normalized_reproject_to = reproject_to if reproject_to and reproject_to.strip() else None
         normalized_gml_path = gml_path if gml_path and gml_path.strip() else None
+
+        # Normalize precision parameters (handle empty strings, fall back to defaults)
+        normalized_precision_mode = precision_mode if precision_mode and precision_mode.strip() else "auto"
+        normalized_shape_fix_level = shape_fix_level if shape_fix_level and shape_fix_level.strip() else "standard"
+
+        # Validate precision_mode
+        valid_precision_modes = ["auto", "high", "maximum"]
+        if normalized_precision_mode not in valid_precision_modes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"precision_mode must be one of {valid_precision_modes}, got: {normalized_precision_mode}"
+            )
+
+        # Validate shape_fix_level
+        valid_shape_fix_levels = ["minimal", "standard", "aggressive"]
+        if normalized_shape_fix_level not in valid_shape_fix_levels:
+            raise HTTPException(
+                status_code=400,
+                detail=f"shape_fix_level must be one of {valid_shape_fix_levels}, got: {normalized_shape_fix_level}"
+            )
 
         if file is None and not normalized_gml_path:
             raise HTTPException(status_code=400, detail="CityGMLファイルをアップロードするか gml_path を指定してください。")
@@ -292,6 +332,8 @@ async def citygml_to_step(
             reproject_to=normalized_reproject_to,
             source_crs=normalized_source_crs,
             auto_reproject=auto_reproject,
+            precision_mode=normalized_precision_mode,
+            shape_fix_level=normalized_shape_fix_level,
         )
         if not ok:
             raise HTTPException(status_code=400, detail=f"変換に失敗しました: {msg}")

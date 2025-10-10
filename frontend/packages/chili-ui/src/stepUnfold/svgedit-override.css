@@ -189,7 +189,7 @@ select {
 .svg_editor input[type="number"]:focus,
 .svg_editor select:focus {
     border-color: var(--primary-color) !important;
-    box-shadow: 0 0 0 3px rgba(255, 102, 51, 0.1) !important;
+    box-shadow: var(--shadow-focus) !important;
     outline: none !important;
 }
 

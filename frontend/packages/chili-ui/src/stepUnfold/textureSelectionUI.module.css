@@ -21,8 +21,8 @@
 }
 
 .title {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
     color: var(--chili-text-primary);
 }
 
@@ -33,7 +33,7 @@
 }
 
 .label {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--chili-text-secondary);
     min-width: 80px;
 }
@@ -45,7 +45,7 @@
     border-radius: 4px;
     background: var(--chili-background-secondary);
     color: var(--chili-text-primary);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     cursor: pointer;
     transition: border-color 0.2s;
 }
@@ -61,7 +61,7 @@
 }
 
 .selector optgroup {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: var(--chili-text-primary);
 }
 
@@ -84,7 +84,7 @@
     justify-content: center;
     min-height: 84px;
     color: var(--chili-text-disabled);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     text-align: center;
 }
 
@@ -98,7 +98,7 @@
     height: 80px;
     border: 1px solid var(--chili-border);
     border-radius: 4px;
-    background-color: white;
+    background-color: var(--neutral-0);
     flex-shrink: 0;
 }
 
@@ -110,13 +110,13 @@
 }
 
 .patternName {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
     color: var(--chili-text-primary);
 }
 
 .patternDescription {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: var(--chili-text-secondary);
     line-height: 1.4;
 }
@@ -134,20 +134,20 @@
     border-radius: 4px;
     background: var(--chili-background-secondary);
     color: var(--chili-text-primary);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .applyButton:not(:disabled):hover {
     background: var(--chili-primary);
-    color: white;
+    color: var(--neutral-0);
     border-color: var(--chili-primary);
 }
 
 .clearButton:not(:disabled):hover {
     background: var(--chili-error);
-    color: white;
+    color: var(--neutral-0);
     border-color: var(--chili-error);
 }
 
@@ -163,10 +163,10 @@
     left: 50%;
     transform: translate(-50%, -50%);
     background: rgba(0, 128, 0, 0.9);
-    color: white;
+    color: var(--neutral-0);
     padding: 8px 16px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     z-index: 1000;
     pointer-events: none;
     transition: opacity 0.3s;

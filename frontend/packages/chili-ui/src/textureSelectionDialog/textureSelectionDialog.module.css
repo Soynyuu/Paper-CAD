@@ -6,9 +6,9 @@
 }
 
 .title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #e0e0e0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--neutral-700);
     margin-bottom: 8px;
     text-align: center;
 }
@@ -20,18 +20,18 @@
 }
 
 .label {
-    font-size: 14px;
-    font-weight: 500;
-    color: #cccccc;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--neutral-600);
 }
 
 .patternSelect {
     padding: 8px 12px;
-    border: 1px solid #555;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
-    background-color: #404040;
-    color: #e0e0e0;
-    font-size: 14px;
+    background-color: var(--control-background-color);
+    color: var(--foreground-color);
+    font-size: var(--font-size-sm);
 }
 
 .patternSelect:focus {
@@ -94,9 +94,9 @@
 .tileLabel {
     min-width: 24px;
     text-align: center;
-    font-weight: bold;
-    color: #e0e0e0;
-    font-size: 16px;
+    font-weight: var(--font-weight-bold);
+    color: var(--foreground-color);
+    font-size: var(--font-size-base);
 }
 
 .buttonSection {
@@ -105,35 +105,35 @@
     gap: 12px;
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid #555;
+    border-top: 1px solid var(--border-color);
 }
 
 .button {
     padding: 10px 20px;
     border: none;
     border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .buttonPrimary {
-    background-color: #4a90e2;
-    color: white;
+    background-color: var(--primary-color);
+    color: var(--neutral-0);
 }
 
 .buttonPrimary:hover {
-    background-color: #357abd;
+    background-color: var(--primary-color-dark);
 }
 
 .buttonSecondary {
-    background-color: #666;
-    color: #e0e0e0;
+    background-color: var(--neutral-400);
+    color: var(--foreground-color);
 }
 
 .buttonSecondary:hover {
-    background-color: #777;
+    background-color: var(--neutral-500);
 }
 
 .closeButton {
@@ -144,8 +144,8 @@
     height: 24px;
     border: none;
     background: transparent;
-    color: #ccc;
-    font-size: 16px;
+    color: var(--neutral-600);
+    font-size: var(--font-size-base);
     cursor: pointer;
     border-radius: 50%;
     display: flex;
@@ -155,6 +155,6 @@
 }
 
 .closeButton:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background-color: var(--hover-background-color);
+    color: var(--neutral-900);
 }

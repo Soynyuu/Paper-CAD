@@ -31,7 +31,7 @@ export class FolderNode extends Node implements INodeLinkedList {
 
     add(...items: INode[]): void {
         // Filter out any items that would create circular references
-        const validItems = items.filter(item => {
+        const validItems = items.filter((item) => {
             if (item instanceof FolderNode && this.isAncestorOf(item, this)) {
                 Logger.warn(`Cannot add ${item.name} to ${this.name} - would create circular reference`);
                 return false;
@@ -169,7 +169,9 @@ export class FolderNode extends Node implements INodeLinkedList {
 
         // Check for circular reference
         if (node instanceof FolderNode && this.isAncestorOf(node, this)) {
-            Logger.warn(`Cannot insert ${node.name} before ${target?.name || 'first'} - would create circular reference`);
+            Logger.warn(
+                `Cannot insert ${node.name} before ${target?.name || "first"} - would create circular reference`,
+            );
             return;
         }
 
@@ -211,7 +213,9 @@ export class FolderNode extends Node implements INodeLinkedList {
 
         // Check for circular reference
         if (node instanceof FolderNode && this.isAncestorOf(node, this)) {
-            Logger.warn(`Cannot insert ${node.name} after ${target?.name || 'last'} - would create circular reference`);
+            Logger.warn(
+                `Cannot insert ${node.name} after ${target?.name || "last"} - would create circular reference`,
+            );
             return;
         }
 
@@ -245,7 +249,9 @@ export class FolderNode extends Node implements INodeLinkedList {
 
         // Check for circular reference - prevent moving a parent into its own descendant
         if (this.isAncestorOf(child, newParent)) {
-            Logger.warn(`Cannot move ${child.name} into ${newParent.name} - would create circular reference`);
+            Logger.warn(
+                `Cannot move ${child.name} into ${newParent.name} - would create circular reference`,
+            );
             return;
         }
 

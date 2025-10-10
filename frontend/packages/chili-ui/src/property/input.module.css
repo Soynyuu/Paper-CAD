@@ -13,7 +13,7 @@
     border-radius: var(--radius-md);
     margin: 0px;
     transition: all var(--transition-fast);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
 
     &:hover {
         border-color: var(--neutral-300);

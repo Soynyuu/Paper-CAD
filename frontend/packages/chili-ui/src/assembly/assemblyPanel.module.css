@@ -18,8 +18,8 @@
 }
 
 .title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
     color: var(--color-primary);
     display: flex;
     align-items: center;
@@ -27,7 +27,7 @@
 }
 
 .titleIcon {
-    font-size: 24px;
+    font-size: var(--font-size-xl);
 }
 
 .controls {
@@ -43,7 +43,7 @@
     border: 1px solid var(--border-color-primary);
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     transition: all 0.2s;
 }
 
@@ -57,7 +57,7 @@
     background: var(--info-background);
     color: var(--info-color);
     border-radius: 4px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
 }
 
 .content {
@@ -84,8 +84,8 @@
     padding: 8px 12px;
     background: var(--background-color-secondary);
     border-bottom: 1px solid var(--border-color-primary);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
     color: var(--color-primary);
 }
 
@@ -145,7 +145,7 @@
     padding: 4px 12px;
     background: var(--background-color-secondary);
     border-top: 1px solid var(--border-color-primary);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--color-secondary);
     gap: 16px;
 }
@@ -157,7 +157,7 @@
 }
 
 .statusLabel {
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 }
 
 .statusValue {

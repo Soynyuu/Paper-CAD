@@ -20,24 +20,21 @@ export class SimplePDFExporter {
     private static pageFormats = {
         A4: { width: 210, height: 297 },
         A3: { width: 297, height: 420 },
-        Letter: { width: 215.9, height: 279.4 }
+        Letter: { width: 215.9, height: 279.4 },
     };
 
     /**
      * Export SVG to PDF with proper scaling
      */
-    static async exportToPDF(
-        svgElement: SVGElement,
-        options: SimplePDFExportOptions
-    ): Promise<void> {
+    static async exportToPDF(svgElement: SVGElement, options: SimplePDFExportOptions): Promise<void> {
         console.log("=== SimplePDFExporter Start ===");
 
         // Get page dimensions in mm
         const format = this.pageFormats[options.pageFormat];
         const pageWidth = options.orientation === "portrait" ? format.width : format.height;
         const pageHeight = options.orientation === "portrait" ? format.height : format.width;
-        const printableWidth = pageWidth - (options.margin * 2);
-        const printableHeight = pageHeight - (options.margin * 2);
+        const printableWidth = pageWidth - options.margin * 2;
+        const printableHeight = pageHeight - options.margin * 2;
 
         console.log("Page dimensions (mm):", { pageWidth, pageHeight, printableWidth, printableHeight });
 
@@ -45,7 +42,7 @@ export class SimplePDFExporter {
         const pdf = new jsPDF({
             orientation: options.orientation,
             unit: "mm",
-            format: options.pageFormat.toLowerCase() as any
+            format: options.pageFormat.toLowerCase() as any,
         });
 
         // Get SVG dimensions
@@ -78,7 +75,7 @@ export class SimplePDFExporter {
             renderWidth,
             renderHeight,
             xOffset,
-            yOffset
+            yOffset,
         });
 
         try {
@@ -88,17 +85,20 @@ export class SimplePDFExporter {
                 x: xOffset,
                 y: yOffset,
                 width: renderWidth,
-                height: renderHeight
+                height: renderHeight,
             });
 
             // Add debug info to PDF
             pdf.setFontSize(8);
             pdf.setTextColor(150);
-            pdf.text(`SVG: ${svgInfo.width}x${svgInfo.height}px | Scale: ${scale.toFixed(2)} | Size: ${renderWidth.toFixed(1)}x${renderHeight.toFixed(1)}mm`,
-                     options.margin, pageHeight - 5);
+            pdf.text(
+                `SVG: ${svgInfo.width}x${svgInfo.height}px | Scale: ${scale.toFixed(2)} | Size: ${renderWidth.toFixed(1)}x${renderHeight.toFixed(1)}mm`,
+                options.margin,
+                pageHeight - 5,
+            );
 
             // Save PDF
-            const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 19);
+            const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
             pdf.save(`paper-cad-unfold-${timestamp}.pdf`);
 
             console.log("=== PDF Export Success ===");

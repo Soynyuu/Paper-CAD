@@ -38,7 +38,7 @@
             }
 
             span {
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 user-select: none;
                 cursor: default;
             }

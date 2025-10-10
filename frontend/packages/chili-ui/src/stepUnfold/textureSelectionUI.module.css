@@ -167,7 +167,7 @@
     padding: 8px 16px;
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
-    z-index: 1000;
+    z-index: var(--z-fixed);
     pointer-events: none;
     transition: opacity 0.3s;
 }

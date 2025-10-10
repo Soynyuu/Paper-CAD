@@ -29,7 +29,7 @@
 
 .presetSelector {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-10);
     margin-bottom: 15px;
 }
 
@@ -95,7 +95,7 @@
 
 .buttonGroup {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-10);
     margin-top: 20px;
     padding-top: 15px;
     border-top: 1px solid #444;
@@ -140,7 +140,7 @@
 
 .customPresetActions {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-10);
     margin-top: 10px;
 }
 

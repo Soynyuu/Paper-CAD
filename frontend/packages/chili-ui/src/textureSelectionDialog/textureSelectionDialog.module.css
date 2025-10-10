@@ -60,7 +60,7 @@
 .tileControls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-12);
 }
 
 .tileSlider {
@@ -102,7 +102,7 @@
 .buttonSection {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: var(--spacing-12);
     margin-top: var(--spacing-md);
     padding-top: var(--spacing-md);
     border-top: 1px solid var(--border-color);

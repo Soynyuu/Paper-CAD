@@ -99,7 +99,7 @@
     & .settingsPanel {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: var(--spacing-10);
 
         & .settingItem {
             display: flex;
@@ -154,7 +154,7 @@
 
     .socialPanel {
         display: flex;
-        gap: 10px;
+        gap: var(--spacing-10);
         align-items: stretch;
         justify-content: center;
         margin-top: 10px;
@@ -218,7 +218,7 @@
         overflow-y: scroll;
         flex: 1;
         align-items: flex-start;
-        gap: 32px;
+        gap: var(--spacing-xl);
         margin: 0px 64px;
         --delete-visibility: hidden;
 

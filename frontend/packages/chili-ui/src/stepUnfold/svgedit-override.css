@@ -441,7 +441,7 @@ select {
     border: none !important;
     display: flex !important;
     align-items: center !important;
-    gap: 2px !important;
+    gap: var(--spacing-xs) !important;
 }
 
 #zoom,

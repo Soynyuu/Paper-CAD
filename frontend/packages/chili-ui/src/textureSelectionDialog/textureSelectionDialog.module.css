@@ -1,7 +1,7 @@
 .container {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--spacing-md);
     min-width: 350px;
 }
 
@@ -9,14 +9,14 @@
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
     color: var(--neutral-700);
-    margin-bottom: 8px;
+    margin-bottom: var(--spacing-sm);
     text-align: center;
 }
 
 .section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--spacing-sm);
 }
 
 .label {
@@ -26,7 +26,7 @@
 }
 
 .patternSelect {
-    padding: 8px 12px;
+    padding: var(--spacing-sm) 12px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     background-color: var(--control-background-color);
@@ -103,8 +103,8 @@
     display: flex;
     justify-content: flex-end;
     gap: 12px;
-    margin-top: 16px;
-    padding-top: 16px;
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
     border-top: 1px solid var(--border-color);
 }
 
@@ -138,8 +138,8 @@
 
 .closeButton {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
     width: 24px;
     height: 24px;
     border: none;

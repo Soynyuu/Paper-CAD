@@ -4,7 +4,7 @@
     opacity: 0.85;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    padding: 1px 4px;
+    padding: 1px var(--spacing-xs);
     margin: 2px 0px;
 }
 

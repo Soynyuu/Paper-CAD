@@ -33,7 +33,7 @@ dialog::backdrop {
 .container {
     width: fit-content;
     height: fit-content;
-    padding: 24px;
+    padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
     align-items: center;

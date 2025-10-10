@@ -37,7 +37,7 @@
             gap: 6px;
             cursor: pointer;
             height: 96px;
-            margin: 0px 8px;
+            margin: 0px var(--spacing-sm);
             overflow-y: hidden;
             overflow-x: auto;
             pointer-events: all;
@@ -59,7 +59,7 @@
             div {
                 position: relative;
                 flex: 0 0 auto;
-                padding: 8px;
+                padding: var(--spacing-sm);
                 margin-top: 43px;
                 width: 72px;
                 border-radius: var(--radius-md);
@@ -92,15 +92,15 @@
                     border: none;
                     position: absolute;
                     margin: 0;
-                    padding: 8px;
+                    padding: var(--spacing-sm);
                     top: -34px;
                     left: 0px;
-                    gap: 4px;
+                    gap: var(--spacing-xs);
 
                     svg {
                         width: 14px;
                         height: 14px;
-                        padding: 4px;
+                        padding: var(--spacing-xs);
                         border-radius: 100%;
                         background-color: var(--panel-background-color);
                         opacity: 0.75;
@@ -129,7 +129,7 @@
         background: transparent;
         width: 22px;
         height: 22px;
-        padding: 8px;
+        padding: var(--spacing-sm);
         border-radius: 7.5px;
 
         &:hover {

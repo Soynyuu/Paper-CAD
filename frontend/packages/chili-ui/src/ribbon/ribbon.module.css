@@ -7,7 +7,7 @@
 .split {
     width: 1px;
     height: 14px;
-    margin: 0px 8px;
+    margin: 0px var(--spacing-sm);
     background-color: rgba(128, 128, 128, 0.45);
 }
 
@@ -15,7 +15,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    margin: 2px 4px;
+    margin: 2px var(--spacing-xs);
 
     .left {
         display: flex;
@@ -44,7 +44,7 @@
             }
 
             span {
-                margin-left: 16px;
+                margin-left: var(--spacing-md);
                 font-weight: bolder;
                 text-wrap: nowrap;
             }
@@ -90,14 +90,14 @@
                     flex-direction: row;
                     align-items: center;
                     margin-right: auto;
-                    margin-left: 8px;
+                    margin-left: var(--spacing-sm);
                     text-wrap: nowrap;
                     user-select: none;
                     text-decoration: dashed;
                     overflow: hidden;
 
                     .split {
-                        padding: 0px 4px;
+                        padding: 0px var(--spacing-xs);
                     }
 
                     span {
@@ -108,7 +108,7 @@
                 .close {
                     width: 12px;
                     height: 12px;
-                    margin: 4px;
+                    margin: var(--spacing-xs);
                     padding: calc(var(--spacing-xs) * 1.5);
                     border-radius: var(--radius-sm);
                     flex-shrink: 0;
@@ -142,13 +142,13 @@
         display: flex;
         flex-direction: row;
         align-items: center;
-        margin: 2px 8px;
+        margin: 2px var(--spacing-sm);
         flex: 0 0 auto;
 
         .icon {
             width: 24px;
             height: 24px;
-            padding: 4px;
+            padding: var(--spacing-xs);
             border-radius: var(--radius-sm);
 
             &:hover {
@@ -162,7 +162,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    margin: 0px 4px;
+    margin: 0px var(--spacing-xs);
     flex: 0 0 auto;
 
     .home {
@@ -260,7 +260,7 @@
     justify-items: center;
     flex-shrink: 0;
     min-width: fit-content;
-    padding: 0 8px;
+    padding: 0 var(--spacing-sm);
 
     .header {
         color: var(--foreground-color);
@@ -270,7 +270,7 @@
     .content {
         min-height: 72px;
         height: auto;
-        padding: 4px 0;
+        padding: var(--spacing-xs) 0;
         flex-shrink: 0;
         display: flex;
         flex-direction: row;

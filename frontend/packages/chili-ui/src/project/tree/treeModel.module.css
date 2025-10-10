@@ -3,7 +3,7 @@
     flex-direction: row;
     align-items: center;
     border-radius: var(--radius-xs);
-    padding: 4px;
+    padding: var(--spacing-xs);
 }
 
 .panel:hover {

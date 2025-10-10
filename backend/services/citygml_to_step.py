@@ -626,30 +626,28 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
         return exterior_shell
 
 
-def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
-                                    debug: bool = False) -> Optional["TopoDS_Shape"]:
-    """Extract LOD1 or LOD2 solid geometry directly from a building element.
+def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Extract a single solid from a building or building part element.
 
-    Now supports:
-    - gml:Solid with exterior and interior shells (cavities)
-    - Proper distinction between exterior and interior geometry
+    This is a helper function that extracts LOD1 or LOD2 solid from a single element.
 
-    Priority:
-    1. LOD2 Solid (most detailed)
-    2. LOD1 Solid (simplified)
+    Args:
+        elem: Building or BuildingPart element
+        xyz_transform: Optional coordinate transformation function
+        debug: Enable debug output
 
-    Returns the solid shape or None if not found.
+    Returns:
+        TopoDS_Shape or None
     """
-    if not OCCT_AVAILABLE:
-        raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
-
     # Try LOD2 solid first
-    lod2_solid = building.find(".//bldg:lod2Solid", NS)
+    lod2_solid = elem.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
         solid_elem = lod2_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                print("Found LOD2 Solid")
+                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"Found LOD2 Solid in {elem_id}")
 
             # Extract exterior and interior shells
             exterior_faces, interior_shells_faces = _extract_solid_shells(
@@ -665,12 +663,13 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
                     return result
 
     # Try LOD1 solid
-    lod1_solid = building.find(".//bldg:lod1Solid", NS)
+    lod1_solid = elem.find(".//bldg:lod1Solid", NS)
     if lod1_solid is not None:
         solid_elem = lod1_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                print("Found LOD1 Solid")
+                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"Found LOD1 Solid in {elem_id}")
 
             # Extract exterior and interior shells
             exterior_faces, interior_shells_faces = _extract_solid_shells(
@@ -686,6 +685,96 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
                     return result
 
     return None
+
+
+def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                debug: bool = False) -> List["TopoDS_Shape"]:
+    """Extract geometry from a Building and all its BuildingParts.
+
+    This function recursively extracts:
+    1. Geometry from the main Building element
+    2. Geometry from all bldg:BuildingPart child elements
+
+    Args:
+        building: bldg:Building element
+        xyz_transform: Optional coordinate transformation function
+        debug: Enable debug output
+
+    Returns:
+        List of TopoDS_Shape objects (one per Building/BuildingPart)
+    """
+    shapes: List[TopoDS_Shape] = []
+
+    # Extract from main Building
+    main_shape = _extract_single_solid(building, xyz_transform, debug)
+    if main_shape is not None:
+        shapes.append(main_shape)
+        if debug:
+            print("Extracted geometry from main Building")
+
+    # Extract from all BuildingParts
+    building_parts = building.findall(".//bldg:BuildingPart", NS)
+    if building_parts:
+        if debug:
+            print(f"Found {len(building_parts)} BuildingPart(s)")
+
+        for i, part in enumerate(building_parts):
+            part_shape = _extract_single_solid(part, xyz_transform, debug)
+            if part_shape is not None:
+                shapes.append(part_shape)
+                if debug:
+                    part_id = part.get("{http://www.opengis.net/gml}id") or f"part_{i+1}"
+                    print(f"Extracted geometry from BuildingPart: {part_id}")
+
+    return shapes
+
+
+def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                    debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Extract LOD1 or LOD2 solid geometry from a building element.
+
+    Now supports:
+    - gml:Solid with exterior and interior shells (cavities)
+    - bldg:BuildingPart extraction and merging
+    - Proper distinction between exterior and interior geometry
+
+    If the building has BuildingParts, all parts are extracted and merged into a Compound.
+
+    Priority:
+    1. LOD2 Solid (most detailed)
+    2. LOD1 Solid (simplified)
+
+    Returns the solid shape, compound of shapes, or None if not found.
+    """
+    if not OCCT_AVAILABLE:
+        raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
+
+    # Extract from Building and all BuildingParts
+    shapes = extract_building_and_parts(building, xyz_transform, debug)
+
+    if not shapes:
+        return None
+
+    # If only one shape, return it directly
+    if len(shapes) == 1:
+        return shapes[0]
+
+    # Multiple shapes: create a compound
+    from OCC.Core.BRep import BRep_Builder
+    from OCC.Core.TopoDS import TopoDS_Compound
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+
+    for shp in shapes:
+        if shp is not None and not shp.IsNull():
+            builder.Add(compound, shp)
+
+    if debug:
+        print(f"Created compound with {len(shapes)} shapes (Building + BuildingParts)")
+
+    return compound
 
 
 def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 1e-6, debug: bool = False, 

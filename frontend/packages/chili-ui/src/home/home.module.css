@@ -90,7 +90,7 @@
                 font-size: var(--font-size-sm);
                 margin-top: var(--spacing-xs);
                 letter-spacing: 0px;
-                opacity: 0.7;
+                opacity: var(--opacity-medium);
                 color: var(--neutral-600);
             }
         }
@@ -183,7 +183,7 @@
                 width: 24px;
                 height: 24px;
                 padding: 4px;
-                opacity: 0.75;
+                opacity: var(--opacity-medium);
             }
         }
     }
@@ -231,7 +231,7 @@
             overflow: hidden;
 
             &:hover {
-                opacity: 0.75;
+                opacity: var(--opacity-medium);
                 background-color: var(--background-color);
                 --delete-visibility: visible;
             }
@@ -259,7 +259,7 @@
 
                 & .date {
                     font-size: var(--font-size-xs);
-                    opacity: 0.7;
+                    opacity: var(--opacity-medium);
                     color: var(--neutral-600);
                 }
             }

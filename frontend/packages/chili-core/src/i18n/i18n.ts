@@ -51,7 +51,7 @@ export namespace I18n {
         const lang = navigator.language.toLowerCase();
         if (lang === "zh-cn") return 1;
         if (lang === "ja" || lang.startsWith("ja-")) return 2;
-        return 0;
+        return 2; // Default to Japanese
     }
 
     export function combineTranslation(language: LanguageCode, translations: Record<string, string>) {
@@ -93,6 +93,9 @@ export namespace I18n {
         let newLanguage = Array.from(languages.keys())[index];
         if (newLanguage === _currentLanguage) return;
         _currentLanguage = newLanguage;
+
+        // Update document lang attribute
+        document.documentElement.lang = newLanguage.toLowerCase();
 
         document.querySelectorAll(`[data-${I18nId}]`).forEach((e) => {
             let html = e as HTMLElement;

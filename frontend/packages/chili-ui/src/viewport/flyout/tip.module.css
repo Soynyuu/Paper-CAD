@@ -1,7 +1,7 @@
 .tip {
     font-size: var(--font-size-sm);
     background-color: var(--panel-background-color);
-    opacity: 0.85;
+    opacity: var(--opacity-high);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 1px 4px;

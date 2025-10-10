@@ -4,6 +4,6 @@
     flex-direction: column;
     margin-top: 15px;
     margin-left: 15px;
-    opacity: 0.75;
+    opacity: var(--opacity-medium);
     z-index: var(--z-fixed);
 }

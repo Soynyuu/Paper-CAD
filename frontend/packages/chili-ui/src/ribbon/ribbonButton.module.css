@@ -6,7 +6,7 @@
     margin: var(--spacing-xs);
     border-radius: var(--radius-sm);
     min-width: 48px;
-    max-width: 80px;
+    max-width: 100px;
     transition: all var(--transition-fast);
     cursor: pointer;
 }
@@ -60,6 +60,9 @@
     max-width: 100%;
     font-weight: 500;
     word-break: keep-all;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .icon {

@@ -2,7 +2,6 @@
 
 **建物模型制作のための3D→2D展開図自動生成ツール**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![未踏ジュニア](https://img.shields.io/badge/未踏ジュニア-2025-orange.svg)](https://jr.mitou.org/)
@@ -164,14 +163,7 @@ MIT License - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
 
 - OpenCASCADE Technology
 - 一般社団法人未踏 未踏ジュニア（2025年度採択プロジェクト）
-- すべてのコントリビューターとユーザーの皆様
 
 ## サポート
-
-- **ドキュメント**: [docs.paper-cad.io](https://docs.paper-cad.io)
-- **Issue報告**: [GitHub Issues](https://github.com/yourusername/Paper-CAD/issues)
-- **ディスカッション**: [GitHub Discussions](https://github.com/yourusername/Paper-CAD/discussions)
-
----
 
 **Paper-CAD** - 建物模型制作を、もっと楽しく、もっと簡単に。

@@ -157,7 +157,6 @@ async def unfold_step_to_svg(
             "description": "STEP file generated successfully"
         }
     },
-    response_class=FileResponse,
 )
 async def citygml_to_step(
     request: Request,
@@ -272,7 +271,15 @@ async def citygml_to_step(
 
         # 出力パス
         out_dir = tempfile.mkdtemp()
-        out_path = os.path.join(out_dir, f"citygml_{uuid.uuid4().hex[:8]}.step")
+        # 入力ファイル名からベース名を取得
+        if file is not None:
+            base_name = os.path.splitext(file.filename)[0]
+        elif normalized_gml_path:
+            base_name = os.path.splitext(os.path.basename(normalized_gml_path))[0]
+        else:
+            base_name = "citygml"
+        output_filename = f"{base_name}.step"
+        out_path = os.path.join(out_dir, output_filename)
 
         ok, msg = export_step_from_citygml(
             in_path,
@@ -304,7 +311,7 @@ async def citygml_to_step(
             io.BytesIO(content),
             media_type="application/octet-stream",
             headers={
-                "Content-Disposition": f"attachment; filename={os.path.basename(out_path)}",
+                "Content-Disposition": f'attachment; filename="{output_filename}"',
                 "Content-Length": str(len(content)),
                 "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
                 "Access-Control-Allow-Credentials": "true",

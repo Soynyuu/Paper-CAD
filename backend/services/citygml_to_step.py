@@ -1113,13 +1113,23 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     return sewn
 
 
-def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> Tuple[bool, str]:
-    """Minimal STEP export avoiding config/FastAPI imports.
+def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, debug: bool = False) -> Tuple[bool, str]:
+    """Optimized STEP export with proper configuration.
 
     Used as a fallback when importing core.step_exporter is not possible.
+    Now includes proper STEP writer configuration for CAD compatibility.
+
+    Args:
+        shapes: List of TopoDS_Shape objects to export
+        out_step: Output STEP file path
+        debug: Enable debug output
+
+    Returns:
+        Tuple of (success, message or output_path)
     """
     from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
     from OCC.Core.IFSelect import IFSelect_ReturnStatus
+    from OCC.Core.Interface import Interface_Static
     from OCC.Core.BRep import BRep_Builder
     from OCC.Core.TopoDS import TopoDS_Compound
 
@@ -1138,6 +1148,31 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> 
     if not any_valid:
         return False, "All shapes invalid"
 
+    # Configure STEP writer for optimal CAD compatibility
+    try:
+        # Set STEP schema to AP214CD (automotive design, widely supported)
+        Interface_Static.SetCVal("write.step.schema", "AP214CD")
+
+        # Set units to millimeters (standard for CAD)
+        Interface_Static.SetCVal("write.step.unit", "MM")
+
+        # Set precision mode to maximum
+        Interface_Static.SetIVal("write.precision.mode", 1)
+
+        # Set precision value
+        Interface_Static.SetRVal("write.precision.val", 1e-6)
+
+        # Set surface curve mode (write 3D curves only, no 2D parameter curves on surfaces)
+        Interface_Static.SetIVal("write.surfacecurve.mode", 0)
+
+        if debug:
+            print("STEP writer configured: AP214CD schema, MM units, 1e-6 precision")
+
+    except Exception as e:
+        if debug:
+            print(f"Warning: STEP writer configuration failed: {e}")
+        # Continue with default settings
+
     writer = STEPControl_Writer()
     tr = writer.Transfer(compound, STEPControl_AsIs)
     if tr != IFSelect_ReturnStatus.IFSelect_RetDone:
@@ -1145,6 +1180,10 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> 
     wr = writer.Write(out_step)
     if wr != IFSelect_ReturnStatus.IFSelect_RetDone:
         return False, f"STEP write failed: {wr}"
+
+    if debug:
+        print(f"STEP file written successfully: {out_step}")
+
     return True, out_step
 
 
@@ -1408,7 +1447,7 @@ def export_step_from_citygml(
                 print(f"STEPExporter failed, falling back to local writer: {e}")
             # continue to fallback
 
-    return _export_step_compound_local(shapes, out_step)
+    return _export_step_compound_local(shapes, out_step, debug=debug)
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:

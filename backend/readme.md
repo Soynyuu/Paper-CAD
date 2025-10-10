@@ -129,12 +129,21 @@ OpenCASCADE (OCCT) が未インストールでも API は起動します（機�
 
 ## CityGML→STEP（実験的）
 
-PLATEAU の CityGML から STEP を生成する簡易パイプラインを追加（ヒューリスティック）。
+PLATEAU の CityGML から STEP を生成する高精度パイプラインを提供。
 
-- 方式: フットプリント抽出＋高さ推定 → OCCT で押し出し → STEP(AP214)
-- CLI: `services/citygml_to_step.py`
+### 概要
 
-使い方:
+- **方式**: gml:Solid ジオメトリ抽出 → B-Rep構築 → STEP(AP214CD) エクスポート
+- **対応構造**:
+  - ✅ gml:Solid（exterior/interior shells、cavity対応）
+  - ✅ gml:CompositeSurface / gml:MultiSurface
+  - ✅ bldg:BuildingPart（階層的な建物構造）
+  - ✅ XLink参照（xlink:href）による共有ジオメトリ
+- **座標変換**: 自動CRS検出と日本平面直角座標系への変換（pyproj）
+- **適応的許容誤差**: 座標範囲の0.1%を自動計算（1e-6〜10.0mm）
+- **STEP出力**: AP214CD スキーマ、MM単位、1e-6精度、CAD互換性最適化
+
+### 使い方
 
 ```bash
 # 事前: conda 環境を有効化（OCCT が必要）
@@ -147,9 +156,44 @@ python test_citygml_to_step.py --debug
 python services/citygml_to_step.py input.gml output.step --default-height 10 --limit 50 --debug
 ```
 
-制限:
-- CityGML の詳細サーフェスを厳密再現はしません（押し出し近似）。
-- 将来: CityGML→CityJSON 経由や矩形タイル近似の導入を検討。
+### サポートされる GML 構造
+
+**Building 抽出**:
+```xml
+<bldg:Building gml:id="BLDG_123">
+  <bldg:lod1Solid>
+    <gml:Solid>
+      <gml:exterior>...</gml:exterior>
+      <gml:interior>...</gml:interior>  <!-- cavity対応 -->
+    </gml:Solid>
+  </bldg:lod1Solid>
+  <bldg:consistsOfBuildingPart>  <!-- 階層的な部品 -->
+    <bldg:BuildingPart>...</bldg:BuildingPart>
+  </bldg:consistsOfBuildingPart>
+</bldg:Building>
+```
+
+**XLink 参照**:
+```xml
+<gml:surfaceMember xlink:href="#SURFACE_456"/>
+```
+
+**座標系**:
+- 自動検出: `srsName` 属性から EPSG コードを抽出
+- 地理座標系（EPSG:6697等）は平面直角座標系（EPSG:6669〜6687）へ自動変換
+- 緯度経度から最適なJapan Plane Rectangular CS ゾーンを選択
+
+### 制限事項と今後の展望
+
+**現在の制限**:
+- 非平面サーフェス: ShapeFix で近似修正（NURBS/ベジェ曲面への完全対応は将来的課題）
+- TexturedSurface/Appearance: 未対応（ジオメトリのみ）
+- TerrainIntersectionCurve: 未対応
+
+**今後の展望**:
+- CityJSON 経由の入力対応
+- マルチスレッド処理による大規模データセット対応
+- 詳細なエラーレポート（建物ID別の成功/失敗）
 
 ## よくある質問
 

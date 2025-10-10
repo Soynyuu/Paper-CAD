@@ -2,9 +2,9 @@ import os
 import tempfile
 import uuid
 import zipfile
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Request, BackgroundTasks
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from typing import Optional
+from typing import Optional, Union
 import io
 
 from config import OCCT_AVAILABLE
@@ -157,10 +157,10 @@ async def unfold_step_to_svg(
             "description": "STEP file generated successfully"
         }
     },
-    response_class=FileResponse,
 )
 async def citygml_to_step(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(
         None,
         description="CityGMLファイル（.gml/.xml）をアップロード（file か gml_path のどちらかを指定）",
@@ -171,17 +171,16 @@ async def citygml_to_step(
         example="/abs/path/to/53394642_bldg_6697_op.gml",
     ),
     default_height: float = Form(10.0, description="押し出し時のデフォルト高さ（m）"),
-    limit: Optional[int] = Form(
-        5,
-        description="処理する建物数の上限（未指定で5、0/負数で無制限）",
+    limit: Union[int, str, None] = Form(
+        None,
+        description="処理する建物数の上限（未指定で無制限、正数で制限）",
         example=10,
     ),
     debug: bool = Form(False, description="デバッグログ出力を有効化"),
     method: str = Form(
         "auto",
-        description="変換方式：auto（Solid→縫合→押し出し）, solid（LOD1/2直接）, sew（縫合）, extrude（押し出し）",
+        description="変換方式：auto（Solid→縫合→押し出し、推奨）, solid（LOD1/2直接）, sew（縫合）, extrude（押し出し）",
     ),
-    sew_tolerance: float = Form(1e-6, description="LOD2サーフェス縫合トレランス（m）", example=0.001),
     reproject_to: Optional[str] = Form(
         None,
         description="出力の平面直角/投影座標系（例: EPSG:6676）。未指定で自動選択",
@@ -196,17 +195,89 @@ async def citygml_to_step(
         True,
         description="地理座標系を検出した場合、自動的に適切な投影座標系に変換",
     ),
+    precision_mode: str = Form(
+        "auto",
+        description="精度モード: auto（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）",
+        example="auto",
+    ),
+    shape_fix_level: str = Form(
+        "standard",
+        description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）",
+        example="standard",
+    ),
 ):
     """
-    CityGML (.gml) を受け取り、押し出しヒューリスティックで STEP を生成します。
+    CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
 
-    - 入力はアップロードファイルまたはローカルパス (gml_path) のどちらかを指定
-    - フットプリント＋高さを推定し、OCCT で押し出し、STEP(AP214)を書き出し
-    - 地理座標系（緯度経度）を検出した場合、自動的に適切な平面直角座標系に変換
+    **主要機能**:
+    - gml:Solid ジオメトリ抽出（exterior/interior shells、cavity対応）
+    - bldg:BuildingPart 階層構造の自動抽出とマージ
+    - XLink参照（xlink:href）の自動解決
+    - 適応的tolerance管理（座標範囲の0.01%を自動計算、精度モードで調整可能）
+    - 地理座標系を検出した場合、自動的に適切な平面直角座標系に変換
     - 日本のPLATEAUデータの場合、地域に応じた日本平面直角座標系を自動選択
+    - STEP出力最適化（AP214CD schema、MM単位、1e-6精度）
+
+    **入力**:
+    - アップロードファイルまたはローカルパス (gml_path) のどちらかを指定
+
+    **変換方式** (method):
+    - auto（推奨）: LOD1/2 Solid → LOD2表面縫合 → フットプリント押し出し の順で自動フォールバック
+    - solid: LOD1/2 Solid データを直接使用（PLATEAUに最適）
+    - sew: LOD2の各サーフェスを縫合してソリッド化
+    - extrude: フットプリント＋高さ推定から押し出し（LOD0向け）
+
+    **精度制御** (新機能):
+    - precision_mode: 座標範囲に対するtoleranceの割合を制御
+      * auto: 0.01% (デフォルト、バランス重視)
+      * high: 0.001% (細かいディティール保持)
+      * maximum: 0.0001% (最大限の精度、窓枠・階段・バルコニーなどの細部を保持)
+    - shape_fix_level: 形状修正の強度を制御
+      * minimal: 修正を最小限に抑え、細部を優先
+      * standard: 標準的な修正 (デフォルト)
+      * aggressive: 修正を強化し、堅牢性を優先
     """
     try:
-        if file is None and not gml_path:
+        # Normalize limit parameter (handle empty string from form)
+        normalized_limit: Optional[int] = None
+        if limit is not None:
+            if isinstance(limit, str):
+                if limit.strip() == "" or limit == "0":
+                    normalized_limit = None
+                else:
+                    try:
+                        normalized_limit = int(limit)
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail=f"limit must be a valid integer, got: {limit}")
+            elif isinstance(limit, int):
+                normalized_limit = limit if limit > 0 else None
+
+        # Normalize string parameters (handle empty strings)
+        normalized_source_crs = source_crs if source_crs and source_crs.strip() else None
+        normalized_reproject_to = reproject_to if reproject_to and reproject_to.strip() else None
+        normalized_gml_path = gml_path if gml_path and gml_path.strip() else None
+
+        # Normalize precision parameters (handle empty strings, fall back to defaults)
+        normalized_precision_mode = precision_mode if precision_mode and precision_mode.strip() else "auto"
+        normalized_shape_fix_level = shape_fix_level if shape_fix_level and shape_fix_level.strip() else "standard"
+
+        # Validate precision_mode
+        valid_precision_modes = ["auto", "high", "maximum"]
+        if normalized_precision_mode not in valid_precision_modes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"precision_mode must be one of {valid_precision_modes}, got: {normalized_precision_mode}"
+            )
+
+        # Validate shape_fix_level
+        valid_shape_fix_levels = ["minimal", "standard", "aggressive"]
+        if normalized_shape_fix_level not in valid_shape_fix_levels:
+            raise HTTPException(
+                status_code=400,
+                detail=f"shape_fix_level must be one of {valid_shape_fix_levels}, got: {normalized_shape_fix_level}"
+            )
+
+        if file is None and not normalized_gml_path:
             raise HTTPException(status_code=400, detail="CityGMLファイルをアップロードするか gml_path を指定してください。")
 
         # 入力ファイルの用意
@@ -214,11 +285,11 @@ async def citygml_to_step(
             if not file.filename.lower().endswith((".gml", ".xml")):
                 raise HTTPException(status_code=400, detail="CityGML (.gml/.xml) に対応しています。")
             
-            # ファイルサイズチェック（100MB制限）
-            if hasattr(file, 'size') and file.size and file.size > 100 * 1024 * 1024:
+            # ファイルサイズチェック（500MB制限）
+            if hasattr(file, 'size') and file.size and file.size > 500 * 1024 * 1024:
                 raise HTTPException(
                     status_code=413,
-                    detail="ファイルサイズが大きすぎます（最大100MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
+                    detail="ファイルサイズが大きすぎます（最大500MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
                 )
             tmpdir = tempfile.mkdtemp()
             in_path = os.path.join(tmpdir, f"{uuid.uuid4()}.gml")
@@ -234,57 +305,63 @@ async def citygml_to_step(
                 raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
             print(f"[UPLOAD] /api/citygml/to-step: received {total} bytes -> {in_path}")
         else:
-            in_path = gml_path  # type: ignore
+            in_path = normalized_gml_path  # type: ignore
             if not os.path.exists(in_path):
                 raise HTTPException(status_code=404, detail=f"指定されたパスが見つかりません: {in_path}")
             print(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
 
-        # limitが0または負数の場合は警告（大容量ファイルの場合）
-        if limit is not None and limit <= 0:
-            # 135MBのファイルなど大きい場合は制限を推奨
-            if file is not None and file.size and file.size > 50 * 1024 * 1024:  # 50MB以上
-                raise HTTPException(
-                    status_code=400, 
-                    detail="大容量ファイルの場合は建物数制限（limit）を設定してください（推奨: 10-50）"
-                )
-        
         # 出力パス
         out_dir = tempfile.mkdtemp()
-        out_path = os.path.join(out_dir, f"citygml_{uuid.uuid4().hex[:8]}.step")
+        # 入力ファイル名からベース名を取得
+        if file is not None:
+            base_name = os.path.splitext(file.filename)[0]
+        elif normalized_gml_path:
+            base_name = os.path.splitext(os.path.basename(normalized_gml_path))[0]
+        else:
+            base_name = "citygml"
+        output_filename = f"{base_name}.step"
+        out_path = os.path.join(out_dir, output_filename)
 
         ok, msg = export_step_from_citygml(
             in_path,
             out_path,
             default_height=default_height,
-            limit=limit,
+            limit=normalized_limit,
             debug=debug,
             method=method,
-            sew_tolerance=sew_tolerance,
-            reproject_to=reproject_to,
-            source_crs=source_crs,
+            reproject_to=normalized_reproject_to,
+            source_crs=normalized_source_crs,
             auto_reproject=auto_reproject,
+            precision_mode=normalized_precision_mode,
+            shape_fix_level=normalized_shape_fix_level,
         )
         if not ok:
             raise HTTPException(status_code=400, detail=f"変換に失敗しました: {msg}")
 
-        # ファイル内容を読み込んでからレスポンスとして返す
-        with open(out_path, 'rb') as f:
-            content = f.read()
-        
-        # 一時ファイルをクリーンアップ
-        try:
-            os.remove(out_path)
-            os.rmdir(out_dir)
-        except:
-            pass
-        
-        # StreamingResponseを使用してメモリ効率を改善
-        return StreamingResponse(
-            io.BytesIO(content),
+        # ファイルサイズを取得してログ出力
+        file_size = os.path.getsize(out_path)
+        print(f"[RESPONSE] Generated STEP file: {output_filename} ({file_size:,} bytes)")
+
+        # クリーンアップ関数を定義
+        def cleanup_temp_files():
+            try:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                if os.path.exists(out_dir):
+                    os.rmdir(out_dir)
+                print(f"[CLEANUP] Removed temporary files: {out_path}")
+            except Exception as e:
+                print(f"[CLEANUP] Failed to remove temporary files: {e}")
+
+        # レスポンス送信後にクリーンアップをスケジュール
+        background_tasks.add_task(cleanup_temp_files)
+
+        # FileResponseを使用して大容量ファイルを効率的にストリーミング
+        return FileResponse(
+            path=out_path,
             media_type="application/octet-stream",
+            filename=output_filename,
             headers={
-                "Content-Disposition": f"attachment; filename={os.path.basename(out_path)}",
-                "Content-Length": str(len(content)),
                 "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
                 "Access-Control-Allow-Credentials": "true",
                 "Cache-Control": "no-cache"

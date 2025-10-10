@@ -102,6 +102,7 @@ NS = {
     "core": "http://www.opengis.net/citygml/2.0",
     "uro": "http://www.opengis.net/uro/1.0",
     "gen": "http://www.opengis.net/citygml/generics/2.0",
+    "xlink": "http://www.w3.org/1999/xlink",
 }
 
 
@@ -154,6 +155,80 @@ def _parse_poslist(elem: ET.Element) -> List[Tuple[float, float, Optional[float]
 
 def _first_text(elem: Optional[ET.Element]) -> Optional[str]:
     return (elem.text or "").strip() if elem is not None and elem.text else None
+
+
+def _build_id_index(root: ET.Element) -> dict[str, ET.Element]:
+    """Build an index of all gml:id attributes in the document.
+
+    This enables efficient resolution of XLink references (xlink:href="#id").
+
+    Args:
+        root: Root element of the GML document
+
+    Returns:
+        Dictionary mapping gml:id values to elements
+    """
+    id_index: dict[str, ET.Element] = {}
+
+    # Iterate through all elements
+    for elem in root.iter():
+        # Check for gml:id attribute
+        gml_id = elem.get("{http://www.opengis.net/gml}id")
+        if gml_id:
+            id_index[gml_id] = elem
+
+    return id_index
+
+
+def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+    """Resolve an XLink reference (xlink:href) to the target element.
+
+    Args:
+        elem: Element that may contain an xlink:href attribute
+        id_index: Index of gml:id -> element mappings
+
+    Returns:
+        The target element if reference is resolved, None otherwise
+    """
+    # Check for xlink:href attribute
+    href = elem.get("{http://www.w3.org/1999/xlink}href")
+    if not href:
+        return None
+
+    # Remove leading '#' from href
+    if href.startswith("#"):
+        target_id = href[1:]
+    else:
+        target_id = href
+
+    # Look up in index
+    return id_index.get(target_id)
+
+
+def _extract_polygon_with_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+    """Extract a gml:Polygon from an element, resolving XLink references if needed.
+
+    Args:
+        elem: Element that may contain a Polygon directly or via XLink
+        id_index: Index for resolving XLink references
+
+    Returns:
+        gml:Polygon element or None
+    """
+    # Try to find Polygon directly
+    poly = elem.find(".//gml:Polygon", NS)
+    if poly is not None:
+        return poly
+
+    # Try to resolve XLink
+    target = _resolve_xlink(elem, id_index)
+    if target is not None:
+        # Try to find Polygon in target
+        poly = target.find(".//gml:Polygon", NS)
+        if poly is not None:
+            return poly
+
+    return None
 
 
 def _extract_polygon_xy(poly: ET.Element) -> Tuple[List[Tuple[float, float]], List[List[Tuple[float, float]]], List[float]]:
@@ -405,104 +480,622 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
         return None
 
 
-def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None, 
-                                    debug: bool = False) -> Optional["TopoDS_Shape"]:
-    """Extract LOD1 or LOD2 solid geometry directly from a building element.
-    
-    Priority:
-    1. LOD2 Solid (most detailed)
-    2. LOD1 Solid (simplified)
-    
-    Returns the solid shape or None if not found.
+def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]], precision_mode: str = "auto") -> float:
+    """Compute appropriate tolerance based on coordinate extent and precision mode.
+
+    The tolerance scales with coordinate extent and precision requirements.
+    Higher precision means smaller tolerance (more detail preservation).
+
+    Args:
+        coords: List of (x, y, z) coordinate tuples
+        precision_mode: Precision level ("auto", "high", or "maximum")
+            - "auto"/"standard": 0.01% of extent (default, good balance)
+            - "high": 0.001% of extent (preserves fine details)
+            - "maximum": 0.0001% of extent (maximum detail preservation)
+
+    Returns:
+        Computed tolerance value (minimum 1e-7, maximum 10.0)
     """
-    if not OCCT_AVAILABLE:
-        raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
-    
+    if not coords:
+        # Fallback values based on precision mode
+        fallback = {
+            "maximum": 0.0001,
+            "high": 0.001,
+        }
+        return fallback.get(precision_mode, 0.01)
+
+    # Compute bounding box
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
+
+    x_extent = max(xs) - min(xs) if xs else 0.0
+    y_extent = max(ys) - min(ys) if ys else 0.0
+    z_extent = max(zs) - min(zs) if zs else 0.0
+
+    # Maximum extent across all dimensions
+    extent = max(x_extent, y_extent, z_extent)
+
+    # Tolerance percentage based on precision mode
+    # Higher precision = smaller percentage = more detail preserved
+    percentage = {
+        "maximum": 0.000001,  # 0.0001%
+        "high": 0.00001,      # 0.001%
+    }.get(precision_mode, 0.0001)  # default: 0.01%
+
+    tolerance = extent * percentage
+
+    # Clamp to reasonable range (tighter bounds for higher precision)
+    min_tol = 1e-7 if precision_mode == "maximum" else 1e-6
+    tolerance = max(min_tol, min(tolerance, 10.0))
+
+    return tolerance
+
+
+def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"], precision_mode: str = "auto") -> float:
+    """Compute tolerance from a list of faces by sampling their vertices.
+
+    Args:
+        faces: List of TopoDS_Face objects
+        precision_mode: Precision level ("auto", "high", or "maximum")
+
+    Returns:
+        Computed tolerance value
+    """
+    # Sample up to 100 vertices from faces
+    coords: List[Tuple[float, float, float]] = []
+    from OCC.Core.BRepTools import BRepTools_WireExplorer
+    from OCC.Core.BRep import BRep_Tool
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_WIRE
+
+    sample_limit = 100
+    for face in faces:
+        if len(coords) >= sample_limit:
+            break
+
+        # Explore wires in face
+        wire_exp = TopExp_Explorer(face, TopAbs_WIRE)
+        while wire_exp.More() and len(coords) < sample_limit:
+            wire = wire_exp.Current()
+            wire_explorer = BRepTools_WireExplorer(wire)
+
+            while wire_explorer.More() and len(coords) < sample_limit:
+                vertex = wire_explorer.CurrentVertex()
+                pnt = BRep_Tool.Pnt(vertex)
+                coords.append((pnt.X(), pnt.Y(), pnt.Z()))
+                wire_explorer.Next()
+
+            wire_exp.Next()
+
+    if coords:
+        return _compute_tolerance_from_coords(coords, precision_mode)
+    else:
+        # Fallback values based on precision mode
+        fallback = {
+            "maximum": 0.0001,
+            "high": 0.001,
+        }
+        return fallback.get(precision_mode, 0.01)
+
+
+def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          id_index: Optional[dict[str, ET.Element]] = None,
+                          debug: bool = False) -> Tuple[List["TopoDS_Face"], List[List["TopoDS_Face"]]]:
+    """Extract exterior and interior shells from a gml:Solid element.
+
+    Now supports XLink reference resolution for polygons.
+
+    Returns:
+        Tuple of (exterior_faces, list_of_interior_face_lists)
+
+    GML Structure:
+        gml:Solid/gml:exterior - outer shell (building envelope)
+        gml:Solid/gml:interior - inner shells (cavities, courtyards)
+    """
+    exterior_faces: List[TopoDS_Face] = []
+    interior_shells: List[List[TopoDS_Face]] = []
+
+    # Use empty index if none provided
+    if id_index is None:
+        id_index = {}
+
+    # Extract exterior shell polygons
+    exterior_elem = solid_elem.find("./gml:exterior", NS)
+    if exterior_elem is not None:
+        # Support multiple GML surface patterns - find all surfaceMember elements
+        for surf_member in exterior_elem.findall(".//gml:surfaceMember", NS):
+            # Try to extract polygon (with XLink resolution)
+            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                # Fallback: search directly
+                poly = surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Exterior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                exterior_faces.append(fc)
+
+        # Also search for direct Polygon children (not in surfaceMember)
+        for poly in exterior_elem.findall(".//gml:Polygon", NS):
+            # Skip if already processed via surfaceMember
+            parent = poly.find("..")
+            if parent is not None and parent.tag.endswith("surfaceMember"):
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Exterior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                exterior_faces.append(fc)
+
+    # Extract interior shells (cavities)
+    for interior_elem in solid_elem.findall("./gml:interior", NS):
+        interior_faces: List[TopoDS_Face] = []
+
+        # Try surfaceMember pattern first
+        for surf_member in interior_elem.findall(".//gml:surfaceMember", NS):
+            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                poly = surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Interior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                interior_faces.append(fc)
+
+        # Also search for direct Polygon children
+        for poly in interior_elem.findall(".//gml:Polygon", NS):
+            parent = poly.find("..")
+            if parent is not None and parent.tag.endswith("surfaceMember"):
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Interior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                interior_faces.append(fc)
+
+        if interior_faces:
+            interior_shells.append(interior_faces)
+            if debug:
+                print(f"Found interior shell with {len(interior_faces)} faces (cavity)")
+
+    return exterior_faces, interior_shells
+
+
+def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
+                            debug: bool = False, shape_fix_level: str = "standard") -> Optional["TopoDS_Shell"]:
+    """Build a shell from a list of faces using sewing and fixing.
+
+    Args:
+        faces: List of TopoDS_Face objects
+        tolerance: Sewing tolerance
+        debug: Enable debug output
+        shape_fix_level: Shape fixing aggressiveness
+            - "minimal": Skip shape fixing to preserve maximum detail
+            - "standard": Standard shape fixing (default)
+            - "aggressive": More aggressive shape fixing for robustness
+
+    Returns:
+        TopoDS_Shell or None if construction fails
+    """
+    if not faces:
+        return None
+
+    # Sew faces together
+    sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+    for fc in faces:
+        sewing.Add(fc)
+    sewing.Perform()
+    sewn_shape = sewing.SewedShape()
+
+    # Apply shape fixing based on level
+    if shape_fix_level != "minimal":
+        try:
+            fixer = ShapeFix_Shape(sewn_shape)
+
+            # Configure fixer based on level
+            if shape_fix_level == "standard":
+                # Standard fixing - balance between robustness and detail preservation
+                fixer.SetPrecision(tolerance)
+                fixer.SetMaxTolerance(tolerance * 10.0)
+            elif shape_fix_level == "aggressive":
+                # Aggressive fixing - prioritize robustness over detail
+                fixer.SetPrecision(tolerance * 10.0)
+                fixer.SetMaxTolerance(tolerance * 100.0)
+
+            fixer.Perform()
+            sewn_shape = fixer.Shape()
+
+            if debug:
+                print(f"Shape fixing applied (level: {shape_fix_level})")
+        except Exception as e:
+            if debug:
+                print(f"ShapeFix_Shape failed: {e}")
+
+    # Extract shell from sewn shape
+    exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
+    if exp.More():
+        shell = topods.Shell(exp.Current())
+
+        # Validate shell
+        try:
+            from OCC.Core.BRep import BRep_Tool
+            analyzer = BRepCheck_Analyzer(shell)
+            if not analyzer.IsValid():
+                if debug:
+                    print("Warning: Shell is not valid, attempting to fix...")
+                # Try to fix shell
+                try:
+                    from OCC.Core.ShapeFix import ShapeFix_Shell
+                    shell_fixer = ShapeFix_Shell(shell)
+                    shell_fixer.Perform()
+                    shell = shell_fixer.Shell()
+                except Exception as e:
+                    if debug:
+                        print(f"ShapeFix_Shell failed: {e}")
+        except Exception as e:
+            if debug:
+                print(f"Shell validation failed: {e}")
+
+        return shell
+
+    return None
+
+
+def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
+                               interior_shells_faces: List[List["TopoDS_Face"]],
+                               tolerance: Optional[float] = None,
+                               debug: bool = False,
+                               precision_mode: str = "auto",
+                               shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
+    """Build a solid with cavities from exterior and interior shells.
+
+    Args:
+        exterior_faces: Faces forming the outer shell
+        interior_shells_faces: List of face lists, each forming an interior shell (cavity)
+        tolerance: Sewing tolerance (auto-computed if None)
+        debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
+
+    Returns:
+        TopoDS_Solid or TopoDS_Shape (if solid construction fails)
+    """
+    from OCC.Core.BRep import BRep_Tool
+
+    # Auto-compute tolerance if not provided
+    if tolerance is None:
+        tolerance = _compute_tolerance_from_face_list(exterior_faces, precision_mode)
+        if debug:
+            print(f"Auto-computed tolerance: {tolerance:.6f} (precision_mode: {precision_mode})")
+
+    # Build exterior shell
+    exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug, shape_fix_level)
+    if exterior_shell is None:
+        if debug:
+            print("Failed to build exterior shell")
+        return None
+
+    # Check if exterior shell is closed
+    try:
+        is_closed = BRep_Tool.IsClosed(exterior_shell)
+        if not is_closed:
+            if debug:
+                print("Warning: Exterior shell is not closed")
+    except Exception as e:
+        if debug:
+            print(f"Failed to check if shell is closed: {e}")
+        is_closed = False
+
+    # Build interior shells
+    interior_shells: List[TopoDS_Shell] = []
+    for i, int_faces in enumerate(interior_shells_faces):
+        int_shell = _build_shell_from_faces(int_faces, tolerance, debug, shape_fix_level)
+        if int_shell is not None:
+            try:
+                if BRep_Tool.IsClosed(int_shell):
+                    interior_shells.append(int_shell)
+                    if debug:
+                        print(f"Added interior shell {i+1} (closed)")
+                else:
+                    if debug:
+                        print(f"Interior shell {i+1} is not closed, skipping")
+            except Exception as e:
+                if debug:
+                    print(f"Interior shell {i+1} check failed: {e}")
+
+    # Try to create solid
+    if is_closed:
+        try:
+            mk_solid = BRepBuilderAPI_MakeSolid(exterior_shell)
+
+            # Add interior shells (cavities)
+            for int_shell in interior_shells:
+                try:
+                    mk_solid.Add(int_shell)
+                except Exception as e:
+                    if debug:
+                        print(f"Failed to add interior shell: {e}")
+
+            solid = mk_solid.Solid()
+
+            # Validate solid
+            analyzer = BRepCheck_Analyzer(solid)
+            if analyzer.IsValid():
+                if debug:
+                    print(f"Created valid solid with {len(interior_shells)} cavities")
+                return solid
+            else:
+                if debug:
+                    print("Solid validation failed, returning shell")
+                return exterior_shell
+        except Exception as e:
+            if debug:
+                print(f"Solid creation failed: {e}, returning shell")
+            return exterior_shell
+    else:
+        if debug:
+            print("Exterior shell not closed, cannot create solid")
+        return exterior_shell
+
+
+def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          id_index: Optional[dict[str, ET.Element]] = None,
+                          debug: bool = False,
+                          precision_mode: str = "auto",
+                          shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
+    """Extract a single solid from a building or building part element.
+
+    This is a helper function that extracts LOD1 or LOD2 solid from a single element.
+
+    Args:
+        elem: Building or BuildingPart element
+        xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
+        debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
+
+    Returns:
+        TopoDS_Shape or None
+    """
     # Try LOD2 solid first
-    lod2_solid = building.find(".//bldg:lod2Solid", NS)
+    lod2_solid = elem.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
         solid_elem = lod2_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                print("Found LOD2 Solid")
-            # Extract exterior shell polygons
-            faces = []
-            for poly in solid_elem.findall(".//gml:Polygon", NS):
-                ext, holes = _extract_polygon_xyz(poly)
-                if len(ext) < 3:
-                    continue
-                    
-                # Apply coordinate transformation if provided
-                if xyz_transform:
-                    try:
-                        ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
-                        holes = [
-                            [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
-                            for ring in holes
-                        ]
-                    except Exception as e:
-                        if debug:
-                            print(f"Transform failed: {e}")
-                        continue
-                
-                fc = _face_from_xyz_rings(ext, holes)
-                if fc is not None and not fc.IsNull():
-                    faces.append(fc)
-            
-            if faces:
-                # Sew faces into solid
-                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Sewing
-                sewing = BRepBuilderAPI_Sewing(0.1, True, True, True, False)
-                for fc in faces:
-                    sewing.Add(fc)
-                sewing.Perform()
-                return sewing.SewedShape()
-    
+                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"Found LOD2 Solid in {elem_id}")
+
+            # Extract exterior and interior shells
+            exterior_faces, interior_shells_faces = _extract_solid_shells(
+                solid_elem, xyz_transform, id_index, debug
+            )
+
+            if exterior_faces:
+                # Build solid with cavities (adaptive tolerance)
+                result = _make_solid_with_cavities(
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    precision_mode=precision_mode, shape_fix_level=shape_fix_level
+                )
+                if result is not None:
+                    return result
+
     # Try LOD1 solid
-    lod1_solid = building.find(".//bldg:lod1Solid", NS)
+    lod1_solid = elem.find(".//bldg:lod1Solid", NS)
     if lod1_solid is not None:
         solid_elem = lod1_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                print("Found LOD1 Solid")
-            # Extract exterior shell polygons
-            faces = []
-            for poly in solid_elem.findall(".//gml:Polygon", NS):
-                ext, holes = _extract_polygon_xyz(poly)
-                if len(ext) < 3:
-                    continue
-                    
-                # Apply coordinate transformation if provided
-                if xyz_transform:
-                    try:
-                        ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
-                        holes = [
-                            [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
-                            for ring in holes
-                        ]
-                    except Exception as e:
-                        if debug:
-                            print(f"Transform failed: {e}")
-                        continue
-                
-                fc = _face_from_xyz_rings(ext, holes)
-                if fc is not None and not fc.IsNull():
-                    faces.append(fc)
-            
-            if faces:
-                # Sew faces into solid
-                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Sewing
-                sewing = BRepBuilderAPI_Sewing(0.1, True, True, True, False)
-                for fc in faces:
-                    sewing.Add(fc)
-                sewing.Perform()
-                return sewing.SewedShape()
-    
+                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"Found LOD1 Solid in {elem_id}")
+
+            # Extract exterior and interior shells
+            exterior_faces, interior_shells_faces = _extract_solid_shells(
+                solid_elem, xyz_transform, id_index, debug
+            )
+
+            if exterior_faces:
+                # Build solid with cavities (adaptive tolerance)
+                result = _make_solid_with_cavities(
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    precision_mode=precision_mode, shape_fix_level=shape_fix_level
+                )
+                if result is not None:
+                    return result
+
     return None
 
 
-def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 1e-6, debug: bool = False, 
-                                   xyz_transform: Optional[Callable] = None) -> Optional["TopoDS_Shape"]:
+def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                id_index: Optional[dict[str, ET.Element]] = None,
+                                debug: bool = False,
+                                precision_mode: str = "auto",
+                                shape_fix_level: str = "standard") -> List["TopoDS_Shape"]:
+    """Extract geometry from a Building and all its BuildingParts.
+
+    This function recursively extracts:
+    1. Geometry from the main Building element
+    2. Geometry from all bldg:BuildingPart child elements
+
+    Args:
+        building: bldg:Building element
+        xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
+        debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
+
+    Returns:
+        List of TopoDS_Shape objects (one per Building/BuildingPart)
+    """
+    shapes: List[TopoDS_Shape] = []
+
+    # Extract from main Building
+    main_shape = _extract_single_solid(building, xyz_transform, id_index, debug,
+                                       precision_mode, shape_fix_level)
+    if main_shape is not None:
+        shapes.append(main_shape)
+        if debug:
+            print("Extracted geometry from main Building")
+
+    # Extract from all BuildingParts
+    building_parts = building.findall(".//bldg:BuildingPart", NS)
+    if building_parts:
+        if debug:
+            print(f"Found {len(building_parts)} BuildingPart(s)")
+
+        for i, part in enumerate(building_parts):
+            part_shape = _extract_single_solid(part, xyz_transform, id_index, debug,
+                                               precision_mode, shape_fix_level)
+            if part_shape is not None:
+                shapes.append(part_shape)
+                if debug:
+                    part_id = part.get("{http://www.opengis.net/gml}id") or f"part_{i+1}"
+                    print(f"Extracted geometry from BuildingPart: {part_id}")
+
+    return shapes
+
+
+def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                    id_index: Optional[dict[str, ET.Element]] = None,
+                                    debug: bool = False,
+                                    precision_mode: str = "auto",
+                                    shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
+    """Extract LOD1 or LOD2 solid geometry from a building element.
+
+    Now supports:
+    - gml:Solid with exterior and interior shells (cavities)
+    - bldg:BuildingPart extraction and merging
+    - XLink reference resolution (xlink:href)
+    - Proper distinction between exterior and interior geometry
+    - Precision mode control for detail preservation
+
+    If the building has BuildingParts, all parts are extracted and merged into a Compound.
+
+    Priority:
+    1. LOD2 Solid (most detailed)
+    2. LOD1 Solid (simplified)
+
+    Args:
+        building: bldg:Building element
+        xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
+        debug: Enable debug output
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
+
+    Returns the solid shape, compound of shapes, or None if not found.
+    """
+    if not OCCT_AVAILABLE:
+        raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
+
+    # Extract from Building and all BuildingParts
+    shapes = extract_building_and_parts(building, xyz_transform, id_index, debug,
+                                        precision_mode, shape_fix_level)
+
+    if not shapes:
+        return None
+
+    # If only one shape, return it directly
+    if len(shapes) == 1:
+        return shapes[0]
+
+    # Multiple shapes: create a compound
+    from OCC.Core.BRep import BRep_Builder
+    from OCC.Core.TopoDS import TopoDS_Compound
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+
+    for shp in shapes:
+        if shp is not None and not shp.IsNull():
+            builder.Add(compound, shp)
+
+    if debug:
+        print(f"Created compound with {len(shapes)} shapes (Building + BuildingParts)")
+
+    return compound
+
+
+def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional[float] = None,
+                                   debug: bool = False, xyz_transform: Optional[Callable] = None,
+                                   precision_mode: str = "auto",
+                                   shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Build a sewn shape (and solids if possible) from LOD2 surfaces of a building.
 
     - Collect bldg:WallSurface, bldg:RoofSurface, bldg:GroundSurface polygons
@@ -510,6 +1103,14 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     - Sew faces; try to close shells into solids
     - Return compound of solids if any; otherwise the sewn shell/compound
     - Optionally transform coordinates if xyz_transform is provided
+
+    Args:
+        building: bldg:Building element
+        sew_tolerance: Sewing tolerance (auto-computed if None)
+        debug: Enable debug output
+        xyz_transform: Optional coordinate transformation function
+        precision_mode: Precision level for tolerance computation
+        shape_fix_level: Shape fixing aggressiveness
     """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for surface sewing")
@@ -524,7 +1125,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
             ext, holes = _extract_polygon_xyz(poly)
             if len(ext) < 3:
                 continue
-            
+
             # Apply coordinate transformation if provided
             if xyz_transform:
                 try:
@@ -537,7 +1138,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
                     if debug:
                         print(f"Transform failed: {e}")
                     continue
-            
+
             fc = _face_from_xyz_rings(ext, holes)
             if fc is not None and not fc.IsNull():
                 faces.append(fc)
@@ -545,19 +1146,39 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     if not faces:
         return None
 
+    # Auto-compute tolerance if not provided
+    if sew_tolerance is None:
+        sew_tolerance = _compute_tolerance_from_face_list(faces, precision_mode)
+        if debug:
+            print(f"Auto-computed sewing tolerance: {sew_tolerance:.6f} (precision_mode: {precision_mode})")
+
     sewing = BRepBuilderAPI_Sewing(sew_tolerance, True, True, True, False)
     for fc in faces:
         sewing.Add(fc)
     sewing.Perform()
     sewn = sewing.SewedShape()
 
-    # Optional shape fix
-    try:
-        fixer = ShapeFix_Shape(sewn)
-        fixer.Perform()
-        sewn = fixer.Shape()
-    except Exception:
-        pass
+    # Apply shape fixing based on level
+    if shape_fix_level != "minimal":
+        try:
+            fixer = ShapeFix_Shape(sewn)
+
+            # Configure fixer based on level
+            if shape_fix_level == "standard":
+                fixer.SetPrecision(sew_tolerance)
+                fixer.SetMaxTolerance(sew_tolerance * 10.0)
+            elif shape_fix_level == "aggressive":
+                fixer.SetPrecision(sew_tolerance * 10.0)
+                fixer.SetMaxTolerance(sew_tolerance * 100.0)
+
+            fixer.Perform()
+            sewn = fixer.Shape()
+
+            if debug:
+                print(f"Shape fixing applied to sewn shape (level: {shape_fix_level})")
+        except Exception as e:
+            if debug:
+                print(f"ShapeFix_Shape failed: {e}")
 
     # Try to make solids from shells
     solids: List[TopoDS_Shape] = []
@@ -591,13 +1212,23 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: float = 
     return sewn
 
 
-def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> Tuple[bool, str]:
-    """Minimal STEP export avoiding config/FastAPI imports.
+def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, debug: bool = False) -> Tuple[bool, str]:
+    """Optimized STEP export with proper configuration.
 
     Used as a fallback when importing core.step_exporter is not possible.
+    Now includes proper STEP writer configuration for CAD compatibility.
+
+    Args:
+        shapes: List of TopoDS_Shape objects to export
+        out_step: Output STEP file path
+        debug: Enable debug output
+
+    Returns:
+        Tuple of (success, message or output_path)
     """
     from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
     from OCC.Core.IFSelect import IFSelect_ReturnStatus
+    from OCC.Core.Interface import Interface_Static
     from OCC.Core.BRep import BRep_Builder
     from OCC.Core.TopoDS import TopoDS_Compound
 
@@ -616,6 +1247,31 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> 
     if not any_valid:
         return False, "All shapes invalid"
 
+    # Configure STEP writer for optimal CAD compatibility
+    try:
+        # Set STEP schema to AP214CD (automotive design, widely supported)
+        Interface_Static.SetCVal("write.step.schema", "AP214CD")
+
+        # Set units to millimeters (standard for CAD)
+        Interface_Static.SetCVal("write.step.unit", "MM")
+
+        # Set precision mode to maximum
+        Interface_Static.SetIVal("write.precision.mode", 1)
+
+        # Set precision value
+        Interface_Static.SetRVal("write.precision.val", 1e-6)
+
+        # Set surface curve mode (write 3D curves only, no 2D parameter curves on surfaces)
+        Interface_Static.SetIVal("write.surfacecurve.mode", 0)
+
+        if debug:
+            print("STEP writer configured: AP214CD schema, MM units, 1e-6 precision")
+
+    except Exception as e:
+        if debug:
+            print(f"Warning: STEP writer configuration failed: {e}")
+        # Continue with default settings
+
     writer = STEPControl_Writer()
     tr = writer.Transfer(compound, STEPControl_AsIs)
     if tr != IFSelect_ReturnStatus.IFSelect_RetDone:
@@ -623,6 +1279,10 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str) -> 
     wr = writer.Write(out_step)
     if wr != IFSelect_ReturnStatus.IFSelect_RetDone:
         return False, f"STEP write failed: {wr}"
+
+    if debug:
+        print(f"STEP file written successfully: {out_step}")
+
     return True, out_step
 
 
@@ -727,21 +1387,41 @@ def export_step_from_citygml(
     limit: Optional[int] = None,
     debug: bool = False,
     method: str = "auto",
-    sew_tolerance: float = 1e-6,
+    sew_tolerance: Optional[float] = None,
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
     auto_reproject: bool = True,
+    precision_mode: str = "auto",
+    shape_fix_level: str = "standard",
 ) -> Tuple[bool, str]:
-    """High-level pipeline: CityGML → STEP
+    """High-level pipeline: CityGML → STEP with precision control.
 
-    method:
-      - "solid": LOD1/LOD2のSolidデータを直接使用（PLATEAUに最適）
-      - "extrude": footprint+height extrusion (LOD0系)
-      - "sew": LOD2の各サーフェスを縫合してソリッド化（可能なら）
-      - "auto": solid→sew→extrudeの順でフォールバック
-    auto_reproject:
-      - If True and no reproject_to specified, automatically select appropriate projection
-    Returns (success, message or output_path).
+    Args:
+        gml_path: Path to CityGML file
+        out_step: Output STEP file path
+        default_height: Default height for extrusion when not available
+        limit: Limit number of buildings to process (None for all)
+        debug: Enable debug output
+        method: Conversion strategy
+            - "solid": Use LOD1/LOD2 Solid data directly (best for PLATEAU)
+            - "extrude": Footprint+height extrusion (LOD0 systems)
+            - "sew": Sew LOD2 surfaces into solids
+            - "auto": Fallback solid→sew→extrude (recommended)
+        sew_tolerance: Sewing tolerance (auto-computed if None based on precision_mode)
+        reproject_to: Target CRS (e.g., 'EPSG:6676')
+        source_crs: Source CRS (auto-detected if None)
+        auto_reproject: Auto-select projection for geographic CRS
+        precision_mode: Precision level for detail preservation
+            - "auto"/"standard": 0.01% of extent (balanced, default)
+            - "high": 0.001% of extent (preserves fine details like windows)
+            - "maximum": 0.0001% of extent (maximum detail preservation)
+        shape_fix_level: Shape fixing aggressiveness
+            - "minimal": Skip fixing to preserve maximum detail
+            - "standard": Balanced fixing (default)
+            - "aggressive": Prioritize robustness over detail
+
+    Returns:
+        Tuple of (success, message or output_path)
     """
     if not OCCT_AVAILABLE:
         return False, "OCCT is not available; cannot export STEP."
@@ -754,6 +1434,11 @@ def export_step_from_citygml(
     tree = ET.parse(gml_path)
     root = tree.getroot()
     bldgs = root.findall(".//bldg:Building", NS)
+
+    # Build XLink resolution index
+    id_index = _build_id_index(root)
+    if debug and id_index:
+        print(f"Built XLink index with {len(id_index)} gml:id entries")
 
     # Detect source CRS and sample coordinates
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)
@@ -784,20 +1469,10 @@ def export_step_from_citygml(
         except Exception as e:
             return False, f"Reprojection setup failed: {e}"
 
-    # Adjust sew tolerance based on reprojection
-    # If reprojecting from geographic to projected coordinates, scale tolerance appropriately
-    adjusted_tolerance = sew_tolerance
-    if reproject_to and is_geographic_crs(src):
-        # Scale tolerance for meter-based coordinates (typical projected systems)
-        # Geographic coords are in degrees (~0.00001 degree), projected in meters (~1 meter)
-        adjusted_tolerance = 0.1  # 10cm tolerance for meter-based coordinates
-        if debug:
-            print(f"Adjusted sew tolerance from {sew_tolerance} to {adjusted_tolerance} for projected coordinates")
-    
     shapes: List[TopoDS_Shape] = []
     tried_solid = False
     tried_sew = False
-    
+
     # Try solid method first (for PLATEAU data with LOD1/LOD2 solids)
     if method in ("solid", "auto"):
         tried_solid = True
@@ -806,7 +1481,14 @@ def export_step_from_citygml(
             if limit is not None and count >= limit:
                 break
             try:
-                shp = extract_lod_solid_from_building(b, xyz_transform=xyz_transform, debug=debug)
+                shp = extract_lod_solid_from_building(
+                    b,
+                    xyz_transform=xyz_transform,
+                    id_index=id_index,
+                    debug=debug,
+                    precision_mode=precision_mode,
+                    shape_fix_level=shape_fix_level
+                )
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)
                     count += 1
@@ -816,7 +1498,7 @@ def export_step_from_citygml(
                 if debug:
                     print(f"Solid extraction failed for building {i}: {e}")
                 continue
-    
+
     # Try sew method if solid didn't work
     if not shapes and method in ("sew", "auto"):
         tried_sew = True
@@ -826,10 +1508,12 @@ def export_step_from_citygml(
                 break
             try:
                 shp = build_sewn_shape_from_building(
-                    b, 
-                    sew_tolerance=adjusted_tolerance, 
+                    b,
+                    sew_tolerance=sew_tolerance,  # Will be auto-computed if None
                     debug=debug,
-                    xyz_transform=xyz_transform
+                    xyz_transform=xyz_transform,
+                    precision_mode=precision_mode,
+                    shape_fix_level=shape_fix_level
                 )
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)
@@ -881,7 +1565,7 @@ def export_step_from_citygml(
                 print(f"STEPExporter failed, falling back to local writer: {e}")
             # continue to fallback
 
-    return _export_step_compound_local(shapes, out_step)
+    return _export_step_compound_local(shapes, out_step, debug=debug)
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:

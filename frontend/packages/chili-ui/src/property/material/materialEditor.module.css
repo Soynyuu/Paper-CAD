@@ -3,7 +3,7 @@
     flex-direction: column;
     position: absolute;
     border-radius: var(--radius-lg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-md);
     background-color: var(--background-color);
     top: 16px;
     left: 16px;

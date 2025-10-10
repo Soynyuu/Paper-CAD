@@ -107,6 +107,16 @@ body {
     --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
     --shadow-focus: 0 0 0 3px rgba(255, 102, 51, 0.1);
     --shadow-invert: 0 -2px 4px rgba(0, 0, 0, 0.05);
+
+    /* Z-Index Scale */
+    --z-base: 1;
+    --z-dropdown: 100;
+    --z-sticky: 500;
+    --z-fixed: 1000;
+    --z-modal-backdrop: 5000;
+    --z-modal: 5001;
+    --z-popover: 10000;
+    --z-tooltip: 10001;
 }
 
 :root[theme="dark"] {
@@ -206,4 +216,14 @@ body {
     --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
     --shadow-focus: 0 0 0 3px rgba(255, 119, 68, 0.15);
     --shadow-invert: 0 -2px 4px rgba(0, 0, 0, 0.1);
+
+    /* Z-Index Scale (same as light) */
+    --z-base: 1;
+    --z-dropdown: 100;
+    --z-sticky: 500;
+    --z-fixed: 1000;
+    --z-modal-backdrop: 5000;
+    --z-modal: 5001;
+    --z-popover: 10000;
+    --z-tooltip: 10001;
 }

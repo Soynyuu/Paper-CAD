@@ -172,8 +172,8 @@ async def citygml_to_step(
     ),
     default_height: float = Form(10.0, description="押し出し時のデフォルト高さ（m）"),
     limit: Optional[int] = Form(
-        5,
-        description="処理する建物数の上限（未指定で5、0/負数で無制限）",
+        None,
+        description="処理する建物数の上限（未指定で無制限、正数で制限）",
         example=10,
     ),
     debug: bool = Form(False, description="デバッグログ出力を有効化"),
@@ -251,15 +251,6 @@ async def citygml_to_step(
                 raise HTTPException(status_code=404, detail=f"指定されたパスが見つかりません: {in_path}")
             print(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
 
-        # limitが0または負数の場合は警告（大容量ファイルの場合）
-        if limit is not None and limit <= 0:
-            # 135MBのファイルなど大きい場合は制限を推奨
-            if file is not None and file.size and file.size > 50 * 1024 * 1024:  # 50MB以上
-                raise HTTPException(
-                    status_code=400, 
-                    detail="大容量ファイルの場合は建物数制限（limit）を設定してください（推奨: 10-50）"
-                )
-        
         # 出力パス
         out_dir = tempfile.mkdtemp()
         out_path = os.path.join(out_dir, f"citygml_{uuid.uuid4().hex[:8]}.step")

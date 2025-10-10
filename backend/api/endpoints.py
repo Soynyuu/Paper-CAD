@@ -179,9 +179,8 @@ async def citygml_to_step(
     debug: bool = Form(False, description="デバッグログ出力を有効化"),
     method: str = Form(
         "auto",
-        description="変換方式：auto（Solid→縫合→押し出し）, solid（LOD1/2直接）, sew（縫合）, extrude（押し出し）",
+        description="変換方式：auto（Solid→縫合→押し出し、推奨）, solid（LOD1/2直接）, sew（縫合）, extrude（押し出し）",
     ),
-    sew_tolerance: float = Form(1e-6, description="LOD2サーフェス縫合トレランス（m）", example=0.001),
     reproject_to: Optional[str] = Form(
         None,
         description="出力の平面直角/投影座標系（例: EPSG:6676）。未指定で自動選択",
@@ -198,12 +197,25 @@ async def citygml_to_step(
     ),
 ):
     """
-    CityGML (.gml) を受け取り、押し出しヒューリスティックで STEP を生成します。
+    CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
 
-    - 入力はアップロードファイルまたはローカルパス (gml_path) のどちらかを指定
-    - フットプリント＋高さを推定し、OCCT で押し出し、STEP(AP214)を書き出し
-    - 地理座標系（緯度経度）を検出した場合、自動的に適切な平面直角座標系に変換
+    **主要機能**:
+    - gml:Solid ジオメトリ抽出（exterior/interior shells、cavity対応）
+    - bldg:BuildingPart 階層構造の自動抽出とマージ
+    - XLink参照（xlink:href）の自動解決
+    - 適応的tolerance管理（座標範囲の0.1%を自動計算）
+    - 地理座標系を検出した場合、自動的に適切な平面直角座標系に変換
     - 日本のPLATEAUデータの場合、地域に応じた日本平面直角座標系を自動選択
+    - STEP出力最適化（AP214CD schema、MM単位、1e-6精度）
+
+    **入力**:
+    - アップロードファイルまたはローカルパス (gml_path) のどちらかを指定
+
+    **変換方式** (method):
+    - auto（推奨）: LOD1/2 Solid → LOD2表面縫合 → フットプリント押し出し の順で自動フォールバック
+    - solid: LOD1/2 Solid データを直接使用（PLATEAUに最適）
+    - sew: LOD2の各サーフェスを縫合してソリッド化
+    - extrude: フットプリント＋高さ推定から押し出し（LOD0向け）
     """
     try:
         if file is None and not gml_path:
@@ -259,7 +271,6 @@ async def citygml_to_step(
             limit=limit,
             debug=debug,
             method=method,
-            sew_tolerance=sew_tolerance,
             reproject_to=reproject_to,
             source_crs=source_crs,
             auto_reproject=auto_reproject,

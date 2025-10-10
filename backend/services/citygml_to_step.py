@@ -102,6 +102,7 @@ NS = {
     "core": "http://www.opengis.net/citygml/2.0",
     "uro": "http://www.opengis.net/uro/1.0",
     "gen": "http://www.opengis.net/citygml/generics/2.0",
+    "xlink": "http://www.w3.org/1999/xlink",
 }
 
 
@@ -154,6 +155,80 @@ def _parse_poslist(elem: ET.Element) -> List[Tuple[float, float, Optional[float]
 
 def _first_text(elem: Optional[ET.Element]) -> Optional[str]:
     return (elem.text or "").strip() if elem is not None and elem.text else None
+
+
+def _build_id_index(root: ET.Element) -> dict[str, ET.Element]:
+    """Build an index of all gml:id attributes in the document.
+
+    This enables efficient resolution of XLink references (xlink:href="#id").
+
+    Args:
+        root: Root element of the GML document
+
+    Returns:
+        Dictionary mapping gml:id values to elements
+    """
+    id_index: dict[str, ET.Element] = {}
+
+    # Iterate through all elements
+    for elem in root.iter():
+        # Check for gml:id attribute
+        gml_id = elem.get("{http://www.opengis.net/gml}id")
+        if gml_id:
+            id_index[gml_id] = elem
+
+    return id_index
+
+
+def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+    """Resolve an XLink reference (xlink:href) to the target element.
+
+    Args:
+        elem: Element that may contain an xlink:href attribute
+        id_index: Index of gml:id -> element mappings
+
+    Returns:
+        The target element if reference is resolved, None otherwise
+    """
+    # Check for xlink:href attribute
+    href = elem.get("{http://www.w3.org/1999/xlink}href")
+    if not href:
+        return None
+
+    # Remove leading '#' from href
+    if href.startswith("#"):
+        target_id = href[1:]
+    else:
+        target_id = href
+
+    # Look up in index
+    return id_index.get(target_id)
+
+
+def _extract_polygon_with_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+    """Extract a gml:Polygon from an element, resolving XLink references if needed.
+
+    Args:
+        elem: Element that may contain a Polygon directly or via XLink
+        id_index: Index for resolving XLink references
+
+    Returns:
+        gml:Polygon element or None
+    """
+    # Try to find Polygon directly
+    poly = elem.find(".//gml:Polygon", NS)
+    if poly is not None:
+        return poly
+
+    # Try to resolve XLink
+    target = _resolve_xlink(elem, id_index)
+    if target is not None:
+        # Try to find Polygon in target
+        poly = target.find(".//gml:Polygon", NS)
+        if poly is not None:
+            return poly
+
+    return None
 
 
 def _extract_polygon_xy(poly: ET.Element) -> Tuple[List[Tuple[float, float]], List[List[Tuple[float, float]]], List[float]]:
@@ -406,8 +481,11 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
 
 
 def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          id_index: Optional[dict[str, ET.Element]] = None,
                           debug: bool = False) -> Tuple[List["TopoDS_Face"], List[List["TopoDS_Face"]]]:
     """Extract exterior and interior shells from a gml:Solid element.
+
+    Now supports XLink reference resolution for polygons.
 
     Returns:
         Tuple of (exterior_faces, list_of_interior_face_lists)
@@ -419,11 +497,53 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
     exterior_faces: List[TopoDS_Face] = []
     interior_shells: List[List[TopoDS_Face]] = []
 
+    # Use empty index if none provided
+    if id_index is None:
+        id_index = {}
+
     # Extract exterior shell polygons
     exterior_elem = solid_elem.find("./gml:exterior", NS)
     if exterior_elem is not None:
-        # Support multiple GML surface patterns
+        # Support multiple GML surface patterns - find all surfaceMember elements
+        for surf_member in exterior_elem.findall(".//gml:surfaceMember", NS):
+            # Try to extract polygon (with XLink resolution)
+            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                # Fallback: search directly
+                poly = surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Exterior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                exterior_faces.append(fc)
+
+        # Also search for direct Polygon children (not in surfaceMember)
         for poly in exterior_elem.findall(".//gml:Polygon", NS):
+            # Skip if already processed via surfaceMember
+            parent = poly.find("..")
+            if parent is not None and parent.tag.endswith("surfaceMember"):
+                continue
+
             ext, holes = _extract_polygon_xyz(poly)
             if len(ext) < 3:
                 continue
@@ -448,7 +568,44 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
     # Extract interior shells (cavities)
     for interior_elem in solid_elem.findall("./gml:interior", NS):
         interior_faces: List[TopoDS_Face] = []
+
+        # Try surfaceMember pattern first
+        for surf_member in interior_elem.findall(".//gml:surfaceMember", NS):
+            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                poly = surf_member.find(".//gml:Polygon", NS)
+
+            if poly is None:
+                continue
+
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Interior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                interior_faces.append(fc)
+
+        # Also search for direct Polygon children
         for poly in interior_elem.findall(".//gml:Polygon", NS):
+            parent = poly.find("..")
+            if parent is not None and parent.tag.endswith("surfaceMember"):
+                continue
+
             ext, holes = _extract_polygon_xyz(poly)
             if len(ext) < 3:
                 continue
@@ -627,6 +784,7 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
 
 
 def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          id_index: Optional[dict[str, ET.Element]] = None,
                           debug: bool = False) -> Optional["TopoDS_Shape"]:
     """Extract a single solid from a building or building part element.
 
@@ -635,6 +793,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     Args:
         elem: Building or BuildingPart element
         xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
         debug: Enable debug output
 
     Returns:
@@ -651,7 +810,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
             # Extract exterior and interior shells
             exterior_faces, interior_shells_faces = _extract_solid_shells(
-                solid_elem, xyz_transform, debug
+                solid_elem, xyz_transform, id_index, debug
             )
 
             if exterior_faces:
@@ -673,7 +832,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
             # Extract exterior and interior shells
             exterior_faces, interior_shells_faces = _extract_solid_shells(
-                solid_elem, xyz_transform, debug
+                solid_elem, xyz_transform, id_index, debug
             )
 
             if exterior_faces:
@@ -688,6 +847,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
 
 def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                id_index: Optional[dict[str, ET.Element]] = None,
                                 debug: bool = False) -> List["TopoDS_Shape"]:
     """Extract geometry from a Building and all its BuildingParts.
 
@@ -698,6 +858,7 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
     Args:
         building: bldg:Building element
         xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
         debug: Enable debug output
 
     Returns:
@@ -706,7 +867,7 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
     shapes: List[TopoDS_Shape] = []
 
     # Extract from main Building
-    main_shape = _extract_single_solid(building, xyz_transform, debug)
+    main_shape = _extract_single_solid(building, xyz_transform, id_index, debug)
     if main_shape is not None:
         shapes.append(main_shape)
         if debug:
@@ -719,7 +880,7 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
             print(f"Found {len(building_parts)} BuildingPart(s)")
 
         for i, part in enumerate(building_parts):
-            part_shape = _extract_single_solid(part, xyz_transform, debug)
+            part_shape = _extract_single_solid(part, xyz_transform, id_index, debug)
             if part_shape is not None:
                 shapes.append(part_shape)
                 if debug:
@@ -730,12 +891,14 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
 
 
 def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
+                                    id_index: Optional[dict[str, ET.Element]] = None,
                                     debug: bool = False) -> Optional["TopoDS_Shape"]:
     """Extract LOD1 or LOD2 solid geometry from a building element.
 
     Now supports:
     - gml:Solid with exterior and interior shells (cavities)
     - bldg:BuildingPart extraction and merging
+    - XLink reference resolution (xlink:href)
     - Proper distinction between exterior and interior geometry
 
     If the building has BuildingParts, all parts are extracted and merged into a Compound.
@@ -750,7 +913,7 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
 
     # Extract from Building and all BuildingParts
-    shapes = extract_building_and_parts(building, xyz_transform, debug)
+    shapes = extract_building_and_parts(building, xyz_transform, id_index, debug)
 
     if not shapes:
         return None
@@ -1031,6 +1194,11 @@ def export_step_from_citygml(
     root = tree.getroot()
     bldgs = root.findall(".//bldg:Building", NS)
 
+    # Build XLink resolution index
+    id_index = _build_id_index(root)
+    if debug and id_index:
+        print(f"Built XLink index with {len(id_index)} gml:id entries")
+
     # Detect source CRS and sample coordinates
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)
     src = source_crs or detected_crs or "EPSG:6697"
@@ -1082,7 +1250,7 @@ def export_step_from_citygml(
             if limit is not None and count >= limit:
                 break
             try:
-                shp = extract_lod_solid_from_building(b, xyz_transform=xyz_transform, debug=debug)
+                shp = extract_lod_solid_from_building(b, xyz_transform=xyz_transform, id_index=id_index, debug=debug)
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)
                     count += 1

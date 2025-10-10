@@ -2,7 +2,7 @@ import os
 import tempfile
 import uuid
 import zipfile
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Request, BackgroundTasks
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing import Optional, Union
 import io
@@ -160,6 +160,7 @@ async def unfold_step_to_svg(
 )
 async def citygml_to_step(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(
         None,
         description="CityGMLファイル（.gml/.xml）をアップロード（file か gml_path のどちらかを指定）",
@@ -295,24 +296,30 @@ async def citygml_to_step(
         if not ok:
             raise HTTPException(status_code=400, detail=f"変換に失敗しました: {msg}")
 
-        # ファイル内容を読み込んでからレスポンスとして返す
-        with open(out_path, 'rb') as f:
-            content = f.read()
-        
-        # 一時ファイルをクリーンアップ
-        try:
-            os.remove(out_path)
-            os.rmdir(out_dir)
-        except:
-            pass
-        
-        # StreamingResponseを使用してメモリ効率を改善
-        return StreamingResponse(
-            io.BytesIO(content),
+        # ファイルサイズを取得してログ出力
+        file_size = os.path.getsize(out_path)
+        print(f"[RESPONSE] Generated STEP file: {output_filename} ({file_size:,} bytes)")
+
+        # クリーンアップ関数を定義
+        def cleanup_temp_files():
+            try:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                if os.path.exists(out_dir):
+                    os.rmdir(out_dir)
+                print(f"[CLEANUP] Removed temporary files: {out_path}")
+            except Exception as e:
+                print(f"[CLEANUP] Failed to remove temporary files: {e}")
+
+        # レスポンス送信後にクリーンアップをスケジュール
+        background_tasks.add_task(cleanup_temp_files)
+
+        # FileResponseを使用して大容量ファイルを効率的にストリーミング
+        return FileResponse(
+            path=out_path,
             media_type="application/octet-stream",
+            filename=output_filename,
             headers={
-                "Content-Disposition": f'attachment; filename="{output_filename}"',
-                "Content-Length": str(len(content)),
                 "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
                 "Access-Control-Allow-Credentials": "true",
                 "Cache-Control": "no-cache"

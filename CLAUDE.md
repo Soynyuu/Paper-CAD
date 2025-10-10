@@ -178,3 +178,4 @@ When modifying 3D operations:
 1. Check if operation belongs in WebAssembly (`frontend/cpp/src/`) or backend
 2. WebAssembly is for client-side modeling; backend is for server-side STEP processing
 3. Remember to rebuild WASM with `npm run build:wasm` if changing C++ code
+- 作業を始める際は、github issueにやることを書いて、ブランチを切って作業するようにして

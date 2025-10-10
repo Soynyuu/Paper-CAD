@@ -3,7 +3,7 @@
     left: 50%;
     top: 30%;
     transform: translate(-50%, 0%);
-    z-index: 10000;
+    z-index: var(--z-popover);
     border-radius: 0.8em;
     background-color: rgba(0, 0, 0, 0.75);
     font-size: 1.2em;

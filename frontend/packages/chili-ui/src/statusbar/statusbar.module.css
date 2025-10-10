@@ -6,7 +6,7 @@
     align-items: center;
     padding: 0 var(--spacing-md);
     height: 28px;
-    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-invert);
 }
 
 .left {

@@ -9,7 +9,7 @@
     flex-direction: column;
     align-items: center;
     margin: 16px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     background-color: var(--panel-background-color);
     padding: 6px;
@@ -24,7 +24,7 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             padding: 4px;
 
             &:hover {

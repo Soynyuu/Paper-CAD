@@ -28,7 +28,7 @@
 .patternSelect {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background-color: var(--control-background-color);
     color: var(--foreground-color);
     font-size: var(--font-size-sm);
@@ -46,7 +46,7 @@
     align-items: center;
     min-height: 200px;
     border: 1px solid #555;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background-color: #333;
     overflow: hidden;
 }
@@ -54,7 +54,7 @@
 .previewImage {
     max-width: 100%;
     max-height: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .tileControls {
@@ -66,7 +66,7 @@
 .tileSlider {
     flex: 1;
     height: 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: #555;
     outline: none;
     -webkit-appearance: none;
@@ -111,7 +111,7 @@
 .button {
     padding: 10px 20px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
     cursor: pointer;

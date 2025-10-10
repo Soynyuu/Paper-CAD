@@ -227,7 +227,7 @@
             display: flex;
             flex: 1 1 240px;
             flex-direction: column;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             overflow: hidden;
 
             &:hover {

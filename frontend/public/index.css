@@ -117,6 +117,12 @@ body {
     --z-modal: 5001;
     --z-popover: 10000;
     --z-tooltip: 10001;
+
+    /* Opacity Scale */
+    --opacity-disabled: 0.5;
+    --opacity-readonly: 0.56;
+    --opacity-medium: 0.75;
+    --opacity-high: 0.85;
 }
 
 :root[theme="dark"] {
@@ -226,4 +232,10 @@ body {
     --z-modal: 5001;
     --z-popover: 10000;
     --z-tooltip: 10001;
+
+    /* Opacity Scale (same as light) */
+    --opacity-disabled: 0.5;
+    --opacity-readonly: 0.56;
+    --opacity-medium: 0.75;
+    --opacity-high: 0.85;
 }

@@ -480,6 +480,83 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
         return None
 
 
+def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]]) -> float:
+    """Compute appropriate tolerance based on coordinate extent.
+
+    The tolerance is set to approximately 0.1% of the bounding box extent.
+    This ensures that tolerance scales appropriately with coordinate magnitude.
+
+    Args:
+        coords: List of (x, y, z) coordinate tuples
+
+    Returns:
+        Computed tolerance value (minimum 1e-6, maximum 10.0)
+    """
+    if not coords:
+        return 0.01  # Default fallback
+
+    # Compute bounding box
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
+
+    x_extent = max(xs) - min(xs) if xs else 0.0
+    y_extent = max(ys) - min(ys) if ys else 0.0
+    z_extent = max(zs) - min(zs) if zs else 0.0
+
+    # Maximum extent across all dimensions
+    extent = max(x_extent, y_extent, z_extent)
+
+    # Tolerance as 0.1% of extent
+    tolerance = extent * 0.001
+
+    # Clamp to reasonable range
+    tolerance = max(1e-6, min(tolerance, 10.0))
+
+    return tolerance
+
+
+def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"]) -> float:
+    """Compute tolerance from a list of faces by sampling their vertices.
+
+    Args:
+        faces: List of TopoDS_Face objects
+
+    Returns:
+        Computed tolerance value
+    """
+    # Sample up to 100 vertices from faces
+    coords: List[Tuple[float, float, float]] = []
+    from OCC.Core.BRepTools import BRepTools_WireExplorer
+    from OCC.Core.BRep import BRep_Tool
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_WIRE
+
+    sample_limit = 100
+    for face in faces:
+        if len(coords) >= sample_limit:
+            break
+
+        # Explore wires in face
+        wire_exp = TopExp_Explorer(face, TopAbs_WIRE)
+        while wire_exp.More() and len(coords) < sample_limit:
+            wire = wire_exp.Current()
+            wire_explorer = BRepTools_WireExplorer(wire)
+
+            while wire_explorer.More() and len(coords) < sample_limit:
+                vertex = wire_explorer.CurrentVertex()
+                pnt = BRep_Tool.Pnt(vertex)
+                coords.append((pnt.X(), pnt.Y(), pnt.Z()))
+                wire_explorer.Next()
+
+            wire_exp.Next()
+
+    if coords:
+        return _compute_tolerance_from_coords(coords)
+    else:
+        return 0.01  # Default fallback
+
+
 def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
                           id_index: Optional[dict[str, ET.Element]] = None,
                           debug: bool = False) -> Tuple[List["TopoDS_Face"], List[List["TopoDS_Face"]]]:
@@ -698,20 +775,26 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
 
 def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                                interior_shells_faces: List[List["TopoDS_Face"]],
-                               tolerance: float = 0.1,
+                               tolerance: Optional[float] = None,
                                debug: bool = False) -> Optional["TopoDS_Shape"]:
     """Build a solid with cavities from exterior and interior shells.
 
     Args:
         exterior_faces: Faces forming the outer shell
         interior_shells_faces: List of face lists, each forming an interior shell (cavity)
-        tolerance: Sewing tolerance
+        tolerance: Sewing tolerance (auto-computed if None)
         debug: Enable debug output
 
     Returns:
         TopoDS_Solid or TopoDS_Shape (if solid construction fails)
     """
     from OCC.Core.BRep import BRep_Tool
+
+    # Auto-compute tolerance if not provided
+    if tolerance is None:
+        tolerance = _compute_tolerance_from_face_list(exterior_faces)
+        if debug:
+            print(f"Auto-computed tolerance: {tolerance:.6f}")
 
     # Build exterior shell
     exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug)
@@ -814,9 +897,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
 
             if exterior_faces:
-                # Build solid with cavities (if any interior shells exist)
+                # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=0.1, debug=debug
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug
                 )
                 if result is not None:
                     return result
@@ -836,9 +919,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
 
             if exterior_faces:
-                # Build solid with cavities (if any interior shells exist)
+                # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=0.1, debug=debug
+                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug
                 )
                 if result is not None:
                     return result

@@ -101,7 +101,7 @@
                     }
 
                     span {
-                        font-size: 12px;
+                        font-size: var(--font-size-xs);
                     }
                 }
 
@@ -264,7 +264,7 @@
 
     .header {
         color: var(--foreground-color);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 
     .content {

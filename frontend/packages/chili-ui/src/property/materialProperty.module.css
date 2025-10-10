@@ -6,7 +6,7 @@
 
     div {
         font-size: 14px;
-        opacity: 0.75;
+        opacity: var(--opacity-medium);
         color: var(--color);
         min-width: 72px;
         flex: 0 1 auto;

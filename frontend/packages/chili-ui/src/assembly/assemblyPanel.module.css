@@ -14,7 +14,7 @@
     padding: 12px var(--spacing-md);
     background: var(--background-color-secondary);
     border-bottom: 1px solid var(--border-color-primary);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
 }
 
 .title {
@@ -117,7 +117,7 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 1000;
+    z-index: var(--z-fixed);
 }
 
 .faceHighlight {

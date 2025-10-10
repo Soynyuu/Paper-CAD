@@ -1,7 +1,7 @@
 .panel {
     font-size: var(--font-size-sm);
     background-color: var(--panel-background-color);
-    opacity: 0.85;
+    opacity: var(--opacity-high);
     display: flex;
     flex-direction: column;
     border-radius: var(--radius-sm);

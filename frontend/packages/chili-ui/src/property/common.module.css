@@ -7,7 +7,7 @@
 
 .propertyName {
     font-size: var(--font-size-sm);
-    opacity: 0.75;
+    opacity: var(--opacity-medium);
     color: var(--color);
     min-width: 72px;
     flex: 0 1 auto;

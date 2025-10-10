@@ -11,6 +11,6 @@
 }
 
 .dragging {
-    opacity: 0.56;
+    opacity: var(--opacity-readonly);
     pointer-events: none;
 }

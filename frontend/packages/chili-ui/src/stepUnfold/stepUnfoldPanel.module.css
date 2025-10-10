@@ -191,7 +191,7 @@
 
 /* Face number button */
 .faceNumberButton {
-    padding: 4px 8px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     background-color: var(--button-background);
     color: var(--button-text-color);
     border: 1px solid var(--button-border-color);
@@ -229,7 +229,7 @@
 
 /* Layout mode button */
 .layoutModeButton {
-    padding: 4px 8px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     background-color: var(--button-background);
     color: var(--button-text-color);
     border: 1px solid var(--button-border-color);
@@ -429,7 +429,7 @@
 
 /* PDF Export button */
 .pdfExportButton {
-    padding: 4px 8px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     background-color: var(--button-background);
     color: var(--button-text-color);
     border: 1px solid var(--button-border-color);

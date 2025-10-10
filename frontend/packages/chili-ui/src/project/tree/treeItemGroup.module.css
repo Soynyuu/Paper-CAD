@@ -1,11 +1,11 @@
 .expanderIcon {
     width: 12px;
     height: 12px;
-    padding: 2px 4px;
+    padding: 2px var(--spacing-xs);
 }
 
 .left16px {
-    padding-left: 16px;
+    padding-left: var(--spacing-md);
 }
 
 .container {
@@ -18,7 +18,7 @@
 }
 
 .header {
-    padding: 4px;
+    padding: var(--spacing-xs);
     border-radius: var(--radius-xs);
 }
 

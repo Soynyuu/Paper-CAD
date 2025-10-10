@@ -3,7 +3,7 @@
     flex-direction: row;
     justify-content: center;
     align-items: center;
-    margin: 2px 8px;
+    margin: 2px var(--spacing-sm);
     gap: 12px;
 }
 
@@ -38,11 +38,11 @@
 }
 
 .input {
-    margin-left: 8px;
+    margin-left: var(--spacing-sm);
 }
 
 .select {
-    margin-left: 8px;
+    margin-left: var(--spacing-sm);
     padding: 2px 12px;
     font-size: 1em;
     border-radius: 6px;
@@ -54,7 +54,7 @@
 .materialButton {
     flex: 1 1 auto;
     font-size: 1rem;
-    padding: 2px 24px;
+    padding: 2px var(--spacing-lg);
     outline: none;
     background-color: transparent;
 

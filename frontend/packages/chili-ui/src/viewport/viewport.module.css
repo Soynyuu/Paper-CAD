@@ -5,7 +5,7 @@
 .actsContainer {
     position: absolute;
     bottom: 12px;
-    z-index: 99999;
+    z-index: var(--z-popover);
     width: 100%;
     pointer-events: all;
 
@@ -120,7 +120,7 @@
     height: 100%;
     top: 0;
     right: 16px;
-    z-index: 999;
+    z-index: var(--z-fixed);
     pointer-events: none;
     padding-top: 160px;
 

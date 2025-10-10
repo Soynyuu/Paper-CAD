@@ -4,7 +4,7 @@ import uuid
 import zipfile
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from typing import Optional
+from typing import Optional, Union
 import io
 
 from config import OCCT_AVAILABLE
@@ -171,7 +171,7 @@ async def citygml_to_step(
         example="/abs/path/to/53394642_bldg_6697_op.gml",
     ),
     default_height: float = Form(10.0, description="押し出し時のデフォルト高さ（m）"),
-    limit: Optional[int] = Form(
+    limit: Union[int, str, None] = Form(
         None,
         description="処理する建物数の上限（未指定で無制限、正数で制限）",
         example=10,
@@ -218,7 +218,26 @@ async def citygml_to_step(
     - extrude: フットプリント＋高さ推定から押し出し（LOD0向け）
     """
     try:
-        if file is None and not gml_path:
+        # Normalize limit parameter (handle empty string from form)
+        normalized_limit: Optional[int] = None
+        if limit is not None:
+            if isinstance(limit, str):
+                if limit.strip() == "" or limit == "0":
+                    normalized_limit = None
+                else:
+                    try:
+                        normalized_limit = int(limit)
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail=f"limit must be a valid integer, got: {limit}")
+            elif isinstance(limit, int):
+                normalized_limit = limit if limit > 0 else None
+
+        # Normalize string parameters (handle empty strings)
+        normalized_source_crs = source_crs if source_crs and source_crs.strip() else None
+        normalized_reproject_to = reproject_to if reproject_to and reproject_to.strip() else None
+        normalized_gml_path = gml_path if gml_path and gml_path.strip() else None
+
+        if file is None and not normalized_gml_path:
             raise HTTPException(status_code=400, detail="CityGMLファイルをアップロードするか gml_path を指定してください。")
 
         # 入力ファイルの用意
@@ -246,7 +265,7 @@ async def citygml_to_step(
                 raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
             print(f"[UPLOAD] /api/citygml/to-step: received {total} bytes -> {in_path}")
         else:
-            in_path = gml_path  # type: ignore
+            in_path = normalized_gml_path  # type: ignore
             if not os.path.exists(in_path):
                 raise HTTPException(status_code=404, detail=f"指定されたパスが見つかりません: {in_path}")
             print(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
@@ -259,11 +278,11 @@ async def citygml_to_step(
             in_path,
             out_path,
             default_height=default_height,
-            limit=limit,
+            limit=normalized_limit,
             debug=debug,
             method=method,
-            reproject_to=reproject_to,
-            source_crs=source_crs,
+            reproject_to=normalized_reproject_to,
+            source_crs=normalized_source_crs,
             auto_reproject=auto_reproject,
         )
         if not ok:

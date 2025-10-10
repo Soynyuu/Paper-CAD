@@ -34,7 +34,7 @@
             display: flex;
             align-items: center;
             flex-direction: row;
-            gap: 6px;
+            gap: var(--spacing-sm);
             cursor: pointer;
             height: 96px;
             margin: 0px var(--spacing-sm);

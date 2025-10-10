@@ -108,7 +108,7 @@ export class StepUnfoldPanel extends HTMLElement {
                     padding: "8px",
                     border: "1px solid #ddd",
                     borderRadius: "4px",
-                    display: "none"  // Hidden by default
+                    display: "none", // Hidden by default
                 },
             },
             div(
@@ -214,11 +214,17 @@ export class StepUnfoldPanel extends HTMLElement {
             },
             div(
                 {
-                    style: { padding: "10px", backgroundColor: "#f0f8ff", borderRadius: "4px", marginBottom: "8px" }
+                    style: {
+                        padding: "10px",
+                        backgroundColor: "#f0f8ff",
+                        borderRadius: "4px",
+                        marginBottom: "8px",
+                    },
                 },
                 span({
-                    textContent: "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。",
-                    style: { fontSize: "12px", color: "#333" }
+                    textContent:
+                        "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。",
+                    style: { fontSize: "12px", color: "#333" },
                 }),
             ),
             // Temporarily hide complex settings until multi-page export is re-implemented
@@ -310,7 +316,7 @@ export class StepUnfoldPanel extends HTMLElement {
         this._secondaryControlsContainer = div(
             {
                 className: style.secondaryControls,
-                style: { display: "none" } // Hidden by default
+                style: { display: "none" }, // Hidden by default
             },
             this._faceHighlightContainer,
             this._pdfSettingsContainer,
@@ -336,10 +342,11 @@ export class StepUnfoldPanel extends HTMLElement {
                 div(
                     { className: style.topBar },
                     // Left section: Buttons
-                    div({ className: style.buttonGroup },
+                    div(
+                        { className: style.buttonGroup },
                         this._showFaceNumbersButton,
                         this._layoutModeButton,
-                        this._pdfExportButton
+                        this._pdfExportButton,
                     ),
                     // Spacer to push right controls to the end
                     div({ style: { flex: "1" } }),
@@ -768,14 +775,14 @@ export class StepUnfoldPanel extends HTMLElement {
             this._svgContainer.innerHTML = svgContent;
 
             // Store the SVG element for PDF export
-            const svgElement = this._svgContainer.querySelector('svg');
+            const svgElement = this._svgContainer.querySelector("svg");
             if (svgElement) {
                 // Ensure SVG has proper dimensions
-                if (!svgElement.getAttribute('width')) {
-                    svgElement.setAttribute('width', '100%');
+                if (!svgElement.getAttribute("width")) {
+                    svgElement.setAttribute("width", "100%");
                 }
-                if (!svgElement.getAttribute('height')) {
-                    svgElement.setAttribute('height', '100%');
+                if (!svgElement.getAttribute("height")) {
+                    svgElement.setAttribute("height", "100%");
                 }
                 console.log("SVG displayed successfully");
             }
@@ -1239,7 +1246,9 @@ export class StepUnfoldPanel extends HTMLElement {
         const hasSvgContent = this._checkSvgContent();
 
         if (!hasSvgContent) {
-            alert("展開図が読み込まれていません。まず3Dモデルを展開してください。\nNo unfold diagram loaded. Please unfold a 3D model first.");
+            alert(
+                "展開図が読み込まれていません。まず3Dモデルを展開してください。\nNo unfold diagram loaded. Please unfold a 3D model first.",
+            );
             return;
         }
 
@@ -1288,7 +1297,7 @@ export class StepUnfoldPanel extends HTMLElement {
         }
 
         // Check if there's any SVG in the container
-        const svgInContainer = this._svgContainer.querySelector('svg');
+        const svgInContainer = this._svgContainer.querySelector("svg");
         if (svgInContainer) {
             console.log("Found SVG in container");
             return true;
@@ -1298,7 +1307,8 @@ export class StepUnfoldPanel extends HTMLElement {
         const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
         if (canvas && canvas.getSvgString) {
             const svgString = canvas.getSvgString();
-            if (svgString && svgString.length > 100) {  // Minimal SVG would be longer than 100 chars
+            if (svgString && svgString.length > 100) {
+                // Minimal SVG would be longer than 100 chars
                 console.log("Found SVG content in canvas");
                 return true;
             }
@@ -1327,27 +1337,31 @@ export class StepUnfoldPanel extends HTMLElement {
                 console.log("Canvas object found:", canvas);
 
                 // Try getRootElem
-                if (canvas.getRootElem && typeof canvas.getRootElem === 'function') {
+                if (canvas.getRootElem && typeof canvas.getRootElem === "function") {
                     svgElement = canvas.getRootElem();
                     console.log("Got SVG from getRootElem:", !!svgElement);
                 }
 
                 // Try getContentElem if getRootElem didn't work
-                if (!svgElement && canvas.getContentElem && typeof canvas.getContentElem === 'function') {
+                if (!svgElement && canvas.getContentElem && typeof canvas.getContentElem === "function") {
                     svgElement = canvas.getContentElem();
                     console.log("Got SVG from getContentElem:", !!svgElement);
                 }
 
                 // Try getSvgContent (might not be in type definitions)
                 const canvasAny = canvas as any;
-                if (!svgElement && canvasAny.getSvgContent && typeof canvasAny.getSvgContent === 'function') {
+                if (
+                    !svgElement &&
+                    canvasAny.getSvgContent &&
+                    typeof canvasAny.getSvgContent === "function"
+                ) {
                     const svgContent = canvasAny.getSvgContent();
                     console.log("Got SVG content string, length:", svgContent?.length);
                     if (svgContent) {
                         // Create a temporary div to parse the SVG string
-                        const tempDiv = document.createElement('div');
+                        const tempDiv = document.createElement("div");
                         tempDiv.innerHTML = svgContent;
-                        svgElement = tempDiv.querySelector('svg') as SVGElement;
+                        svgElement = tempDiv.querySelector("svg") as SVGElement;
                         console.log("Parsed SVG from content string:", !!svgElement);
                     }
                 }
@@ -1358,20 +1372,20 @@ export class StepUnfoldPanel extends HTMLElement {
                 console.log("Searching for SVG in edit container");
 
                 // Look for SVG in the container or its iframe
-                svgElement = this._svgEditContainer.querySelector('svg') as SVGElement;
+                svgElement = this._svgEditContainer.querySelector("svg") as SVGElement;
 
                 if (!svgElement) {
                     // Check if there's an iframe (SVG-Edit might render in iframe)
-                    const iframe = this._svgEditContainer.querySelector('iframe') as HTMLIFrameElement;
+                    const iframe = this._svgEditContainer.querySelector("iframe") as HTMLIFrameElement;
                     if (iframe && iframe.contentDocument) {
-                        svgElement = iframe.contentDocument.querySelector('svg') as SVGElement;
+                        svgElement = iframe.contentDocument.querySelector("svg") as SVGElement;
                         console.log("Found SVG in iframe:", !!svgElement);
                     }
                 }
 
                 // Also check in the svgContainer
                 if (!svgElement) {
-                    svgElement = this._svgContainer.querySelector('svg') as SVGElement;
+                    svgElement = this._svgContainer.querySelector("svg") as SVGElement;
                     console.log("Found SVG in svgContainer:", !!svgElement);
                 }
             }
@@ -1382,7 +1396,7 @@ export class StepUnfoldPanel extends HTMLElement {
                 console.log("Got SVG string, length:", svgString?.length);
                 if (svgString) {
                     const parser = new DOMParser();
-                    const doc = parser.parseFromString(svgString, 'image/svg+xml');
+                    const doc = parser.parseFromString(svgString, "image/svg+xml");
                     svgElement = doc.documentElement as unknown as SVGElement;
                     console.log("Parsed SVG from string:", !!svgElement);
                 }

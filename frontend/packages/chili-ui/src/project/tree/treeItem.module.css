@@ -1,6 +1,6 @@
 .name {
     flex: 1 1 auto;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     user-select: none;
     text-wrap: nowrap;
     -moz-user-select: none;

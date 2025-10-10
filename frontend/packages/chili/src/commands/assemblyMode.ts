@@ -1,15 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import {
-    AsyncController,
-    CancelableCommand,
-    command,
-    I18n,
-    INode,
-    PubSub,
-    ShapeNode,
-} from "chili-core";
+import { AsyncController, CancelableCommand, command, I18n, INode, PubSub, ShapeNode } from "chili-core";
 import { SelectNodeWithListStep } from "../step";
 
 @command({
@@ -47,7 +39,7 @@ export class AssemblyMode extends CancelableCommand {
                     // AssemblyPanelに切り替え
                     PubSub.default.pub("assemblyMode.showPanel", {
                         nodes: nodes,
-                        stepData: Array.isArray(stepData) ? stepData[0] : stepData
+                        stepData: Array.isArray(stepData) ? stepData[0] : stepData,
                     });
 
                     PubSub.default.pub("showToast", "toast.assemblyMode.started");

@@ -1,349 +1,351 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Export Test</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.1/svg2pdf.umd.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
-        }
-        .controls {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-        }
-        .control-group {
-            margin: 10px 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        label {
-            font-weight: bold;
-            min-width: 120px;
-        }
-        select, input {
-            padding: 5px 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        #svgContainer {
-            border: 2px solid #ddd;
-            padding: 20px;
-            background: white;
-            margin: 20px 0;
-            min-height: 400px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .info {
-            background: #e7f3ff;
-            border-left: 4px solid #007bff;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        .success {
-            background: #d4edda;
-            border-left: 4px solid #28a745;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        .error {
-            background: #f8d7da;
-            border-left: 4px solid #dc3545;
-            padding: 10px;
-            margin: 10px 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📄 Paper-CAD PDF Export Test</h1>
-
-        <div class="info">
-            <strong>テスト説明:</strong> このページでは、展開図のSVGをA4サイズで複数ページに分割してPDFエクスポートする機能をテストできます。
-        </div>
-
-        <div class="controls">
-            <h2>Export Settings</h2>
-
-            <div class="control-group">
-                <label>Page Format:</label>
-                <select id="pageFormat">
-                    <option value="A4" selected>A4</option>
-                    <option value="A3">A3</option>
-                    <option value="Letter">Letter</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label>Orientation:</label>
-                <select id="orientation">
-                    <option value="portrait" selected>Portrait (縦)</option>
-                    <option value="landscape">Landscape (横)</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label>
-                    <input type="checkbox" id="splitPages" checked>
-                    Split across multiple pages
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label>Scale:</label>
-                <input type="number" id="scale" value="1" min="0.1" max="10" step="0.1">
-                <span>(1.0 = actual size)</span>
-            </div>
-
-            <button id="exportBtn" onclick="performExport()">Export to PDF</button>
-            <button onclick="loadSampleSVG()">Load Sample SVG</button>
-        </div>
-
-        <div id="status"></div>
-
-        <h2>SVG Preview</h2>
-        <div id="svgContainer">
-            <div>Click "Load Sample SVG" to load a test SVG</div>
-        </div>
-    </div>
-
-    <script>
-        // Sample SVG creation function
-        function createLargeSVG() {
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("width", "800");
-            svg.setAttribute("height", "1200");
-            svg.setAttribute("viewBox", "0 0 800 1200");
-
-            // Add background
-            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            rect.setAttribute("width", "800");
-            rect.setAttribute("height", "1200");
-            rect.setAttribute("fill", "#f0f0f0");
-            rect.setAttribute("stroke", "#333");
-            rect.setAttribute("stroke-width", "2");
-            svg.appendChild(rect);
-
-            // Add grid pattern to show page divisions
-            for (let x = 0; x <= 800; x += 50) {
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("x1", x);
-                line.setAttribute("y1", "0");
-                line.setAttribute("x2", x);
-                line.setAttribute("y2", "1200");
-                line.setAttribute("stroke", "#ddd");
-                line.setAttribute("stroke-width", "1");
-                svg.appendChild(line);
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>PDF Export Test</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.1/svg2pdf.umd.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                background-color: #f5f5f5;
             }
-
-            for (let y = 0; y <= 1200; y += 50) {
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("x1", "0");
-                line.setAttribute("y1", y);
-                line.setAttribute("x2", "800");
-                line.setAttribute("y2", y);
-                line.setAttribute("stroke", "#ddd");
-                line.setAttribute("stroke-width", "1");
-                svg.appendChild(line);
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             }
+            h1 {
+                color: #333;
+                border-bottom: 2px solid #007bff;
+                padding-bottom: 10px;
+            }
+            .controls {
+                margin: 20px 0;
+                padding: 15px;
+                background: #f8f9fa;
+                border-radius: 5px;
+            }
+            .control-group {
+                margin: 10px 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            label {
+                font-weight: bold;
+                min-width: 120px;
+            }
+            select,
+            input {
+                padding: 5px 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            button {
+                background: #007bff;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-top: 10px;
+            }
+            button:hover {
+                background: #0056b3;
+            }
+            button:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+            }
+            #svgContainer {
+                border: 2px solid #ddd;
+                padding: 20px;
+                background: white;
+                margin: 20px 0;
+                min-height: 400px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .info {
+                background: #e7f3ff;
+                border-left: 4px solid #007bff;
+                padding: 10px;
+                margin: 10px 0;
+            }
+            .success {
+                background: #d4edda;
+                border-left: 4px solid #28a745;
+                padding: 10px;
+                margin: 10px 0;
+            }
+            .error {
+                background: #f8d7da;
+                border-left: 4px solid #dc3545;
+                padding: 10px;
+                margin: 10px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>📄 Paper-CAD PDF Export Test</h1>
 
-            // Add some shapes representing paper craft parts
-            const shapes = [
-                { x: 50, y: 50, width: 200, height: 150, label: "Part 1" },
-                { x: 300, y: 50, width: 180, height: 200, label: "Part 2" },
-                { x: 50, y: 250, width: 150, height: 180, label: "Part 3" },
-                { x: 250, y: 280, width: 200, height: 150, label: "Part 4" },
-                { x: 500, y: 100, width: 250, height: 300, label: "Part 5" },
-                { x: 50, y: 500, width: 300, height: 200, label: "Part 6" },
-                { x: 400, y: 550, width: 350, height: 250, label: "Part 7" },
-                { x: 50, y: 850, width: 400, height: 300, label: "Part 8" },
-                { x: 500, y: 900, width: 250, height: 250, label: "Part 9" }
-            ];
+            <div class="info">
+                <strong>テスト説明:</strong>
+                このページでは、展開図のSVGをA4サイズで複数ページに分割してPDFエクスポートする機能をテストできます。
+            </div>
 
-            shapes.forEach((shape, index) => {
-                // Draw shape
+            <div class="controls">
+                <h2>Export Settings</h2>
+
+                <div class="control-group">
+                    <label>Page Format:</label>
+                    <select id="pageFormat">
+                        <option value="A4" selected>A4</option>
+                        <option value="A3">A3</option>
+                        <option value="Letter">Letter</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Orientation:</label>
+                    <select id="orientation">
+                        <option value="portrait" selected>Portrait (縦)</option>
+                        <option value="landscape">Landscape (横)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="splitPages" checked />
+                        Split across multiple pages
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label>Scale:</label>
+                    <input type="number" id="scale" value="1" min="0.1" max="10" step="0.1" />
+                    <span>(1.0 = actual size)</span>
+                </div>
+
+                <button id="exportBtn" onclick="performExport()">Export to PDF</button>
+                <button onclick="loadSampleSVG()">Load Sample SVG</button>
+            </div>
+
+            <div id="status"></div>
+
+            <h2>SVG Preview</h2>
+            <div id="svgContainer">
+                <div>Click "Load Sample SVG" to load a test SVG</div>
+            </div>
+        </div>
+
+        <script>
+            // Sample SVG creation function
+            function createLargeSVG() {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.setAttribute("width", "800");
+                svg.setAttribute("height", "1200");
+                svg.setAttribute("viewBox", "0 0 800 1200");
+
+                // Add background
                 const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                rect.setAttribute("x", shape.x);
-                rect.setAttribute("y", shape.y);
-                rect.setAttribute("width", shape.width);
-                rect.setAttribute("height", shape.height);
-                rect.setAttribute("fill", `hsl(${index * 40}, 70%, 80%)`);
+                rect.setAttribute("width", "800");
+                rect.setAttribute("height", "1200");
+                rect.setAttribute("fill", "#f0f0f0");
                 rect.setAttribute("stroke", "#333");
                 rect.setAttribute("stroke-width", "2");
                 svg.appendChild(rect);
 
-                // Add label
-                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                text.setAttribute("x", shape.x + shape.width / 2);
-                text.setAttribute("y", shape.y + shape.height / 2);
-                text.setAttribute("text-anchor", "middle");
-                text.setAttribute("dominant-baseline", "middle");
-                text.setAttribute("font-size", "20");
-                text.setAttribute("font-weight", "bold");
-                text.textContent = shape.label;
-                svg.appendChild(text);
-
-                // Add face number
-                const faceNumber = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                faceNumber.setAttribute("x", shape.x + 10);
-                faceNumber.setAttribute("y", shape.y + 20);
-                faceNumber.setAttribute("class", "face-number");
-                faceNumber.setAttribute("font-size", "14");
-                faceNumber.setAttribute("fill", "#ff0000");
-                faceNumber.textContent = `#${index + 1}`;
-                svg.appendChild(faceNumber);
-            });
-
-            return svg;
-        }
-
-        function loadSampleSVG() {
-            const container = document.getElementById('svgContainer');
-            container.innerHTML = '';
-            const svg = createLargeSVG();
-            container.appendChild(svg);
-            showStatus('Sample SVG loaded successfully!', 'success');
-        }
-
-        function showStatus(message, type = 'info') {
-            const statusDiv = document.getElementById('status');
-            statusDiv.className = type;
-            statusDiv.textContent = message;
-            setTimeout(() => {
-                statusDiv.textContent = '';
-                statusDiv.className = '';
-            }, 5000);
-        }
-
-        async function performExport() {
-            const svgElement = document.querySelector('#svgContainer svg');
-            if (!svgElement) {
-                showStatus('No SVG found. Please load a sample SVG first.', 'error');
-                return;
-            }
-
-            const exportBtn = document.getElementById('exportBtn');
-            exportBtn.disabled = true;
-            exportBtn.textContent = 'Exporting...';
-
-            try {
-                const options = {
-                    pageFormat: document.getElementById('pageFormat').value,
-                    orientation: document.getElementById('orientation').value,
-                    margin: 10,
-                    splitPages: document.getElementById('splitPages').checked,
-                    scale: parseFloat(document.getElementById('scale').value) || 1
-                };
-
-                showStatus('Starting PDF export...', 'info');
-
-                // Use the PDFExporter functionality
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({
-                    orientation: options.orientation,
-                    unit: 'mm',
-                    format: options.pageFormat.toLowerCase()
-                });
-
-                // Get page dimensions
-                const pageFormats = {
-                    A4: { width: 210, height: 297 },
-                    A3: { width: 297, height: 420 },
-                    Letter: { width: 215.9, height: 279.4 }
-                };
-
-                const format = pageFormats[options.pageFormat];
-                const pageWidth = options.orientation === 'portrait' ? format.width : format.height;
-                const pageHeight = options.orientation === 'portrait' ? format.height : format.width;
-                const printableWidth = pageWidth - (options.margin * 2);
-                const printableHeight = pageHeight - (options.margin * 2);
-
-                if (options.splitPages) {
-                    // Split across pages
-                    const svgWidth = parseFloat(svgElement.getAttribute('width') || '800');
-                    const svgHeight = parseFloat(svgElement.getAttribute('height') || '600');
-
-                    const scaledWidth = svgWidth * options.scale;
-                    const scaledHeight = svgHeight * options.scale;
-
-                    const pagesX = Math.ceil(scaledWidth / printableWidth);
-                    const pagesY = Math.ceil(scaledHeight / printableHeight);
-
-                    showStatus(`Creating ${pagesX * pagesY} pages...`, 'info');
-
-                    // Simple implementation for demonstration
-                    await svg2pdf(svgElement, pdf, {
-                        x: options.margin,
-                        y: options.margin,
-                        width: printableWidth,
-                        height: printableHeight
-                    });
-                } else {
-                    // Single page
-                    await svg2pdf(svgElement, pdf, {
-                        x: options.margin,
-                        y: options.margin,
-                        width: printableWidth,
-                        height: printableHeight
-                    });
+                // Add grid pattern to show page divisions
+                for (let x = 0; x <= 800; x += 50) {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", x);
+                    line.setAttribute("y1", "0");
+                    line.setAttribute("x2", x);
+                    line.setAttribute("y2", "1200");
+                    line.setAttribute("stroke", "#ddd");
+                    line.setAttribute("stroke-width", "1");
+                    svg.appendChild(line);
                 }
 
-                const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 19);
-                pdf.save(`paper-cad-test-${timestamp}.pdf`);
+                for (let y = 0; y <= 1200; y += 50) {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", "0");
+                    line.setAttribute("y1", y);
+                    line.setAttribute("x2", "800");
+                    line.setAttribute("y2", y);
+                    line.setAttribute("stroke", "#ddd");
+                    line.setAttribute("stroke-width", "1");
+                    svg.appendChild(line);
+                }
 
-                showStatus('PDF exported successfully!', 'success');
-            } catch (error) {
-                console.error('Export error:', error);
-                showStatus(`Export failed: ${error.message}`, 'error');
-            } finally {
-                exportBtn.disabled = false;
-                exportBtn.textContent = 'Export to PDF';
+                // Add some shapes representing paper craft parts
+                const shapes = [
+                    { x: 50, y: 50, width: 200, height: 150, label: "Part 1" },
+                    { x: 300, y: 50, width: 180, height: 200, label: "Part 2" },
+                    { x: 50, y: 250, width: 150, height: 180, label: "Part 3" },
+                    { x: 250, y: 280, width: 200, height: 150, label: "Part 4" },
+                    { x: 500, y: 100, width: 250, height: 300, label: "Part 5" },
+                    { x: 50, y: 500, width: 300, height: 200, label: "Part 6" },
+                    { x: 400, y: 550, width: 350, height: 250, label: "Part 7" },
+                    { x: 50, y: 850, width: 400, height: 300, label: "Part 8" },
+                    { x: 500, y: 900, width: 250, height: 250, label: "Part 9" },
+                ];
+
+                shapes.forEach((shape, index) => {
+                    // Draw shape
+                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute("x", shape.x);
+                    rect.setAttribute("y", shape.y);
+                    rect.setAttribute("width", shape.width);
+                    rect.setAttribute("height", shape.height);
+                    rect.setAttribute("fill", `hsl(${index * 40}, 70%, 80%)`);
+                    rect.setAttribute("stroke", "#333");
+                    rect.setAttribute("stroke-width", "2");
+                    svg.appendChild(rect);
+
+                    // Add label
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", shape.x + shape.width / 2);
+                    text.setAttribute("y", shape.y + shape.height / 2);
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("dominant-baseline", "middle");
+                    text.setAttribute("font-size", "20");
+                    text.setAttribute("font-weight", "bold");
+                    text.textContent = shape.label;
+                    svg.appendChild(text);
+
+                    // Add face number
+                    const faceNumber = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    faceNumber.setAttribute("x", shape.x + 10);
+                    faceNumber.setAttribute("y", shape.y + 20);
+                    faceNumber.setAttribute("class", "face-number");
+                    faceNumber.setAttribute("font-size", "14");
+                    faceNumber.setAttribute("fill", "#ff0000");
+                    faceNumber.textContent = `#${index + 1}`;
+                    svg.appendChild(faceNumber);
+                });
+
+                return svg;
             }
-        }
 
-        // Load sample SVG on page load
-        window.addEventListener('DOMContentLoaded', () => {
-            loadSampleSVG();
-        });
-    </script>
-</body>
+            function loadSampleSVG() {
+                const container = document.getElementById("svgContainer");
+                container.innerHTML = "";
+                const svg = createLargeSVG();
+                container.appendChild(svg);
+                showStatus("Sample SVG loaded successfully!", "success");
+            }
+
+            function showStatus(message, type = "info") {
+                const statusDiv = document.getElementById("status");
+                statusDiv.className = type;
+                statusDiv.textContent = message;
+                setTimeout(() => {
+                    statusDiv.textContent = "";
+                    statusDiv.className = "";
+                }, 5000);
+            }
+
+            async function performExport() {
+                const svgElement = document.querySelector("#svgContainer svg");
+                if (!svgElement) {
+                    showStatus("No SVG found. Please load a sample SVG first.", "error");
+                    return;
+                }
+
+                const exportBtn = document.getElementById("exportBtn");
+                exportBtn.disabled = true;
+                exportBtn.textContent = "Exporting...";
+
+                try {
+                    const options = {
+                        pageFormat: document.getElementById("pageFormat").value,
+                        orientation: document.getElementById("orientation").value,
+                        margin: 10,
+                        splitPages: document.getElementById("splitPages").checked,
+                        scale: parseFloat(document.getElementById("scale").value) || 1,
+                    };
+
+                    showStatus("Starting PDF export...", "info");
+
+                    // Use the PDFExporter functionality
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF({
+                        orientation: options.orientation,
+                        unit: "mm",
+                        format: options.pageFormat.toLowerCase(),
+                    });
+
+                    // Get page dimensions
+                    const pageFormats = {
+                        A4: { width: 210, height: 297 },
+                        A3: { width: 297, height: 420 },
+                        Letter: { width: 215.9, height: 279.4 },
+                    };
+
+                    const format = pageFormats[options.pageFormat];
+                    const pageWidth = options.orientation === "portrait" ? format.width : format.height;
+                    const pageHeight = options.orientation === "portrait" ? format.height : format.width;
+                    const printableWidth = pageWidth - options.margin * 2;
+                    const printableHeight = pageHeight - options.margin * 2;
+
+                    if (options.splitPages) {
+                        // Split across pages
+                        const svgWidth = parseFloat(svgElement.getAttribute("width") || "800");
+                        const svgHeight = parseFloat(svgElement.getAttribute("height") || "600");
+
+                        const scaledWidth = svgWidth * options.scale;
+                        const scaledHeight = svgHeight * options.scale;
+
+                        const pagesX = Math.ceil(scaledWidth / printableWidth);
+                        const pagesY = Math.ceil(scaledHeight / printableHeight);
+
+                        showStatus(`Creating ${pagesX * pagesY} pages...`, "info");
+
+                        // Simple implementation for demonstration
+                        await svg2pdf(svgElement, pdf, {
+                            x: options.margin,
+                            y: options.margin,
+                            width: printableWidth,
+                            height: printableHeight,
+                        });
+                    } else {
+                        // Single page
+                        await svg2pdf(svgElement, pdf, {
+                            x: options.margin,
+                            y: options.margin,
+                            width: printableWidth,
+                            height: printableHeight,
+                        });
+                    }
+
+                    const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
+                    pdf.save(`paper-cad-test-${timestamp}.pdf`);
+
+                    showStatus("PDF exported successfully!", "success");
+                } catch (error) {
+                    console.error("Export error:", error);
+                    showStatus(`Export failed: ${error.message}`, "error");
+                } finally {
+                    exportBtn.disabled = false;
+                    exportBtn.textContent = "Export to PDF";
+                }
+            }
+
+            // Load sample SVG on page load
+            window.addEventListener("DOMContentLoaded", () => {
+                loadSampleSVG();
+            });
+        </script>
+    </body>
 </html>

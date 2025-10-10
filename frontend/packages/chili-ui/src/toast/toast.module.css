@@ -11,13 +11,13 @@
 }
 
 .info {
-    color: #fff;
+    color: var(--neutral-0);
 }
 
 .error {
-    color: #ff0000;
+    color: var(--danger-color);
 }
 
 .warning {
-    color: #ffc107;
+    color: var(--warning-color);
 }

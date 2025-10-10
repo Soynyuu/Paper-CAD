@@ -23,7 +23,7 @@ dialog::backdrop {
     padding-top: var(--spacing-lg);
     padding-bottom: var(--spacing-md);
     font-size: var(--font-size-xl);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     margin: 0px auto;
     flex-shrink: 0;
     color: var(--foreground-color);
@@ -52,7 +52,7 @@ dialog::backdrop {
         margin: 0 var(--spacing-xs);
         padding: var(--spacing-sm) var(--spacing-md);
         font-size: var(--font-size-sm);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         border: 1px solid var(--border-color);
         border-radius: var(--radius-md);
         background-color: var(--panel-background-color);
@@ -69,13 +69,13 @@ dialog::backdrop {
 
         &:active {
             background-color: var(--primary-color);
-            color: white;
+            color: var(--neutral-0);
             transform: translateY(0);
         }
 
         &:first-child {
             background-color: var(--primary-color);
-            color: white;
+            color: var(--neutral-0);
             border-color: var(--primary-color);
 
             &:hover {

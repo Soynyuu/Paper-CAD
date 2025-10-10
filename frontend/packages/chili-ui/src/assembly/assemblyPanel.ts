@@ -48,7 +48,7 @@ export class AssemblyPanel extends HTMLElement {
             {
                 className: style.view2D,
             },
-            this._svgContainer
+            this._svgContainer,
         );
 
         this._statusBar = div(
@@ -60,15 +60,18 @@ export class AssemblyPanel extends HTMLElement {
                     className: style.statusItem,
                 },
                 span({ className: style.statusLabel, textContent: I18n.translate("assembly.status") + ":" }),
-                span({ className: style.statusValue, textContent: I18n.translate("assembly.ready") })
+                span({ className: style.statusValue, textContent: I18n.translate("assembly.ready") }),
             ),
             div(
                 {
                     className: style.statusItem,
                 },
-                span({ className: style.statusLabel, textContent: I18n.translate("assembly.selectedFace") + ":" }),
-                span({ className: style.statusValue, textContent: "-", id: "selected-face-display" })
-            )
+                span({
+                    className: style.statusLabel,
+                    textContent: I18n.translate("assembly.selectedFace") + ":",
+                }),
+                span({ className: style.statusValue, textContent: "-", id: "selected-face-display" }),
+            ),
         );
 
         this._render();
@@ -97,35 +100,25 @@ export class AssemblyPanel extends HTMLElement {
                     div(
                         { className: style.title },
                         span({ className: style.titleIcon, textContent: "🔧" }),
-                        span({ textContent: I18n.translate("assembly.title") })
+                        span({ textContent: I18n.translate("assembly.title") }),
                     ),
-                    div(
-                        { className: style.controls },
-                        helpText,
-                        closeButton
-                    )
+                    div({ className: style.controls }, helpText, closeButton),
                 ),
                 div(
                     { className: style.content },
                     div(
                         { className: style.viewContainer },
-                        div(
-                            { className: style.viewHeader },
-                            I18n.translate("assembly.3dModel")
-                        ),
-                        this._view3D
+                        div({ className: style.viewHeader }, I18n.translate("assembly.3dModel")),
+                        this._view3D,
                     ),
                     div(
                         { className: style.viewContainer },
-                        div(
-                            { className: style.viewHeader },
-                            I18n.translate("assembly.2dUnfold")
-                        ),
-                        this._view2D
-                    )
+                        div({ className: style.viewHeader }, I18n.translate("assembly.2dUnfold")),
+                        this._view2D,
+                    ),
                 ),
-                this._statusBar
-            )
+                this._statusBar,
+            ),
         );
     }
 
@@ -141,7 +134,7 @@ export class AssemblyPanel extends HTMLElement {
         });
     }
 
-    private async _initialize(data: { nodes: ShapeNode[], stepData: Blob }) {
+    private async _initialize(data: { nodes: ShapeNode[]; stepData: Blob }) {
         this._nodes = data.nodes;
 
         // Show the panel

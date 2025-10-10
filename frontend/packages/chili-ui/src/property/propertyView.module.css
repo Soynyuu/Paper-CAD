@@ -6,7 +6,7 @@
 .header {
     margin: var(--spacing-xs) var(--spacing-md);
     font-size: var(--font-size-lg);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     flex: 0;
     color: var(--foreground-color);
 }

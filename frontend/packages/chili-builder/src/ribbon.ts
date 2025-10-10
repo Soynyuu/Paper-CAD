@@ -21,7 +21,13 @@ export const DefaultRibbon: RibbonTab[] = [
             },
             {
                 groupName: "ribbon.group.importExport",
-                items: ["file.import", "file.importCityGML", "file.export", "file.stepUnfold", "file.assemblyMode"],
+                items: [
+                    "file.import",
+                    "file.importCityGML",
+                    "file.export",
+                    "file.stepUnfold",
+                    "file.assemblyMode",
+                ],
             },
             {
                 groupName: "ribbon.group.measure",

@@ -6,7 +6,7 @@
 }
 
 .propertyName {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     opacity: 0.75;
     color: var(--color);
     min-width: 72px;

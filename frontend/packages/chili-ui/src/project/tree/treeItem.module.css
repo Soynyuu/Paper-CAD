@@ -13,7 +13,7 @@
     flex-shrink: 0;
     width: 16px;
     height: 16px;
-    padding: 0px 8px;
+    padding: 0px var(--spacing-sm);
 }
 
 .parent-hidden {

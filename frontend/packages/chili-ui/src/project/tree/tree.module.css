@@ -1,5 +1,5 @@
 .panel {
-    margin: 4px;
+    margin: var(--spacing-xs);
 }
 
 .selected {

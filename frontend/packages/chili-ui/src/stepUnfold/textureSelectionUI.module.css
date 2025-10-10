@@ -1,10 +1,10 @@
 .root {
     display: block;
     width: 100%;
-    padding: 8px;
+    padding: var(--spacing-sm);
     background: var(--chili-background);
     border-radius: var(--radius-sm);
-    margin-bottom: 8px;
+    margin-bottom: var(--spacing-sm);
 }
 
 .container {
@@ -16,7 +16,7 @@
 .header {
     display: flex;
     align-items: center;
-    padding-bottom: 8px;
+    padding-bottom: var(--spacing-sm);
     border-bottom: 1px solid var(--chili-border);
 }
 
@@ -29,7 +29,7 @@
 .selectorContainer {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
 }
 
 .label {
@@ -40,7 +40,7 @@
 
 .selector {
     flex: 1;
-    padding: 4px 8px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     border: 1px solid var(--chili-border);
     border-radius: var(--radius-sm);
     background: var(--chili-background-secondary);
@@ -67,7 +67,7 @@
 
 .selector option {
     font-weight: normal;
-    padding: 2px 4px;
+    padding: 2px var(--spacing-xs);
 }
 
 .preview {
@@ -75,7 +75,7 @@
     border: 1px solid var(--chili-border);
     border-radius: var(--radius-sm);
     background: var(--chili-background-secondary);
-    padding: 8px;
+    padding: var(--spacing-sm);
 }
 
 .previewPlaceholder {
@@ -105,7 +105,7 @@
 .patternInfo {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--spacing-xs);
     flex: 1;
 }
 
@@ -123,7 +123,7 @@
 
 .buttonContainer {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-sm);
 }
 
 .applyButton,
@@ -164,7 +164,7 @@
     transform: translate(-50%, -50%);
     background: rgba(0, 128, 0, 0.9);
     color: var(--neutral-0);
-    padding: 8px 16px;
+    padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     z-index: var(--z-fixed);

@@ -32,17 +32,17 @@
     background: var(--panel-background-color) !important;
     border-right: 1px solid var(--border-color) !important;
     width: 42px !important;
-    padding: 4px 2px !important;
+    padding: var(--spacing-xs) 2px !important;
     box-shadow: none !important;
 }
 
 #tools_top {
     background: var(--panel-background-color) !important;
     border-bottom: 1px solid var(--border-color) !important;
-    padding: 4px 8px !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
     display: flex !important;
     align-items: center !important;
-    gap: 4px !important;
+    gap: var(--spacing-xs) !important;
     height: auto !important;
     box-shadow: none !important;
 }
@@ -50,7 +50,7 @@
 #tools_bottom {
     background: var(--panel-background-color) !important;
     border-top: 1px solid var(--border-color) !important;
-    padding: 2px 8px !important;
+    padding: 2px var(--spacing-sm) !important;
     box-shadow: none !important;
 }
 
@@ -60,13 +60,13 @@
 .tools_flyout .tool_button {
     background: transparent !important;
     border: 1px solid transparent !important;
-    border-radius: 4px !important;
+    border-radius: var(--spacing-xs) !important;
     color: var(--foreground-color) !important;
     transition:
         background-color var(--transition-fast),
         border-color var(--transition-fast) !important;
     margin: 1px !important;
-    padding: 4px !important;
+    padding: var(--spacing-xs) !important;
     width: 28px !important;
     height: 28px !important;
     display: flex !important;
@@ -98,9 +98,9 @@
 .tool_sep,
 .separator {
     background-color: var(--border-color) !important;
-    margin: 2px 4px !important;
+    margin: 2px var(--spacing-xs) !important;
     height: 1px !important;
-    width: calc(100% - 8px) !important;
+    width: calc(100% - var(--spacing-sm)) !important;
     border: none !important;
     opacity: 0.5 !important;
 }
@@ -170,7 +170,7 @@ input.spin-button,
 /* Number input specific */
 input[type="number"],
 input.spin-button {
-    padding-right: 4px !important;
+    padding-right: var(--spacing-xs) !important;
 }
 
 /* Select dropdown arrow styling */
@@ -367,8 +367,8 @@ select {
 .tools_flyout {
     background: var(--panel-background-color) !important;
     border: 1px solid var(--border-color) !important;
-    border-radius: 4px !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    border-radius: var(--spacing-xs) !important;
+    box-shadow: 0 2px var(--spacing-sm) rgba(0, 0, 0, 0.08) !important;
     padding: 2px !important;
     margin-top: 2px !important;
     backdrop-filter: none !important;

@@ -11,7 +11,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 12px var(--spacing-md);
     background: var(--background-color-secondary);
     border-bottom: 1px solid var(--border-color-primary);
     box-shadow: var(--shadow-md);
@@ -23,7 +23,7 @@
     color: var(--color-primary);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
 }
 
 .titleIcon {
@@ -32,7 +32,7 @@
 
 .controls {
     display: flex;
-    gap: 8px;
+    gap: var(--spacing-sm);
     align-items: center;
 }
 
@@ -53,7 +53,7 @@
 }
 
 .helpText {
-    padding: 8px 12px;
+    padding: var(--spacing-sm) 12px;
     background: var(--info-background);
     color: var(--info-color);
     border-radius: var(--radius-sm);
@@ -81,7 +81,7 @@
 }
 
 .viewHeader {
-    padding: 8px 12px;
+    padding: var(--spacing-sm) 12px;
     background: var(--background-color-secondary);
     border-bottom: 1px solid var(--border-color-primary);
     font-size: var(--font-size-sm);
@@ -142,7 +142,7 @@
 .statusBar {
     display: flex;
     align-items: center;
-    padding: 4px 12px;
+    padding: var(--spacing-xs) 12px;
     background: var(--background-color-secondary);
     border-top: 1px solid var(--border-color-primary);
     font-size: var(--font-size-xs);
@@ -153,7 +153,7 @@
 .statusItem {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xs);
 }
 
 .statusLabel {

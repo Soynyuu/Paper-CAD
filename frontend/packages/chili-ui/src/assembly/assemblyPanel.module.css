@@ -63,7 +63,7 @@
 .content {
     flex: 1;
     display: flex;
-    gap: 2px;
+    gap: var(--spacing-xs);
     padding: 2px;
     background: var(--background-color-tertiary);
     overflow: hidden;
@@ -147,7 +147,7 @@
     border-top: 1px solid var(--border-color-primary);
     font-size: var(--font-size-xs);
     color: var(--color-secondary);
-    gap: 16px;
+    gap: var(--spacing-md);
 }
 
 .statusItem {

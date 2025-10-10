@@ -405,19 +405,244 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
         return None
 
 
-def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None, 
+def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
+                          debug: bool = False) -> Tuple[List["TopoDS_Face"], List[List["TopoDS_Face"]]]:
+    """Extract exterior and interior shells from a gml:Solid element.
+
+    Returns:
+        Tuple of (exterior_faces, list_of_interior_face_lists)
+
+    GML Structure:
+        gml:Solid/gml:exterior - outer shell (building envelope)
+        gml:Solid/gml:interior - inner shells (cavities, courtyards)
+    """
+    exterior_faces: List[TopoDS_Face] = []
+    interior_shells: List[List[TopoDS_Face]] = []
+
+    # Extract exterior shell polygons
+    exterior_elem = solid_elem.find("./gml:exterior", NS)
+    if exterior_elem is not None:
+        # Support multiple GML surface patterns
+        for poly in exterior_elem.findall(".//gml:Polygon", NS):
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Exterior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                exterior_faces.append(fc)
+
+    # Extract interior shells (cavities)
+    for interior_elem in solid_elem.findall("./gml:interior", NS):
+        interior_faces: List[TopoDS_Face] = []
+        for poly in interior_elem.findall(".//gml:Polygon", NS):
+            ext, holes = _extract_polygon_xyz(poly)
+            if len(ext) < 3:
+                continue
+
+            # Apply coordinate transformation if provided
+            if xyz_transform:
+                try:
+                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    holes = [
+                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        for ring in holes
+                    ]
+                except Exception as e:
+                    if debug:
+                        print(f"Interior transform failed: {e}")
+                    continue
+
+            fc = _face_from_xyz_rings(ext, holes)
+            if fc is not None and not fc.IsNull():
+                interior_faces.append(fc)
+
+        if interior_faces:
+            interior_shells.append(interior_faces)
+            if debug:
+                print(f"Found interior shell with {len(interior_faces)} faces (cavity)")
+
+    return exterior_faces, interior_shells
+
+
+def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
+                            debug: bool = False) -> Optional["TopoDS_Shell"]:
+    """Build a shell from a list of faces using sewing and fixing.
+
+    Args:
+        faces: List of TopoDS_Face objects
+        tolerance: Sewing tolerance
+        debug: Enable debug output
+
+    Returns:
+        TopoDS_Shell or None if construction fails
+    """
+    if not faces:
+        return None
+
+    # Sew faces together
+    sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+    for fc in faces:
+        sewing.Add(fc)
+    sewing.Perform()
+    sewn_shape = sewing.SewedShape()
+
+    # Try to fix the shape
+    try:
+        fixer = ShapeFix_Shape(sewn_shape)
+        fixer.Perform()
+        sewn_shape = fixer.Shape()
+    except Exception as e:
+        if debug:
+            print(f"ShapeFix_Shape failed: {e}")
+
+    # Extract shell from sewn shape
+    exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
+    if exp.More():
+        shell = topods.Shell(exp.Current())
+
+        # Validate shell
+        try:
+            from OCC.Core.BRep import BRep_Tool
+            analyzer = BRepCheck_Analyzer(shell)
+            if not analyzer.IsValid():
+                if debug:
+                    print("Warning: Shell is not valid, attempting to fix...")
+                # Try to fix shell
+                try:
+                    from OCC.Core.ShapeFix import ShapeFix_Shell
+                    shell_fixer = ShapeFix_Shell(shell)
+                    shell_fixer.Perform()
+                    shell = shell_fixer.Shell()
+                except Exception as e:
+                    if debug:
+                        print(f"ShapeFix_Shell failed: {e}")
+        except Exception as e:
+            if debug:
+                print(f"Shell validation failed: {e}")
+
+        return shell
+
+    return None
+
+
+def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
+                               interior_shells_faces: List[List["TopoDS_Face"]],
+                               tolerance: float = 0.1,
+                               debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Build a solid with cavities from exterior and interior shells.
+
+    Args:
+        exterior_faces: Faces forming the outer shell
+        interior_shells_faces: List of face lists, each forming an interior shell (cavity)
+        tolerance: Sewing tolerance
+        debug: Enable debug output
+
+    Returns:
+        TopoDS_Solid or TopoDS_Shape (if solid construction fails)
+    """
+    from OCC.Core.BRep import BRep_Tool
+
+    # Build exterior shell
+    exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug)
+    if exterior_shell is None:
+        if debug:
+            print("Failed to build exterior shell")
+        return None
+
+    # Check if exterior shell is closed
+    try:
+        is_closed = BRep_Tool.IsClosed(exterior_shell)
+        if not is_closed:
+            if debug:
+                print("Warning: Exterior shell is not closed")
+    except Exception as e:
+        if debug:
+            print(f"Failed to check if shell is closed: {e}")
+        is_closed = False
+
+    # Build interior shells
+    interior_shells: List[TopoDS_Shell] = []
+    for i, int_faces in enumerate(interior_shells_faces):
+        int_shell = _build_shell_from_faces(int_faces, tolerance, debug)
+        if int_shell is not None:
+            try:
+                if BRep_Tool.IsClosed(int_shell):
+                    interior_shells.append(int_shell)
+                    if debug:
+                        print(f"Added interior shell {i+1} (closed)")
+                else:
+                    if debug:
+                        print(f"Interior shell {i+1} is not closed, skipping")
+            except Exception as e:
+                if debug:
+                    print(f"Interior shell {i+1} check failed: {e}")
+
+    # Try to create solid
+    if is_closed:
+        try:
+            mk_solid = BRepBuilderAPI_MakeSolid(exterior_shell)
+
+            # Add interior shells (cavities)
+            for int_shell in interior_shells:
+                try:
+                    mk_solid.Add(int_shell)
+                except Exception as e:
+                    if debug:
+                        print(f"Failed to add interior shell: {e}")
+
+            solid = mk_solid.Solid()
+
+            # Validate solid
+            analyzer = BRepCheck_Analyzer(solid)
+            if analyzer.IsValid():
+                if debug:
+                    print(f"Created valid solid with {len(interior_shells)} cavities")
+                return solid
+            else:
+                if debug:
+                    print("Solid validation failed, returning shell")
+                return exterior_shell
+        except Exception as e:
+            if debug:
+                print(f"Solid creation failed: {e}, returning shell")
+            return exterior_shell
+    else:
+        if debug:
+            print("Exterior shell not closed, cannot create solid")
+        return exterior_shell
+
+
+def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optional[Callable] = None,
                                     debug: bool = False) -> Optional["TopoDS_Shape"]:
     """Extract LOD1 or LOD2 solid geometry directly from a building element.
-    
+
+    Now supports:
+    - gml:Solid with exterior and interior shells (cavities)
+    - Proper distinction between exterior and interior geometry
+
     Priority:
     1. LOD2 Solid (most detailed)
     2. LOD1 Solid (simplified)
-    
+
     Returns the solid shape or None if not found.
     """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for solid extraction")
-    
+
     # Try LOD2 solid first
     lod2_solid = building.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
@@ -425,39 +650,20 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
         if solid_elem is not None:
             if debug:
                 print("Found LOD2 Solid")
-            # Extract exterior shell polygons
-            faces = []
-            for poly in solid_elem.findall(".//gml:Polygon", NS):
-                ext, holes = _extract_polygon_xyz(poly)
-                if len(ext) < 3:
-                    continue
-                    
-                # Apply coordinate transformation if provided
-                if xyz_transform:
-                    try:
-                        ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
-                        holes = [
-                            [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
-                            for ring in holes
-                        ]
-                    except Exception as e:
-                        if debug:
-                            print(f"Transform failed: {e}")
-                        continue
-                
-                fc = _face_from_xyz_rings(ext, holes)
-                if fc is not None and not fc.IsNull():
-                    faces.append(fc)
-            
-            if faces:
-                # Sew faces into solid
-                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Sewing
-                sewing = BRepBuilderAPI_Sewing(0.1, True, True, True, False)
-                for fc in faces:
-                    sewing.Add(fc)
-                sewing.Perform()
-                return sewing.SewedShape()
-    
+
+            # Extract exterior and interior shells
+            exterior_faces, interior_shells_faces = _extract_solid_shells(
+                solid_elem, xyz_transform, debug
+            )
+
+            if exterior_faces:
+                # Build solid with cavities (if any interior shells exist)
+                result = _make_solid_with_cavities(
+                    exterior_faces, interior_shells_faces, tolerance=0.1, debug=debug
+                )
+                if result is not None:
+                    return result
+
     # Try LOD1 solid
     lod1_solid = building.find(".//bldg:lod1Solid", NS)
     if lod1_solid is not None:
@@ -465,39 +671,20 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
         if solid_elem is not None:
             if debug:
                 print("Found LOD1 Solid")
-            # Extract exterior shell polygons
-            faces = []
-            for poly in solid_elem.findall(".//gml:Polygon", NS):
-                ext, holes = _extract_polygon_xyz(poly)
-                if len(ext) < 3:
-                    continue
-                    
-                # Apply coordinate transformation if provided
-                if xyz_transform:
-                    try:
-                        ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
-                        holes = [
-                            [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
-                            for ring in holes
-                        ]
-                    except Exception as e:
-                        if debug:
-                            print(f"Transform failed: {e}")
-                        continue
-                
-                fc = _face_from_xyz_rings(ext, holes)
-                if fc is not None and not fc.IsNull():
-                    faces.append(fc)
-            
-            if faces:
-                # Sew faces into solid
-                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Sewing
-                sewing = BRepBuilderAPI_Sewing(0.1, True, True, True, False)
-                for fc in faces:
-                    sewing.Add(fc)
-                sewing.Perform()
-                return sewing.SewedShape()
-    
+
+            # Extract exterior and interior shells
+            exterior_faces, interior_shells_faces = _extract_solid_shells(
+                solid_elem, xyz_transform, debug
+            )
+
+            if exterior_faces:
+                # Build solid with cavities (if any interior shells exist)
+                result = _make_solid_with_cavities(
+                    exterior_faces, interior_shells_faces, tolerance=0.1, debug=debug
+                )
+                if result is not None:
+                    return result
+
     return None
 
 

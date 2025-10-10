@@ -47,7 +47,7 @@
     color: var(--chili-text-primary);
     font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: border-color 0.2s;
+    transition: border-color var(--transition-base);
 }
 
 .selector:hover {
@@ -136,7 +136,7 @@
     color: var(--chili-text-primary);
     font-size: var(--font-size-xs);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all var(--transition-base);
 }
 
 .applyButton:not(:disabled):hover {
@@ -169,7 +169,7 @@
     font-size: var(--font-size-xs);
     z-index: var(--z-fixed);
     pointer-events: none;
-    transition: opacity 0.3s;
+    transition: opacity var(--transition-slow);
 }
 
 /* Dark mode support */

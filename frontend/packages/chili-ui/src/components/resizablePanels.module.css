@@ -26,7 +26,7 @@
     cursor: col-resize;
     position: relative;
     flex: 0 0 4px;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--transition-base);
 }
 
 .resizer:hover {

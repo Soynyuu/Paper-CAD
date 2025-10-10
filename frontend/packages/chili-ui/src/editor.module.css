@@ -21,7 +21,7 @@
         max-width: 400px;
         background-color: var(--background-color);
         position: relative;
-        transition: all 0.3s ease-in-out;
+        transition: all var(--transition-slow);
 
         & .sidebarItem {
             margin-top: 10px;
@@ -56,7 +56,7 @@
         align-items: center;
         justify-content: center;
         z-index: var(--z-dropdown);
-        transition: all 0.3s ease-in-out;
+        transition: all var(--transition-slow);
         font-size: var(--font-size-xs);
         color: #666;
     }

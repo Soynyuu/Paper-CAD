@@ -49,3 +49,56 @@ class CityGMLValidationRequest(BaseModel):
     """CityGML file validation request parameters"""
     check_geometry: Optional[bool] = True  # Validate geometric structure
     estimate_processing_time: Optional[bool] = True  # Provide processing time estimates
+
+
+class PlateauSearchRequest(BaseModel):
+    """Request to search for PLATEAU buildings by address/facility name"""
+    query: str  # Address or facility name (e.g., "東京駅", "東京都千代田区丸の内1-9-1")
+    radius: Optional[float] = 0.001  # Search radius in degrees (default: ~100m)
+    limit: Optional[int] = 10  # Maximum number of buildings to return
+    auto_select_nearest: Optional[bool] = True  # Auto-select nearest building
+
+
+class PlateauFetchAndConvertRequest(BaseModel):
+    """Request to fetch PLATEAU data and convert to STEP in one step"""
+    query: str  # Address or facility name
+    radius: Optional[float] = 0.001  # Search radius in degrees
+    auto_select_nearest: Optional[bool] = True  # Auto-select nearest building
+    building_limit: Optional[int] = 1  # Number of buildings to convert
+    # Conversion options (reuse existing CityGML conversion parameters)
+    debug: Optional[bool] = False
+    method: Optional[str] = "solid"
+    auto_reproject: Optional[bool] = True
+    precision_mode: Optional[str] = "ultra"
+    shape_fix_level: Optional[str] = "ultra"
+
+
+class BuildingInfoResponse(BaseModel):
+    """Information about a single building from PLATEAU"""
+    building_id: Optional[str]  # Stable building ID (e.g., "13101-bldg-123456")
+    gml_id: str  # Technical GML identifier
+    latitude: float
+    longitude: float
+    distance_meters: float
+    height: Optional[float] = None
+    usage: Optional[str] = None
+    measured_height: Optional[float] = None
+
+
+class GeocodingResultResponse(BaseModel):
+    """Geocoding result information"""
+    query: str
+    latitude: float
+    longitude: float
+    display_name: str
+    osm_type: Optional[str] = None
+    osm_id: Optional[int] = None
+
+
+class PlateauSearchResponse(BaseModel):
+    """Response from building search"""
+    success: bool
+    geocoding: Optional[GeocodingResultResponse]
+    buildings: list[BuildingInfoResponse]
+    found_count: int
+    error: Optional[str] = None

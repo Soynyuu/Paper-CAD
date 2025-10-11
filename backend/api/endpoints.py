@@ -9,8 +9,16 @@ import io
 
 from config import OCCT_AVAILABLE
 from services.step_processor import StepUnfoldGenerator
-from models.request_models import BrepPapercraftRequest
+from models.request_models import (
+    BrepPapercraftRequest,
+    PlateauSearchRequest,
+    PlateauFetchAndConvertRequest,
+    PlateauSearchResponse,
+    BuildingInfoResponse,
+    GeocodingResultResponse
+)
 from services.citygml_to_step import export_step_from_citygml, parse_citygml_footprints
+from services.plateau_fetcher import search_buildings_by_address
 
 # APIルーターの作成
 router = APIRouter()
@@ -457,6 +465,283 @@ async def citygml_validate(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"検証でエラー: {str(e)}")
+
+
+# --- PLATEAU Address Search ---
+@router.post("/api/plateau/search-by-address", response_model=PlateauSearchResponse)
+async def plateau_search_by_address(
+    request: PlateauSearchRequest
+):
+    """
+    住所または施設名からPLATEAU建物を検索します。
+
+    Search for PLATEAU buildings by address or facility name.
+
+    **処理フロー / Process Flow:**
+    1. OpenStreetMap Nominatim APIで住所→座標変換
+    2. PLATEAU Data Catalog APIから周辺のCityGMLデータを取得
+    3. 建物情報を抽出・パース
+    4. 距離順にソート
+
+    **入力例 / Example Inputs:**
+    - 施設名: "東京駅", "渋谷スクランブルスクエア"
+    - 完全住所: "東京都千代田区丸の内1-9-1"
+    - 部分住所: "千代田区丸の内"
+    - 郵便番号: "100-0005"
+
+    **レート制限 / Rate Limits:**
+    - Nominatim: 1リクエスト/秒（自動的に適用）
+
+    Args:
+        request: PlateauSearchRequest containing query, radius, limit, etc.
+
+    Returns:
+        PlateauSearchResponse with geocoding info and list of buildings
+
+    Example:
+        ```json
+        {
+            "query": "東京駅",
+            "radius": 0.001,
+            "limit": 10
+        }
+        ```
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/search-by-address")
+        print(f"[API] Query: {request.query}")
+        print(f"[API] Radius: {request.radius} degrees")
+        print(f"[API] Limit: {request.limit}")
+        print(f"{'='*60}\n")
+
+        # Call the search function
+        result = search_buildings_by_address(
+            query=request.query,
+            radius=request.radius,
+            limit=request.limit
+        )
+
+        if not result["success"]:
+            # Return error response
+            return PlateauSearchResponse(
+                success=False,
+                geocoding=None,
+                buildings=[],
+                found_count=0,
+                error=result.get("error", "Unknown error")
+            )
+
+        # Convert to response models
+        geocoding_data = result["geocoding"]
+        geocoding_response = GeocodingResultResponse(
+            query=geocoding_data.query,
+            latitude=geocoding_data.latitude,
+            longitude=geocoding_data.longitude,
+            display_name=geocoding_data.display_name,
+            osm_type=geocoding_data.osm_type,
+            osm_id=geocoding_data.osm_id
+        ) if geocoding_data else None
+
+        buildings_response = [
+            BuildingInfoResponse(
+                building_id=b.building_id,
+                gml_id=b.gml_id,
+                latitude=b.latitude,
+                longitude=b.longitude,
+                distance_meters=b.distance_meters,
+                height=b.height,
+                usage=b.usage,
+                measured_height=b.measured_height
+            )
+            for b in result["buildings"]
+        ]
+
+        return PlateauSearchResponse(
+            success=True,
+            geocoding=geocoding_response,
+            buildings=buildings_response,
+            found_count=len(buildings_response),
+            error=None
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"検索エラー: {str(e)}")
+
+
+@router.post("/api/plateau/fetch-and-convert")
+async def plateau_fetch_and_convert(
+    background_tasks: BackgroundTasks,
+    query: str = Form(..., description="住所または施設名"),
+    radius: float = Form(0.001, description="検索半径（度）"),
+    auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択"),
+    building_limit: int = Form(1, description="変換する建物数"),
+    debug: bool = Form(False, description="デバッグモード"),
+    method: str = Form("solid", description="変換方式"),
+    auto_reproject: bool = Form(True, description="自動再投影"),
+    precision_mode: str = Form("ultra", description="精度モード"),
+    shape_fix_level: str = Form("ultra", description="形状修正レベル"),
+):
+    """
+    住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
+
+    Automatically fetch PLATEAU buildings by address/facility name and convert to STEP.
+
+    **ワンステップ処理 / One-Step Process:**
+    1. 住所検索（Nominatim）
+    2. CityGML取得（PLATEAU API）
+    3. 最近傍建物特定
+    4. STEP変換
+    5. ファイル返却
+
+    **入力例 / Example:**
+    - query: "東京駅"
+    - radius: 0.001 (約100m)
+    - building_limit: 1 (最近傍の1棟のみ)
+
+    **利点 / Benefits:**
+    - ✅ CityGMLファイルの手動ダウンロード不要
+    - ✅ 必要な建物のみを取得（軽量）
+    - ✅ 常に最新のPLATEAUデータを使用
+
+    Returns:
+        STEPファイル（application/octet-stream）
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/fetch-and-convert")
+        print(f"[API] Query: {query}")
+        print(f"[API] Radius: {radius} degrees")
+        print(f"[API] Building limit: {building_limit}")
+        print(f"{'='*60}\n")
+
+        # Step 1: Search for buildings
+        search_result = search_buildings_by_address(
+            query=query,
+            radius=radius,
+            limit=building_limit if auto_select_nearest else None
+        )
+
+        if not search_result["success"]:
+            raise HTTPException(
+                status_code=404,
+                detail=search_result.get("error", "建物が見つかりませんでした")
+            )
+
+        buildings = search_result["buildings"]
+        if not buildings:
+            raise HTTPException(
+                status_code=404,
+                detail=f"指定された場所に建物が見つかりませんでした: {query}"
+            )
+
+        # Step 2: Extract building IDs (prefer building_id over gml_id)
+        selected_buildings = buildings[:building_limit] if building_limit > 0 else buildings
+        building_ids = []
+        filter_attribute = "gml:id"  # Default
+
+        for b in selected_buildings:
+            if b.building_id:
+                # Prefer stable building ID
+                building_ids.append(b.building_id)
+                filter_attribute = "建物ID"  # Use generic attribute
+            else:
+                # Fallback to gml:id
+                building_ids.append(b.gml_id)
+
+        print(f"[API] Selected {len(building_ids)} building(s):")
+        for i, bid in enumerate(building_ids, 1):
+            b = selected_buildings[i-1]
+            print(f"  {i}. {bid} ({b.distance_meters:.1f}m)")
+
+        # Step 3: Fetch CityGML again and convert to STEP
+        geocoding = search_result["geocoding"]
+        from services.plateau_fetcher import fetch_citygml_from_plateau
+
+        xml_content = fetch_citygml_from_plateau(
+            geocoding.latitude,
+            geocoding.longitude,
+            radius=radius
+        )
+
+        if not xml_content:
+            raise HTTPException(
+                status_code=500,
+                detail="CityGMLデータの取得に失敗しました"
+            )
+
+        # Step 4: Save CityGML to temp file
+        tmpdir = tempfile.mkdtemp()
+        gml_path = os.path.join(tmpdir, f"{uuid.uuid4()}.gml")
+        with open(gml_path, "w", encoding="utf-8") as f:
+            f.write(xml_content)
+
+        # Step 5: Convert to STEP
+        out_dir = tempfile.mkdtemp()
+        output_filename = f"{query.replace(' ', '_')}_plateau.step"
+        out_path = os.path.join(out_dir, output_filename)
+
+        ok, msg = export_step_from_citygml(
+            gml_path,
+            out_path,
+            limit=None,  # We already filtered by building_ids
+            debug=debug,
+            method=method,
+            auto_reproject=auto_reproject,
+            precision_mode=precision_mode,
+            shape_fix_level=shape_fix_level,
+            building_ids=building_ids,
+            filter_attribute=filter_attribute,
+        )
+
+        if not ok:
+            raise HTTPException(
+                status_code=500,
+                detail=f"STEP変換に失敗しました: {msg}"
+            )
+
+        # Step 6: Return STEP file
+        file_size = os.path.getsize(out_path)
+        print(f"[API] Success: Generated {output_filename} ({file_size:,} bytes)")
+
+        # Cleanup function
+        def cleanup_temp_files():
+            try:
+                if os.path.exists(gml_path):
+                    os.remove(gml_path)
+                if os.path.exists(tmpdir):
+                    os.rmdir(tmpdir)
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                if os.path.exists(out_dir):
+                    os.rmdir(out_dir)
+                print(f"[CLEANUP] Removed temporary files")
+            except Exception as e:
+                print(f"[CLEANUP] Failed: {e}")
+
+        background_tasks.add_task(cleanup_temp_files)
+
+        return FileResponse(
+            path=out_path,
+            media_type="application/octet-stream",
+            filename=output_filename,
+            headers={
+                "X-Building-Count": str(len(building_ids)),
+                "X-Query": query,
+                "X-Geocoded-Address": geocoding.display_name,
+                "Cache-Control": "no-cache"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+
 
 # --- ヘルスチェック ---
 @router.get("/api/health", status_code=200)

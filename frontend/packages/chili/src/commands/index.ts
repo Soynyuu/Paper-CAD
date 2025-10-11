@@ -10,6 +10,7 @@ export * from "./createCommand";
 export * from "./delete";
 export * from "./folder";
 export * from "./importCityGML";
+export * from "./importCityGMLByAddress";
 export * from "./importExport";
 export * from "./stepUnfold";
 export * from "./measure";

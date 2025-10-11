@@ -208,6 +208,16 @@ async def citygml_to_step(
         description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）, ultra（最大修正、LOD2/LOD3最適化）",
         example="ultra",
     ),
+    building_ids: Optional[str] = Form(
+        None,
+        description="抽出する建物IDのリスト（カンマ区切り）。未指定で全建物を処理。例: 'bldg_12345,bldg_67890'",
+        example="bldg_12345,bldg_67890",
+    ),
+    filter_attribute: str = Form(
+        "gml:id",
+        description="building_idsと照合する属性名。'gml:id'（デフォルト）またはgen:genericAttributeのキー名（例: 'buildingID'）",
+        example="gml:id",
+    ),
 ):
     """
     CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
@@ -241,6 +251,14 @@ async def citygml_to_step(
       * standard: 標準的な修正
       * aggressive: 修正を強化し、堅牢性を優先
       * ultra: 最大修正、多段階処理、LOD2/LOD3最適化 (デフォルト)
+
+    **建物フィルタリング** (新機能):
+    - building_ids: 処理する建物IDのリスト（カンマ区切り）
+      * 未指定の場合、全建物を処理
+      * 例: "bldg_12345,bldg_67890"
+    - filter_attribute: building_idsと照合する属性
+      * gml:id (デフォルト): 標準のGML識別子で照合
+      * 汎用属性名: gen:genericAttributeの値で照合（例: "buildingID"）
     """
     try:
         # Normalize limit parameter (handle empty string from form)
@@ -265,6 +283,16 @@ async def citygml_to_step(
         # Normalize precision parameters (handle empty strings, fall back to defaults)
         normalized_precision_mode = precision_mode if precision_mode and precision_mode.strip() else "auto"
         normalized_shape_fix_level = shape_fix_level if shape_fix_level and shape_fix_level.strip() else "standard"
+
+        # Normalize building filtering parameters
+        normalized_building_ids: Optional[list[str]] = None
+        if building_ids and building_ids.strip():
+            # Split by comma and strip whitespace from each ID
+            normalized_building_ids = [bid.strip() for bid in building_ids.split(",") if bid.strip()]
+            if not normalized_building_ids:
+                normalized_building_ids = None
+
+        normalized_filter_attribute = filter_attribute if filter_attribute and filter_attribute.strip() else "gml:id"
 
         # Validate precision_mode
         valid_precision_modes = ["auto", "high", "maximum", "ultra"]
@@ -338,6 +366,8 @@ async def citygml_to_step(
             auto_reproject=auto_reproject,
             precision_mode=normalized_precision_mode,
             shape_fix_level=normalized_shape_fix_level,
+            building_ids=normalized_building_ids,
+            filter_attribute=normalized_filter_attribute,
         )
         if not ok:
             raise HTTPException(status_code=400, detail=f"変換に失敗しました: {msg}")

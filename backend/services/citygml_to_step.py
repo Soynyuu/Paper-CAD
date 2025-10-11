@@ -157,6 +157,95 @@ def _first_text(elem: Optional[ET.Element]) -> Optional[str]:
     return (elem.text or "").strip() if elem is not None and elem.text else None
 
 
+def _extract_generic_attributes(building: ET.Element) -> dict[str, str]:
+    """Extract generic attributes from a building element.
+
+    PLATEAU CityGML often stores metadata like building IDs, addresses,
+    and other properties in gen:genericAttribute elements.
+
+    Args:
+        building: bldg:Building element
+
+    Returns:
+        Dictionary mapping attribute names to values
+    """
+    attributes: dict[str, str] = {}
+
+    # Find all generic attribute elements
+    for attr in building.findall(".//gen:stringAttribute", NS):
+        name_elem = attr.get("name")
+        value_elem = attr.find("./gen:value", NS)
+
+        if name_elem and value_elem is not None:
+            value = _first_text(value_elem)
+            if value:
+                attributes[name_elem] = value
+
+    # Also check for intAttribute (integer generic attributes)
+    for attr in building.findall(".//gen:intAttribute", NS):
+        name_elem = attr.get("name")
+        value_elem = attr.find("./gen:value", NS)
+
+        if name_elem and value_elem is not None:
+            value = _first_text(value_elem)
+            if value:
+                attributes[name_elem] = value
+
+    # Check for PLATEAU-specific uro:buildingIDAttribute
+    for attr in building.findall(".//uro:buildingIDAttribute", NS):
+        # Try to extract building ID from uro namespace
+        bid = _first_text(attr)
+        if bid:
+            attributes["buildingID"] = bid
+
+    return attributes
+
+
+def _filter_buildings(
+    buildings: List[ET.Element],
+    building_ids: Optional[List[str]] = None,
+    filter_attribute: str = "gml:id"
+) -> List[ET.Element]:
+    """Filter buildings by IDs using specified attribute.
+
+    Args:
+        buildings: List of bldg:Building elements
+        building_ids: List of building IDs to filter by (None = no filtering)
+        filter_attribute: Attribute to match against:
+            - "gml:id": Match against gml:id attribute (default)
+            - Other: Match against generic attribute with this name
+
+    Returns:
+        Filtered list of building elements
+    """
+    if not building_ids:
+        return buildings
+
+    # Normalize building_ids for case-insensitive matching
+    building_ids_set = {bid.strip() for bid in building_ids}
+    filtered: List[ET.Element] = []
+
+    for b in buildings:
+        match_found = False
+
+        if filter_attribute == "gml:id":
+            # Match by gml:id attribute
+            gml_id = b.get("{http://www.opengis.net/gml}id") or b.get("id")
+            if gml_id and gml_id in building_ids_set:
+                match_found = True
+        else:
+            # Match by generic attribute
+            attrs = _extract_generic_attributes(b)
+            attr_value = attrs.get(filter_attribute)
+            if attr_value and attr_value in building_ids_set:
+                match_found = True
+
+        if match_found:
+            filtered.append(b)
+
+    return filtered
+
+
 def _build_id_index(root: ET.Element) -> dict[str, ET.Element]:
     """Build an index of all gml:id attributes in the document.
 
@@ -1726,13 +1815,15 @@ def export_step_from_citygml(
     auto_reproject: bool = True,
     precision_mode: str = "ultra",
     shape_fix_level: str = "ultra",
+    building_ids: Optional[List[str]] = None,
+    filter_attribute: str = "gml:id",
 ) -> Tuple[bool, str]:
     """High-level pipeline: CityGML → STEP with precision control.
 
     Args:
         gml_path: Path to CityGML file
         out_step: Output STEP file path
-        limit: Limit number of buildings to process (None for all)
+        limit: Limit number of buildings to process (None for all, ignored if building_ids is specified)
         debug: Enable debug output
         method: Conversion strategy
             - "solid": Use LOD2/LOD3 Solid data directly (optimized for PLATEAU, recommended)
@@ -1753,6 +1844,10 @@ def export_step_from_citygml(
             - "standard": Balanced fixing
             - "aggressive": Prioritize robustness over detail
             - "ultra": Maximum fixing for LOD2/LOD3 (default)
+        building_ids: List of building IDs to filter by (None = no filtering)
+        filter_attribute: Attribute to match building_ids against
+            - "gml:id": Match against gml:id attribute (default)
+            - Other: Match against generic attribute with this name (e.g., "buildingID")
 
     Returns:
         Tuple of (success, message or output_path)
@@ -1768,6 +1863,18 @@ def export_step_from_citygml(
     tree = ET.parse(gml_path)
     root = tree.getroot()
     bldgs = root.findall(".//bldg:Building", NS)
+
+    # Apply building ID filtering if specified
+    if building_ids:
+        original_count = len(bldgs)
+        bldgs = _filter_buildings(bldgs, building_ids, filter_attribute)
+        if debug:
+            print(f"Building ID filter: {original_count} → {len(bldgs)} buildings")
+            print(f"Filter attribute: {filter_attribute}")
+            print(f"Requested IDs: {building_ids}")
+
+        if not bldgs:
+            return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
 
     # Build XLink resolution index
     id_index = _build_id_index(root)

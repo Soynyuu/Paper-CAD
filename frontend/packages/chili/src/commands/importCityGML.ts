@@ -27,6 +27,12 @@ export class ImportCityGML implements ICommand {
     @Property.define("citygml.autoReproject")
     public autoReproject: boolean = true;
 
+    @Property.define("citygml.buildingIds")
+    public buildingIds: string = "";
+
+    @Property.define("citygml.filterAttribute")
+    public filterAttribute: string = "gml:id";
+
     private cityGMLService: CityGMLService;
 
     constructor() {
@@ -69,10 +75,21 @@ export class ImportCityGML implements ICommand {
                     // Convert CityGML to STEP
                     PubSub.default.pub("showToast", "toast.citygml.converting");
 
+                    // Parse building IDs if provided
+                    const buildingIdsArray =
+                        this.buildingIds.trim() !== ""
+                            ? this.buildingIds
+                                  .split(",")
+                                  .map((id) => id.trim())
+                                  .filter((id) => id !== "")
+                            : undefined;
+
                     const stepResult = await this.cityGMLService.convertToStep(file, {
                         defaultHeight: this.defaultHeight,
                         limit: this.buildingLimit === 0 ? undefined : this.buildingLimit,
                         autoReproject: this.autoReproject,
+                        buildingIds: buildingIdsArray,
+                        filterAttribute: this.filterAttribute,
                     });
 
                     if (!stepResult.isOk) {

@@ -28,15 +28,19 @@ class CityGMLConversionRequest(BaseModel):
     preferred_lod: Optional[int] = 2  # Preferred Level of Detail (0, 1, 2)
     min_building_area: Optional[float] = None  # Minimum building area to process (square meters)
     max_building_count: Optional[int] = None  # Maximum number of buildings to process
-    
+
+    # Building filtering options
+    building_ids: Optional[list[str]] = None  # List of building IDs to extract (None = all buildings)
+    filter_attribute: Optional[str] = "gml:id"  # Attribute to match building_ids against (default: gml:id)
+
     # Solidification options
     tolerance: Optional[float] = 1e-6  # Geometric tolerance for solid creation
     enable_shell_closure: Optional[bool] = True  # Attempt to close open shells
-    
+
     # Export options
     export_individual_files: Optional[bool] = False  # Export each building as separate STEP file
     output_format: Optional[str] = "step"  # Output format (currently only STEP supported)
-    
+
     # Processing options
     debug_mode: Optional[bool] = False  # Enable debug logging and detailed error reporting
 

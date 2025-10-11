@@ -148,7 +148,7 @@ export class ImportCityGMLByAddress implements ICommand {
                     console.error("[PLATEAU] Import failed:", error);
                 }
             },
-            "toast.executing{0}",
+            "toast.excuting{0}",
             I18n.translate("command.file.importCityGMLByAddress"),
         );
     }

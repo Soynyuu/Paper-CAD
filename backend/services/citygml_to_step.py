@@ -1717,10 +1717,9 @@ def _make_xyz_transformer(source_crs: str, target_crs: str):
 def export_step_from_citygml(
     gml_path: str,
     out_step: str,
-    default_height: float = 10.0,
     limit: Optional[int] = None,
     debug: bool = False,
-    method: str = "auto",
+    method: str = "solid",
     sew_tolerance: Optional[float] = None,
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
@@ -1733,14 +1732,13 @@ def export_step_from_citygml(
     Args:
         gml_path: Path to CityGML file
         out_step: Output STEP file path
-        default_height: Default height for extrusion when not available
         limit: Limit number of buildings to process (None for all)
         debug: Enable debug output
         method: Conversion strategy
-            - "solid": Use LOD1/LOD2 Solid data directly (best for PLATEAU)
-            - "extrude": Footprint+height extrusion (LOD0 systems)
+            - "solid": Use LOD2/LOD3 Solid data directly (optimized for PLATEAU, recommended)
+            - "auto": Fallback solid→sew→extrude (compatibility mode)
             - "sew": Sew LOD2 surfaces into solids
-            - "auto": Fallback solid→sew→extrude (recommended)
+            - "extrude": Footprint+height extrusion (requires explicit specification)
         sew_tolerance: Sewing tolerance (auto-computed if None based on precision_mode)
         reproject_to: Target CRS (e.g., 'EPSG:6676')
         source_crs: Source CRS (auto-detected if None)
@@ -1859,8 +1857,11 @@ def export_step_from_citygml(
                     print(f"Sewing failed for building {i}: {e}")
                 continue
 
-    # Fallback to extrusion from footprints
+    # Fallback to extrusion from footprints (only when explicitly requested or in auto mode)
     if not shapes and method in ("extrude", "auto"):
+        # Note: default_height is only used for LOD0 extrusion fallback
+        # LOD2/3 buildings have explicit geometry and don't need this
+        default_height = 10.0
         fplist = parse_citygml_footprints(
             gml_path,
             default_height=default_height,

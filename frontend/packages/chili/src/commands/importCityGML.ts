@@ -34,8 +34,8 @@ export class ImportCityGML implements ICommand {
     }
 
     async execute(application: IApplication): Promise<void> {
-        // Read CityGML files
-        const files = await readFilesAsync(".gml,.xml", false);
+        // Read CityGML files with explicit MIME types for better filtering
+        const files = await readFilesAsync(".gml,.xml,application/gml+xml,text/xml,application/xml", false);
         if (!files.isOk || files.value.length === 0) {
             if (files.error) {
                 alert(files.error);
@@ -45,7 +45,14 @@ export class ImportCityGML implements ICommand {
 
         const file = files.value[0];
 
-        // Check if it's likely a CityGML file
+        // Validate file extension explicitly
+        const fileName = file.name.toLowerCase();
+        if (!fileName.endsWith(".gml") && !fileName.endsWith(".xml")) {
+            PubSub.default.pub("showToast", "error.import.invalidFileExtension");
+            return;
+        }
+
+        // Check if it's likely a CityGML file by content
         const isCityGML = await this.checkIfCityGML(file);
         if (!isCityGML) {
             PubSub.default.pub("showToast", "error.import.notCityGML");

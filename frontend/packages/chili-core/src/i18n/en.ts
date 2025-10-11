@@ -163,6 +163,7 @@ export default {
         "error.input.unsupportedInputs": "Exceeds the maximum number of inputs",
         "error.import.unsupportedFileType:{0}": "Unsupported file type: {0}",
         "error.import.notCityGML": "Not a valid CityGML file",
+        "error.import.invalidFileExtension": "Only CityGML files (.gml, .xml) are supported",
         "error.citygml.conversionFailed:{0}": "CityGML conversion failed: {0}",
         "error.citygml.importFailed:{0}": "CityGML import failed: {0}",
         "error.export.noNodeCanBeExported": "No node can be exported",

@@ -159,6 +159,7 @@ const I18N_KEYS = [
     "error.input.unsupportedInputs",
     "error.import.unsupportedFileType:{0}",
     "error.import.notCityGML",
+    "error.import.invalidFileExtension",
     "error.citygml.conversionFailed:{0}",
     "error.citygml.importFailed:{0}",
     "error.export.noNodeCanBeExported",

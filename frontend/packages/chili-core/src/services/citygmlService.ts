@@ -14,6 +14,8 @@ export interface CityGMLConversionOptions {
     reprojectTo?: string;
     sourceCrs?: string;
     autoReproject?: boolean;
+    buildingIds?: string[];
+    filterAttribute?: string;
 }
 
 export interface ICityGMLService extends IService {
@@ -81,6 +83,12 @@ export class CityGMLService implements ICityGMLService {
             }
             if (options?.autoReproject !== undefined) {
                 formData.append("auto_reproject", options.autoReproject.toString());
+            }
+            if (options?.buildingIds && options.buildingIds.length > 0) {
+                formData.append("building_ids", options.buildingIds.join(","));
+            }
+            if (options?.filterAttribute) {
+                formData.append("filter_attribute", options.filterAttribute);
             }
 
             const response = await fetch(`${this.baseUrl}/citygml/to-step`, {

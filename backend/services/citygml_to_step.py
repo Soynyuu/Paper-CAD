@@ -100,7 +100,7 @@ NS = {
     "gml": "http://www.opengis.net/gml",
     "bldg": "http://www.opengis.net/citygml/building/2.0",
     "core": "http://www.opengis.net/citygml/2.0",
-    "uro": "http://www.opengis.net/uro/1.0",
+    "uro": "https://www.geospatial.jp/iur/uro/3.1",  # PLATEAU-specific namespace (iur/uro 3.1)
     "gen": "http://www.opengis.net/citygml/generics/2.0",
     "xlink": "http://www.w3.org/1999/xlink",
 }
@@ -192,11 +192,14 @@ def _extract_generic_attributes(building: ET.Element) -> dict[str, str]:
                 attributes[name_elem] = value
 
     # Check for PLATEAU-specific uro:buildingIDAttribute
-    for attr in building.findall(".//uro:buildingIDAttribute", NS):
-        # Try to extract building ID from uro namespace
-        bid = _first_text(attr)
-        if bid:
-            attributes["buildingID"] = bid
+    # Format: <uro:buildingIDAttribute><uro:BuildingIDAttribute><uro:buildingID>value</uro:buildingID>...
+    for bid_attr in building.findall(".//uro:buildingIDAttribute/uro:BuildingIDAttribute", NS):
+        bid_elem = bid_attr.find("./uro:buildingID", NS)
+        if bid_elem is not None:
+            bid = _first_text(bid_elem)
+            if bid:
+                attributes["buildingID"] = bid
+                break  # Use first found ID
 
     return attributes
 
@@ -269,12 +272,13 @@ def _build_id_index(root: ET.Element) -> dict[str, ET.Element]:
     return id_index
 
 
-def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element], debug: bool = False) -> Optional[ET.Element]:
     """Resolve an XLink reference (xlink:href) to the target element.
 
     Args:
         elem: Element that may contain an xlink:href attribute
         id_index: Index of gml:id -> element mappings
+        debug: Enable debug output for XLink resolution failures
 
     Returns:
         The target element if reference is resolved, None otherwise
@@ -291,15 +295,29 @@ def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optiona
         target_id = href
 
     # Look up in index
-    return id_index.get(target_id)
+    result = id_index.get(target_id)
+
+    if debug and result is None:
+        # XLink resolution failed - provide helpful debug info
+        print(f"      [XLink] Failed to resolve: {href}")
+        print(f"      [XLink] Looking for ID: '{target_id}'")
+        # Check for similar IDs
+        similar_ids = [id for id in id_index.keys() if target_id in id or id in target_id]
+        if similar_ids:
+            print(f"      [XLink] Similar IDs found: {similar_ids[:3]}")
+        else:
+            print(f"      [XLink] No similar IDs found in index")
+
+    return result
 
 
-def _extract_polygon_with_xlink(elem: ET.Element, id_index: dict[str, ET.Element]) -> Optional[ET.Element]:
+def _extract_polygon_with_xlink(elem: ET.Element, id_index: dict[str, ET.Element], debug: bool = False) -> Optional[ET.Element]:
     """Extract a gml:Polygon from an element, resolving XLink references if needed.
 
     Args:
         elem: Element that may contain a Polygon directly or via XLink
         id_index: Index for resolving XLink references
+        debug: Enable debug output for XLink resolution
 
     Returns:
         gml:Polygon element or None
@@ -310,9 +328,13 @@ def _extract_polygon_with_xlink(elem: ET.Element, id_index: dict[str, ET.Element
         return poly
 
     # Try to resolve XLink
-    target = _resolve_xlink(elem, id_index)
+    target = _resolve_xlink(elem, id_index, debug=debug)
     if target is not None:
-        # Try to find Polygon in target
+        # Check if target IS a Polygon element itself
+        if target.tag.endswith("Polygon"):
+            return target
+
+        # Otherwise, try to find Polygon in target's descendants
         poly = target.find(".//gml:Polygon", NS)
         if poly is not None:
             return poly
@@ -523,16 +545,42 @@ def _wire_from_coords_xy(coords: List[Tuple[float, float]]) -> "TopoDS_Shape":
     return poly.Wire()
 
 
-def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]]) -> "TopoDS_Shape":
-    poly = BRepBuilderAPI_MakePolygon()
-    if coords and coords[0] == coords[-1]:
-        pts = coords[:-1]
-    else:
-        pts = coords
-    for x, y, z in pts:
-        poly.Add(gp_Pnt(float(x), float(y), float(z)))
-    poly.Close()
-    return poly.Wire()
+def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Create a wire from 3D coordinates.
+
+    Args:
+        coords: List of (x, y, z) tuples
+        debug: Enable debug output
+
+    Returns:
+        TopoDS_Wire or None if creation fails
+    """
+    try:
+        poly = BRepBuilderAPI_MakePolygon()
+        if coords and coords[0] == coords[-1]:
+            pts = coords[:-1]
+        else:
+            pts = coords
+
+        if len(pts) < 2:
+            if debug:
+                print(f"Wire creation failed: insufficient points ({len(pts)} < 2)")
+            return None
+
+        for x, y, z in pts:
+            poly.Add(gp_Pnt(float(x), float(y), float(z)))
+        poly.Close()
+
+        if not poly.IsDone():
+            if debug:
+                print(f"Wire creation failed: BRepBuilderAPI_MakePolygon.IsDone() = False")
+            return None
+
+        return poly.Wire()
+    except Exception as e:
+        if debug:
+            print(f"Wire creation failed with exception: {e}")
+        return None
 
 
 def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
@@ -553,19 +601,55 @@ def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
     return prism
 
 
-def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List[Tuple[float, float, float]]]) -> Optional["TopoDS_Face"]:
-    """Create a planar face from 3D polygon rings.
+def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List[Tuple[float, float, float]]],
+                         debug: bool = False, planar_check: bool = False) -> Optional["TopoDS_Face"]:
+    """Create a face from 3D polygon rings.
 
-    Returns None if creation fails.
+    Args:
+        ext: Exterior ring coordinates
+        holes: List of interior ring coordinates
+        debug: Enable debug output
+        planar_check: Enforce strict planarity check (False = more permissive for LOD2 complex geometry)
+
+    Returns:
+        TopoDS_Face or None if creation fails
     """
     try:
-        outer = _wire_from_coords_xyz(ext)
-        face_maker = BRepBuilderAPI_MakeFace(outer, True)
-        for hole in holes:
+        # Create outer wire
+        outer = _wire_from_coords_xyz(ext, debug=debug)
+        if outer is None:
+            if debug:
+                print(f"Face creation failed: outer wire creation failed ({len(ext)} points)")
+            return None
+
+        # Create face with planar_check control
+        # planar_check=False allows non-planar faces (important for LOD2 complex geometry)
+        face_maker = BRepBuilderAPI_MakeFace(outer, planar_check)
+
+        if not face_maker.IsDone():
+            if debug:
+                print(f"Face creation failed: BRepBuilderAPI_MakeFace.IsDone() = False (planar_check={planar_check})")
+            return None
+
+        # Add holes if any
+        for i, hole in enumerate(holes):
             if len(hole) >= 3:
-                face_maker.Add(_wire_from_coords_xyz(hole))
-        return face_maker.Face()
-    except Exception:
+                hole_wire = _wire_from_coords_xyz(hole, debug=debug)
+                if hole_wire is not None:
+                    face_maker.Add(hole_wire)
+                elif debug:
+                    print(f"Skipping hole {i}: wire creation failed")
+
+        face = face_maker.Face()
+        if face is None or face.IsNull():
+            if debug:
+                print(f"Face creation failed: resulting face is null")
+            return None
+
+        return face
+    except Exception as e:
+        if debug:
+            print(f"Face creation failed with exception: {e}")
         return None
 
 
@@ -684,6 +768,129 @@ def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"], precision_mode
         return fallback.get(precision_mode, 0.01)
 
 
+def _extract_faces_from_surface_container(container: ET.Element, xyz_transform: Optional[Callable] = None,
+                                          id_index: Optional[dict[str, ET.Element]] = None,
+                                          debug: bool = False) -> List["TopoDS_Face"]:
+    """Extract faces from various GML surface container structures.
+
+    Supports:
+    - gml:MultiSurface (multiple independent surfaces)
+    - gml:CompositeSurface (connected surface patches)
+    - Direct gml:Polygon children
+
+    Args:
+        container: Element containing surface geometry (MultiSurface, CompositeSurface, etc.)
+        xyz_transform: Optional coordinate transformation function
+        id_index: Optional XLink resolution index
+        debug: Enable debug output
+
+    Returns:
+        List of TopoDS_Face objects extracted from the container
+    """
+    faces: List[TopoDS_Face] = []
+
+    if id_index is None:
+        id_index = {}
+
+    # Statistics tracking
+    stats = {
+        "surfaceMember_count": 0,
+        "polygon_found": 0,
+        "polygon_too_small": 0,
+        "transform_failed": 0,
+        "face_creation_success": 0,
+        "face_creation_failed": 0,
+    }
+
+    # Strategy 1: Look for surfaceMember elements (common in MultiSurface/CompositeSurface)
+    for surf_member in container.findall(".//gml:surfaceMember", NS):
+        stats["surfaceMember_count"] += 1
+
+        poly = _extract_polygon_with_xlink(surf_member, id_index, debug=debug) if id_index else surf_member.find(".//gml:Polygon", NS)
+
+        if poly is None:
+            poly = surf_member.find(".//gml:Polygon", NS)
+
+        if poly is None:
+            continue
+
+        stats["polygon_found"] += 1
+
+        ext, holes = _extract_polygon_xyz(poly)
+        if len(ext) < 3:
+            stats["polygon_too_small"] += 1
+            continue
+
+        # Apply coordinate transformation if provided
+        if xyz_transform:
+            try:
+                ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                holes = [
+                    [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                    for ring in holes
+                ]
+            except Exception as e:
+                stats["transform_failed"] += 1
+                if debug:
+                    print(f"Transform failed for polygon: {e}")
+                continue
+
+        fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
+        if fc is not None and not fc.IsNull():
+            faces.append(fc)
+            stats["face_creation_success"] += 1
+        else:
+            stats["face_creation_failed"] += 1
+
+    # Strategy 2: Look for direct Polygon children
+    for poly in container.findall(".//gml:Polygon", NS):
+        # Skip if already processed via surfaceMember
+        parent = poly.find("..")
+        if parent is not None and parent.tag.endswith("surfaceMember"):
+            continue
+
+        stats["polygon_found"] += 1
+
+        ext, holes = _extract_polygon_xyz(poly)
+        if len(ext) < 3:
+            stats["polygon_too_small"] += 1
+            continue
+
+        # Apply coordinate transformation if provided
+        if xyz_transform:
+            try:
+                ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                holes = [
+                    [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                    for ring in holes
+                ]
+            except Exception as e:
+                stats["transform_failed"] += 1
+                if debug:
+                    print(f"Transform failed for polygon: {e}")
+                continue
+
+        fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
+        if fc is not None and not fc.IsNull():
+            faces.append(fc)
+            stats["face_creation_success"] += 1
+        else:
+            stats["face_creation_failed"] += 1
+
+    # Print statistics in debug mode
+    if debug:
+        print(f"  Face extraction statistics:")
+        print(f"    - surfaceMembers found: {stats['surfaceMember_count']}")
+        print(f"    - Polygons found: {stats['polygon_found']}")
+        print(f"    - Polygons too small (<3 vertices): {stats['polygon_too_small']}")
+        print(f"    - Transform failures: {stats['transform_failed']}")
+        print(f"    - Face creation successes: {stats['face_creation_success']}")
+        print(f"    - Face creation failures: {stats['face_creation_failed']}")
+        print(f"    - Total faces returned: {len(faces)}")
+
+    return faces
+
+
 def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callable] = None,
                           id_index: Optional[dict[str, ET.Element]] = None,
                           debug: bool = False) -> Tuple[List["TopoDS_Face"], List[List["TopoDS_Face"]]]:
@@ -705,23 +912,74 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
     if id_index is None:
         id_index = {}
 
+    if debug:
+        print(f"  [Solid] Extracting shells from gml:Solid element")
+
+        # Dump XML structure to temp file for debugging
+        try:
+            import tempfile
+            import os
+            xml_str = ET.tostring(solid_elem, encoding="unicode")
+            dump_path = os.path.join(tempfile.gettempdir(), "plateau_solid_debug.xml")
+            with open(dump_path, "w", encoding="utf-8") as f:
+                f.write(xml_str)
+            print(f"  [Solid] XML structure dumped to: {dump_path}")
+        except Exception as e:
+            print(f"  [Solid] Failed to dump XML: {e}")
+
     # Extract exterior shell polygons
     exterior_elem = solid_elem.find("./gml:exterior", NS)
+    if debug:
+        if exterior_elem is not None:
+            print(f"  [Solid] Found gml:exterior element")
+        else:
+            print(f"  [Solid] WARNING: No gml:exterior element found!")
     if exterior_elem is not None:
         # Support multiple GML surface patterns - find all surfaceMember elements
-        for surf_member in exterior_elem.findall(".//gml:surfaceMember", NS):
+        surf_members = exterior_elem.findall(".//gml:surfaceMember", NS)
+        if debug:
+            print(f"  [Solid] Found {len(surf_members)} gml:surfaceMember elements in exterior")
+
+        for i, surf_member in enumerate(surf_members):
+            # Check for XLink reference
+            href = surf_member.get("{http://www.w3.org/1999/xlink}href")
+            if debug and href:
+                print(f"  [Solid]   surfaceMember[{i}]: XLink reference: {href}")
+
+                # For first surfaceMember, check if it exists in index
+                if i == 0 and href.startswith("#"):
+                    target_id = href[1:]
+                    exists = target_id in id_index
+                    print(f"  [Solid]   surfaceMember[{i}]: Target ID '{target_id}' in index: {exists}")
+                    if not exists:
+                        # Show some similar IDs
+                        similar = [k for k in id_index.keys() if k.startswith("poly-")][:5]
+                        print(f"  [Solid]   surfaceMember[{i}]: Sample polygon IDs in index: {similar}")
+
             # Try to extract polygon (with XLink resolution)
-            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+            # Force debug=True for first surfaceMember to see detailed XLink resolution
+            xlink_debug = debug and i == 0
+            poly = _extract_polygon_with_xlink(surf_member, id_index, debug=xlink_debug) if id_index else surf_member.find(".//gml:Polygon", NS)
 
             if poly is None:
                 # Fallback: search directly
                 poly = surf_member.find(".//gml:Polygon", NS)
 
             if poly is None:
+                if debug:
+                    print(f"  [Solid]   surfaceMember[{i}]: No Polygon found (XLink may have failed)")
                 continue
 
+            if debug:
+                print(f"  [Solid]   surfaceMember[{i}]: Polygon found")
+
             ext, holes = _extract_polygon_xyz(poly)
+            if debug:
+                print(f"  [Solid]   surfaceMember[{i}]: Extracted {len(ext)} vertices, {len(holes)} holes")
+
             if len(ext) < 3:
+                if debug:
+                    print(f"  [Solid]   surfaceMember[{i}]: Insufficient vertices ({len(ext)} < 3), skipping")
                 continue
 
             # Apply coordinate transformation if provided
@@ -734,12 +992,17 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"Exterior transform failed: {e}")
+                        print(f"  [Solid]   surfaceMember[{i}]: Transform failed: {e}")
                     continue
 
-            fc = _face_from_xyz_rings(ext, holes)
+            fc = _face_from_xyz_rings(ext, holes, debug=False, planar_check=False)
             if fc is not None and not fc.IsNull():
                 exterior_faces.append(fc)
+                if debug:
+                    print(f"  [Solid]   surfaceMember[{i}]: ✓ Face created successfully")
+            else:
+                if debug:
+                    print(f"  [Solid]   surfaceMember[{i}]: ✗ Face creation failed")
 
         # Also search for direct Polygon children (not in surfaceMember)
         for poly in exterior_elem.findall(".//gml:Polygon", NS):
@@ -765,7 +1028,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                         print(f"Exterior transform failed: {e}")
                     continue
 
-            fc = _face_from_xyz_rings(ext, holes)
+            fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
             if fc is not None and not fc.IsNull():
                 exterior_faces.append(fc)
 
@@ -775,7 +1038,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
 
         # Try surfaceMember pattern first
         for surf_member in interior_elem.findall(".//gml:surfaceMember", NS):
-            poly = _extract_polygon_with_xlink(surf_member, id_index) if id_index else surf_member.find(".//gml:Polygon", NS)
+            poly = _extract_polygon_with_xlink(surf_member, id_index, debug=debug) if id_index else surf_member.find(".//gml:Polygon", NS)
 
             if poly is None:
                 poly = surf_member.find(".//gml:Polygon", NS)
@@ -800,7 +1063,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                         print(f"Interior transform failed: {e}")
                     continue
 
-            fc = _face_from_xyz_rings(ext, holes)
+            fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
             if fc is not None and not fc.IsNull():
                 interior_faces.append(fc)
 
@@ -827,7 +1090,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                         print(f"Interior transform failed: {e}")
                     continue
 
-            fc = _face_from_xyz_rings(ext, holes)
+            fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
             if fc is not None and not fc.IsNull():
                 interior_faces.append(fc)
 
@@ -835,6 +1098,9 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
             interior_shells.append(interior_faces)
             if debug:
                 print(f"Found interior shell with {len(interior_faces)} faces (cavity)")
+
+    if debug:
+        print(f"  [Solid] Extraction complete: {len(exterior_faces)} exterior faces, {len(interior_shells)} interior shells")
 
     return exterior_faces, interior_shells
 
@@ -856,7 +1122,7 @@ def _normalize_face_orientation(faces: List["TopoDS_Face"], debug: bool = False)
         return faces
 
     try:
-        from OCC.Core.BRepTools import BRepTools
+        # Import only what we need - TopAbs_REVERSED
         from OCC.Core.TopAbs import TopAbs_REVERSED
 
         normalized = []
@@ -1052,6 +1318,9 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     Returns:
         TopoDS_Shell or None if construction fails
     """
+    # Import topods at function start to avoid scoping issues
+    from OCC.Core.TopoDS import topods
+
     if not faces:
         return None
 
@@ -1126,7 +1395,6 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                     face_exp = TopExp_Explorer(sewn_shape, TopAbs_FACE)
                     new_faces = []
                     while face_exp.More():
-                        from OCC.Core.TopoDS import topods
                         new_faces.append(topods.Face(face_exp.Current()))
                         face_exp.Next()
                     if new_faces:
@@ -1265,10 +1533,12 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
             print(f"Auto-computed tolerance: {tolerance:.6f} (precision_mode: {precision_mode})")
 
     # Build exterior shell
+    if debug:
+        print(f"Attempting to build exterior shell from {len(exterior_faces)} faces...")
     exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug, shape_fix_level)
     if exterior_shell is None:
         if debug:
-            print("Failed to build exterior shell")
+            print(f"ERROR: Failed to build exterior shell (sewing or shell extraction failed)")
         return None
 
     # Check if exterior shell is closed
@@ -1276,7 +1546,10 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
         is_closed = BRep_Tool.IsClosed(exterior_shell)
         if not is_closed:
             if debug:
-                print("Warning: Exterior shell is not closed")
+                print(f"WARNING: Exterior shell is not closed, returning shell instead of solid")
+        else:
+            if debug:
+                print(f"Exterior shell is closed, will attempt to create solid")
     except Exception as e:
         if debug:
             print(f"Failed to check if shell is closed: {e}")
@@ -1341,7 +1614,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                           shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Extract a single solid from a building or building part element.
 
-    This is a helper function that extracts LOD1 or LOD2 solid from a single element.
+    Enhanced LOD2 extraction with multiple strategies:
+    1. bldg:lod2Solid//gml:Solid (standard solid structure)
+    2. bldg:lod2MultiSurface (multiple independent surfaces)
+    3. bldg:lod2Geometry (generic geometry container)
+    4. bldg:boundedBy surfaces (WallSurface, RoofSurface, GroundSurface)
 
     Args:
         elem: Building or BuildingPart element
@@ -1354,50 +1631,177 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     Returns:
         TopoDS_Shape or None
     """
-    # Try LOD2 solid first
+    elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
+    exterior_faces: List[TopoDS_Face] = []
+
+    # =========================================================================
+    # LOD2 Extraction - Try multiple strategies
+    # =========================================================================
+
+    # Strategy 1: LOD2 Solid (standard gml:Solid structure)
     lod2_solid = elem.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
         solid_elem = lod2_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
-                print(f"Found LOD2 Solid in {elem_id}")
+                print(f"[LOD2] Found bldg:lod2Solid//gml:Solid in {elem_id}")
 
             # Extract exterior and interior shells
-            exterior_faces, interior_shells_faces = _extract_solid_shells(
+            exterior_faces_solid, interior_shells_faces = _extract_solid_shells(
                 solid_elem, xyz_transform, id_index, debug
             )
 
-            if exterior_faces:
+            if debug:
+                print(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+
+            if exterior_faces_solid:
                 # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
+                    if debug:
+                        print(f"[LOD2] Solid processing successful, returning shape")
                     return result
+                else:
+                    if debug:
+                        print(f"[LOD2] Solid shell building failed, trying other strategies...")
+            else:
+                if debug:
+                    print(f"[LOD2] Solid extracted 0 faces, trying other strategies...")
 
-    # Try LOD1 solid
+    # Strategy 2: LOD2 MultiSurface (multiple independent surfaces)
+    lod2_multi = elem.find(".//bldg:lod2MultiSurface", NS)
+    if lod2_multi is not None:
+        if debug:
+            print(f"[LOD2] Found bldg:lod2MultiSurface in {elem_id}")
+
+        # Look for MultiSurface or CompositeSurface
+        for surface_container in lod2_multi.findall(".//gml:MultiSurface", NS) + lod2_multi.findall(".//gml:CompositeSurface", NS):
+            faces_multi = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
+            exterior_faces.extend(faces_multi)
+
+        if debug:
+            print(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
+
+        if exterior_faces:
+            # Build solid from collected faces
+            result = _make_solid_with_cavities(
+                exterior_faces, [], tolerance=None, debug=debug,
+                precision_mode=precision_mode, shape_fix_level=shape_fix_level
+            )
+            if result is not None:
+                if debug:
+                    print(f"[LOD2] MultiSurface processing successful, returning shape")
+                return result
+            else:
+                if debug:
+                    print(f"[LOD2] MultiSurface shell building failed, trying other strategies...")
+                # Clear for next strategy
+                exterior_faces = []
+
+    # Strategy 3: LOD2 Geometry (generic geometry container)
+    lod2_geom = elem.find(".//bldg:lod2Geometry", NS)
+    if lod2_geom is not None:
+        if debug:
+            print(f"[LOD2] Found bldg:lod2Geometry in {elem_id}")
+
+        # Try to find any surface structures
+        for surface_container in (
+            lod2_geom.findall(".//gml:MultiSurface", NS) +
+            lod2_geom.findall(".//gml:CompositeSurface", NS) +
+            lod2_geom.findall(".//gml:Solid", NS)
+        ):
+            if surface_container.tag.endswith("Solid"):
+                # Process as Solid
+                faces_geom, interior_shells = _extract_solid_shells(surface_container, xyz_transform, id_index, debug)
+                exterior_faces.extend(faces_geom)
+            else:
+                # Process as MultiSurface/CompositeSurface
+                faces_geom = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
+                exterior_faces.extend(faces_geom)
+
+        if debug:
+            print(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
+
+        if exterior_faces:
+            result = _make_solid_with_cavities(
+                exterior_faces, [], tolerance=None, debug=debug,
+                precision_mode=precision_mode, shape_fix_level=shape_fix_level
+            )
+            if result is not None:
+                if debug:
+                    print(f"[LOD2] Geometry processing successful, returning shape")
+                return result
+            else:
+                if debug:
+                    print(f"[LOD2] Geometry shell building failed, trying other strategies...")
+                exterior_faces = []
+
+    # Strategy 4: LOD2 boundedBy surfaces (WallSurface, RoofSurface, GroundSurface)
+    bounded_surfaces = (
+        elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
+        elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
+        elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS)
+    )
+    if bounded_surfaces:
+        if debug:
+            print(f"[LOD2] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
+
+        for surf in bounded_surfaces:
+            # Check for lod2MultiSurface within each bounded surface
+            for lod2_tag in [".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
+                surf_geom = surf.find(lod2_tag, NS)
+                if surf_geom is not None:
+                    for surface_container in surf_geom.findall(".//gml:MultiSurface", NS) + surf_geom.findall(".//gml:CompositeSurface", NS):
+                        faces_bounded = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
+                        exterior_faces.extend(faces_bounded)
+
+        if debug:
+            print(f"[LOD2] boundedBy extraction: {len(exterior_faces)} faces")
+
+        if exterior_faces:
+            result = _make_solid_with_cavities(
+                exterior_faces, [], tolerance=None, debug=debug,
+                precision_mode=precision_mode, shape_fix_level=shape_fix_level
+            )
+            if result is not None:
+                if debug:
+                    print(f"[LOD2] boundedBy processing successful, returning shape")
+                return result
+            else:
+                if debug:
+                    print(f"[LOD2] boundedBy shell building failed")
+
+    if debug and not exterior_faces:
+        print(f"[LOD2] No LOD2 geometry found, falling back to LOD1 for {elem_id}")
+
+    # =========================================================================
+    # LOD1 Fallback
+    # =========================================================================
+
     lod1_solid = elem.find(".//bldg:lod1Solid", NS)
     if lod1_solid is not None:
         solid_elem = lod1_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
-                print(f"Found LOD1 Solid in {elem_id}")
+                print(f"[LOD1] Found bldg:lod1Solid//gml:Solid in {elem_id}")
 
             # Extract exterior and interior shells
-            exterior_faces, interior_shells_faces = _extract_solid_shells(
+            exterior_faces_lod1, interior_shells_lod1 = _extract_solid_shells(
                 solid_elem, xyz_transform, id_index, debug
             )
 
-            if exterior_faces:
+            if exterior_faces_lod1:
                 # Build solid with cavities (adaptive tolerance)
                 result = _make_solid_with_cavities(
-                    exterior_faces, interior_shells_faces, tolerance=None, debug=debug,
+                    exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
+                    if debug:
+                        print(f"[LOD1] Processing successful, returning shape")
                     return result
 
     return None
@@ -1535,6 +1939,9 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
         precision_mode: Precision level for tolerance computation
         shape_fix_level: Shape fixing aggressiveness
     """
+    # Import topods at function start to avoid scoping issues
+    from OCC.Core.TopoDS import topods
+
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for surface sewing")
 
@@ -1562,7 +1969,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
                         print(f"Transform failed: {e}")
                     continue
 
-            fc = _face_from_xyz_rings(ext, holes)
+            fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
             if fc is not None and not fc.IsNull():
                 faces.append(fc)
 
@@ -1813,8 +2220,8 @@ def export_step_from_citygml(
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
     auto_reproject: bool = True,
-    precision_mode: str = "ultra",
-    shape_fix_level: str = "ultra",
+    precision_mode: str = "standard",
+    shape_fix_level: str = "minimal",
     building_ids: Optional[List[str]] = None,
     filter_attribute: str = "gml:id",
 ) -> Tuple[bool, str]:
@@ -1835,15 +2242,15 @@ def export_step_from_citygml(
         source_crs: Source CRS (auto-detected if None)
         auto_reproject: Auto-select projection for geographic CRS
         precision_mode: Precision level for detail preservation
-            - "auto"/"standard": 0.01% of extent (balanced)
+            - "standard": 0.01% of extent (balanced, default - recommended for most use cases)
             - "high": 0.001% of extent (preserves fine details)
             - "maximum": 0.0001% of extent (maximum detail preservation)
-            - "ultra": 0.00001% of extent (LOD2/LOD3 optimized, default)
+            - "ultra": 0.00001% of extent (LOD2/LOD3 optimized - may fail with imperfect data)
         shape_fix_level: Shape fixing aggressiveness
-            - "minimal": Skip fixing to preserve maximum detail
+            - "minimal": Skip fixing to preserve maximum detail (default - fastest, preserves original geometry)
             - "standard": Balanced fixing
             - "aggressive": Prioritize robustness over detail
-            - "ultra": Maximum fixing for LOD2/LOD3 (default)
+            - "ultra": Maximum fixing for LOD2/LOD3 (slowest, may alter geometry)
         building_ids: List of building IDs to filter by (None = no filtering)
         filter_attribute: Attribute to match building_ids against
             - "gml:id": Match against gml:id attribute (default)
@@ -1880,6 +2287,16 @@ def export_step_from_citygml(
     id_index = _build_id_index(root)
     if debug and id_index:
         print(f"Built XLink index with {len(id_index)} gml:id entries")
+
+        # Check for polygon IDs in the index
+        poly_ids = [id for id in id_index.keys() if id.startswith("poly-")]
+        if poly_ids:
+            print(f"  Found {len(poly_ids)} polygon IDs in index (sample: {poly_ids[:5]})")
+        else:
+            print(f"  WARNING: No polygon IDs (starting with 'poly-') found in index!")
+            # Show sample of what's actually in the index
+            sample_ids = list(id_index.keys())[:10]
+            print(f"  Sample of actual IDs in index: {sample_ids}")
 
     # Detect source CRS and sample coordinates
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)

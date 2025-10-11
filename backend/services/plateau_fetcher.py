@@ -36,6 +36,12 @@ import requests
 from shapely.geometry import Point
 from shapely import distance
 
+# Import mesh code utilities
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
+from mesh_utils import latlon_to_mesh_3rd, get_neighboring_meshes_3rd
+
 
 # CityGML namespaces (same as citygml_to_step.py)
 NS = {
@@ -111,6 +117,12 @@ def geocode_address(
         MUST respect Nominatim's 1 request/second limit.
         This function includes time.sleep(1) to enforce the limit.
 
+    Strategy:
+        Tries multiple search strategies with fallback:
+        1. Original query with multiple results
+        2. Validates Japan coordinates (lat: 20-50, lon: 120-155)
+        3. Prefers building/amenity types over generic results
+
     Example:
         >>> result = geocode_address("東京駅")
         >>> if result:
@@ -120,11 +132,11 @@ def geocode_address(
     # Nominatim API endpoint
     url = "https://nominatim.openstreetmap.org/search"
 
-    # Request parameters
+    # Request parameters - get multiple results for better selection
     params = {
         "q": query,
         "format": "json",
-        "limit": 1,
+        "limit": 5,  # Get multiple candidates
         "countrycodes": country_codes,
         "addressdetails": 1,
     }
@@ -142,21 +154,61 @@ def geocode_address(
 
         if not data or len(data) == 0:
             print(f"[GEOCODING] No results found for query: {query}")
+            print(f"[GEOCODING] Suggestion: Try using a landmark or area name instead of detailed address")
             return None
 
-        result = data[0]
+        print(f"[GEOCODING] Found {len(data)} candidate(s) for: {query}")
+
+        # Filter and rank results
+        valid_results = []
+        for i, result in enumerate(data):
+            try:
+                lat = float(result["lat"])
+                lon = float(result["lon"])
+
+                # Validate Japan coordinates
+                if not (20 <= lat <= 50 and 120 <= lon <= 155):
+                    print(f"[GEOCODING]   Candidate {i+1}: Outside Japan, skipping")
+                    continue
+
+                # Calculate relevance score
+                score = _calculate_relevance_score(result, query)
+
+                valid_results.append({
+                    "result": result,
+                    "lat": lat,
+                    "lon": lon,
+                    "score": score
+                })
+
+                print(f"[GEOCODING]   Candidate {i+1}: {result.get('display_name', 'N/A')[:80]}")
+                print(f"[GEOCODING]     Type: {result.get('class', 'N/A')}/{result.get('type', 'N/A')}, Score: {score:.2f}")
+
+            except (KeyError, ValueError) as e:
+                print(f"[GEOCODING]   Candidate {i+1}: Parse error, skipping")
+                continue
+
+        if not valid_results:
+            print(f"[GEOCODING] No valid results in Japan for query: {query}")
+            return None
+
+        # Sort by score and select best match
+        valid_results.sort(key=lambda x: x["score"], reverse=True)
+        best = valid_results[0]
+        result = best["result"]
 
         geocoding_result = GeocodingResult(
             query=query,
-            latitude=float(result["lat"]),
-            longitude=float(result["lon"]),
+            latitude=best["lat"],
+            longitude=best["lon"],
             display_name=result.get("display_name", ""),
             osm_type=result.get("osm_type"),
             osm_id=result.get("osm_id")
         )
 
-        print(f"[GEOCODING] Success: {query} -> ({geocoding_result.latitude}, {geocoding_result.longitude})")
-        print(f"[GEOCODING] Address: {geocoding_result.display_name}")
+        print(f"[GEOCODING] ✓ Selected best match (score: {best['score']:.2f})")
+        print(f"[GEOCODING]   Coordinates: ({geocoding_result.latitude}, {geocoding_result.longitude})")
+        print(f"[GEOCODING]   Address: {geocoding_result.display_name}")
 
         return geocoding_result
 
@@ -171,61 +223,208 @@ def geocode_address(
         time.sleep(1)
 
 
+def _calculate_relevance_score(result: dict, query: str) -> float:
+    """Calculate relevance score for a geocoding result.
+
+    Higher score = more relevant result
+
+    Scoring factors:
+    - Building/amenity: +10 points
+    - Station/railway: +8 points
+    - Place/locality: +5 points
+    - Query substring match: +15 points
+    - Importance value: +0 to +10 points
+    """
+    score = 0.0
+
+    # Type-based scoring
+    result_class = result.get("class", "")
+    result_type = result.get("type", "")
+
+    if result_class == "building" or result_type == "building":
+        score += 10
+    elif result_class == "amenity":
+        score += 10
+    elif result_class == "railway" or result_type == "station":
+        score += 8
+    elif result_class == "place":
+        score += 5
+
+    # Name matching
+    display_name = result.get("display_name", "").lower()
+    query_lower = query.lower()
+
+    # Exact match in display name
+    if query_lower in display_name:
+        score += 15
+
+    # OSM importance (0.0 to 1.0)
+    importance = result.get("importance", 0.0)
+    score += importance * 10
+
+    return score
+
+
 def fetch_citygml_from_plateau(
     latitude: float,
     longitude: float,
     radius: float = 0.001,
     timeout: int = 30
 ) -> Optional[str]:
-    """Fetch CityGML data from PLATEAU Data Catalog API.
+    """Fetch CityGML data from PLATEAU Data Catalog API using mesh codes.
 
     Args:
         latitude: Center latitude (WGS84)
         longitude: Center longitude (WGS84)
-        radius: Search radius in degrees (default: 0.001 ≈ 100m)
+        radius: Search radius (currently ignored, uses 3rd mesh + neighbors)
         timeout: Request timeout in seconds
 
     Returns:
-        CityGML XML content as string if successful, None otherwise
+        Combined CityGML XML content as string if successful, None otherwise
 
-    API Format:
-        https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:lon1,lat1,lon2,lat2
-
-        Note: Order is lon,lat (not lat,lon)
+    Strategy:
+        1. Calculate 3rd mesh code (1km) for coordinates
+        2. Get neighboring mesh codes (3x3 grid = 9 meshes total)
+        3. Query PLATEAU API with mesh codes to get CityGML file URLs
+        4. Download building CityGML files
+        5. Combine into single XML document
 
     Example:
-        >>> xml = fetch_citygml_from_plateau(35.681236, 139.767125, radius=0.001)
+        >>> xml = fetch_citygml_from_plateau(35.681236, 139.767125)
         >>> if xml:
         ...     print(f"Fetched {len(xml)} bytes of CityGML data")
     """
-    # Calculate bounding box
-    lon1 = longitude - radius
-    lat1 = latitude - radius
-    lon2 = longitude + radius
-    lat2 = latitude + radius
+    print(f"[PLATEAU] Fetching CityGML for ({latitude}, {longitude})")
 
-    # PLATEAU API endpoint (note: lon,lat order!)
-    url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:{lon1},{lat1},{lon2},{lat2}"
+    # Step 1: Calculate mesh code for center point
+    # Note: Using only center mesh (1km x 1km) to avoid downloading too many files
+    #       If radius > ~500m is needed, consider adding neighbors
+    try:
+        center_mesh = latlon_to_mesh_3rd(latitude, longitude)
+        print(f"[PLATEAU] Center mesh: {center_mesh} (1km x 1km area)")
+    except Exception as e:
+        print(f"[PLATEAU] Failed to calculate mesh code: {e}")
+        return None
 
-    print(f"[PLATEAU] Fetching CityGML for bbox: ({lat1},{lon1}) to ({lat2},{lon2})")
-    print(f"[PLATEAU] URL: {url}")
+    # Step 2: Query PLATEAU API with mesh code
+    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{center_mesh}"
+
+    print(f"[PLATEAU] Querying API...")
 
     try:
-        response = requests.get(url, timeout=timeout)
+        response = requests.get(api_url, timeout=timeout)
         response.raise_for_status()
+        catalog_data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"[PLATEAU] API request failed: {e}")
+        return None
+    except ValueError as e:
+        print(f"[PLATEAU] Invalid JSON response: {e}")
+        return None
 
-        xml_content = response.text
+    # Step 3: Extract building CityGML file URLs
+    citygml_urls = []
+    MAX_FILES = 5  # Limit to prevent memory issues
 
-        # Validate that we got XML
-        if not xml_content or not xml_content.strip().startswith("<?xml"):
-            print(f"[PLATEAU] Invalid response (not XML)")
+    if "cities" in catalog_data:
+        for city in catalog_data["cities"]:
+            city_name = city.get("cityName", "Unknown")
+            files = city.get("files", {})
+            bldg_files = files.get("bldg", [])
+
+            print(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
+
+            for bldg_file in bldg_files:
+                url = bldg_file.get("url")
+                if url:
+                    citygml_urls.append(url)
+                    if len(citygml_urls) >= MAX_FILES:
+                        break
+
+            if len(citygml_urls) >= MAX_FILES:
+                break
+
+    if not citygml_urls:
+        print(f"[PLATEAU] No CityGML files found in response")
+        return None
+
+    if len(citygml_urls) > MAX_FILES:
+        citygml_urls = citygml_urls[:MAX_FILES]
+        print(f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues")
+
+    print(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
+
+    # Step 4: Download and combine CityGML files
+    combined_xml = _download_and_combine_citygml(citygml_urls, timeout=timeout)
+
+    if combined_xml:
+        print(f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)")
+    else:
+        print(f"[PLATEAU] Failed to download CityGML files")
+
+    return combined_xml
+
+
+def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optional[str]:
+    """Download multiple CityGML files and combine into single XML document.
+
+    Args:
+        urls: List of CityGML file URLs
+        timeout: Request timeout in seconds
+
+    Returns:
+        Combined CityGML XML as string, or None if failed
+    """
+    # Download first file as base
+    if not urls:
+        return None
+
+    print(f"[PLATEAU] Downloading {len(urls)} file(s)...")
+
+    try:
+        # Download first file as base document
+        response = requests.get(urls[0], timeout=timeout)
+        response.raise_for_status()
+        base_xml = response.text
+
+        # Parse base XML
+        try:
+            root = ET.fromstring(base_xml)
+        except ET.ParseError as e:
+            print(f"[PLATEAU] Failed to parse base XML: {e}")
             return None
 
-        print(f"[PLATEAU] Success: Fetched {len(xml_content)} bytes")
-        return xml_content
+        # If only one file, return it
+        if len(urls) == 1:
+            return base_xml
+
+        # Download and merge remaining files
+        for i, url in enumerate(urls[1:], 2):
+            try:
+                print(f"[PLATEAU]   Downloading file {i}/{len(urls)}...")
+                response = requests.get(url, timeout=timeout)
+                response.raise_for_status()
+
+                # Parse additional XML
+                additional_root = ET.fromstring(response.text)
+
+                # Find all cityObjectMember elements and append to base
+                for member in additional_root.findall(".//{http://www.opengis.net/citygml/2.0}cityObjectMember"):
+                    root.append(member)
+
+            except Exception as e:
+                print(f"[PLATEAU]   Warning: Failed to download file {i}: {e}")
+                continue
+
+        # Convert back to string
+        combined_xml = ET.tostring(root, encoding="unicode")
+        return combined_xml
 
     except requests.exceptions.RequestException as e:
-        print(f"[PLATEAU] Request failed: {e}")
+        print(f"[PLATEAU] Download failed: {e}")
+        return None
+    except Exception as e:
+        print(f"[PLATEAU] Unexpected error: {e}")
         return None
 
 

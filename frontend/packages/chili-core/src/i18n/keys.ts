@@ -86,6 +86,8 @@ const I18N_KEYS = [
     "citygml.defaultHeight",
     "citygml.buildingLimit",
     "citygml.autoReproject",
+    "citygml.buildingIds",
+    "citygml.filterAttribute",
     "command.measure.angle",
     "command.measure.length",
     "command.measure.select",

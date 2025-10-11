@@ -91,6 +91,8 @@ export default {
         "citygml.defaultHeight": "默认高度",
         "citygml.buildingLimit": "建筑物数量限制",
         "citygml.autoReproject": "自动重投影",
+        "citygml.buildingIds": "建筑物ID（逗号分隔）",
+        "citygml.filterAttribute": "过滤属性",
         "command.measure.angle": "角度",
         "command.measure.length": "长度",
         "command.measure.select": "选择",

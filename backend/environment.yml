@@ -190,6 +190,7 @@ dependencies:
   - zstd=1.5.7=h6491c7d_2
   - shapely=2.0.7  # Polygon intersection detection
   - geopy=2.4.1  # Geocoding (address → coordinates)
+  - requests=2.32.3  # HTTP library for API calls
   - pip:
       - annotated-types==0.7.0
       - anyio==4.9.0

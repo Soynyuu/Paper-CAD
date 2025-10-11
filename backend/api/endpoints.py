@@ -207,14 +207,14 @@ async def citygml_to_step(
         description="地理座標系を検出した場合、自動的に適切な投影座標系に変換",
     ),
     precision_mode: str = Form(
-        "ultra",
-        description="精度モード: auto（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化）",
-        example="ultra",
+        "standard",
+        description="精度モード: standard（標準、0.01%、推奨）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化）",
+        example="standard",
     ),
     shape_fix_level: str = Form(
-        "ultra",
-        description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）, ultra（最大修正、LOD2/LOD3最適化）",
-        example="ultra",
+        "minimal",
+        description="形状修正レベル: minimal（修正最小、ディティール優先、推奨）, standard（標準）, aggressive（修正強化、堅牢性優先）, ultra（最大修正、LOD2/LOD3最適化）",
+        example="minimal",
     ),
     building_ids: Optional[str] = Form(
         None,
@@ -250,15 +250,15 @@ async def citygml_to_step(
 
     **精度制御** (新機能):
     - precision_mode: 座標範囲に対するtoleranceの割合を制御
-      * auto: 0.01% (バランス重視)
+      * standard: 0.01% (バランス重視、推奨・デフォルト)
       * high: 0.001% (細かいディティール保持)
       * maximum: 0.0001% (最大限の精度、窓枠・階段・バルコニーなどの細部を保持)
-      * ultra: 0.00001% (超高精度、LOD2/LOD3最適化、デフォルト)
+      * ultra: 0.00001% (超高精度、LOD2/LOD3最適化、完璧なデータ用)
     - shape_fix_level: 形状修正の強度を制御
-      * minimal: 修正を最小限に抑え、細部を優先
+      * minimal: 修正を最小限に抑え、細部を優先 (推奨・デフォルト)
       * standard: 標準的な修正
       * aggressive: 修正を強化し、堅牢性を優先
-      * ultra: 最大修正、多段階処理、LOD2/LOD3最適化 (デフォルト)
+      * ultra: 最大修正、多段階処理、LOD2/LOD3最適化 (完璧なデータ用)
 
     **建物フィルタリング** (新機能):
     - building_ids: 処理する建物IDのリスト（カンマ区切り）
@@ -577,12 +577,12 @@ async def plateau_fetch_and_convert(
     query: str = Form(..., description="住所または施設名"),
     radius: float = Form(0.001, description="検索半径（度）"),
     auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択"),
-    building_limit: int = Form(1, description="変換する建物数"),
+    building_limit: Union[int, str, None] = Form(None, description="変換する建物数（未指定で無制限）"),
     debug: bool = Form(False, description="デバッグモード"),
     method: str = Form("solid", description="変換方式"),
     auto_reproject: bool = Form(True, description="自動再投影"),
-    precision_mode: str = Form("ultra", description="精度モード"),
-    shape_fix_level: str = Form("ultra", description="形状修正レベル"),
+    precision_mode: str = Form("standard", description="精度モード（推奨: standard）"),
+    shape_fix_level: str = Form("minimal", description="形状修正レベル（推奨: minimal）"),
 ):
     """
     住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
@@ -610,18 +610,37 @@ async def plateau_fetch_and_convert(
         STEPファイル（application/octet-stream）
     """
     try:
+        # Normalize building_limit parameter (handle empty string, "0", or None)
+        normalized_building_limit: Optional[int] = None
+        if building_limit is not None:
+            if isinstance(building_limit, str):
+                if building_limit.strip() == "" or building_limit == "0":
+                    normalized_building_limit = None
+                else:
+                    try:
+                        normalized_building_limit = int(building_limit)
+                        if normalized_building_limit <= 0:
+                            normalized_building_limit = None
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"building_limit must be a valid positive integer, got: {building_limit}"
+                        )
+            elif isinstance(building_limit, int):
+                normalized_building_limit = building_limit if building_limit > 0 else None
+
         print(f"\n{'='*60}")
         print(f"[API] /api/plateau/fetch-and-convert")
         print(f"[API] Query: {query}")
         print(f"[API] Radius: {radius} degrees")
-        print(f"[API] Building limit: {building_limit}")
+        print(f"[API] Building limit: {normalized_building_limit if normalized_building_limit else 'unlimited'}")
         print(f"{'='*60}\n")
 
         # Step 1: Search for buildings
         search_result = search_buildings_by_address(
             query=query,
             radius=radius,
-            limit=building_limit if auto_select_nearest else None
+            limit=normalized_building_limit if auto_select_nearest else None
         )
 
         if not search_result["success"]:
@@ -638,17 +657,17 @@ async def plateau_fetch_and_convert(
             )
 
         # Step 2: Extract building IDs (prefer building_id over gml_id)
-        selected_buildings = buildings[:building_limit] if building_limit > 0 else buildings
+        selected_buildings = buildings[:normalized_building_limit] if normalized_building_limit else buildings
         building_ids = []
         filter_attribute = "gml:id"  # Default
 
         for b in selected_buildings:
             if b.building_id:
-                # Prefer stable building ID
+                # Prefer stable PLATEAU building ID (from uro:buildingID)
                 building_ids.append(b.building_id)
-                filter_attribute = "建物ID"  # Use generic attribute
+                filter_attribute = "buildingID"  # Use generic attribute extracted from uro:buildingID
             else:
-                # Fallback to gml:id
+                # Fallback to gml:id (technical identifier, may change between versions)
                 building_ids.append(b.gml_id)
 
         print(f"[API] Selected {len(building_ids)} building(s):")
@@ -680,7 +699,8 @@ async def plateau_fetch_and_convert(
 
         # Step 5: Convert to STEP
         out_dir = tempfile.mkdtemp()
-        output_filename = f"{query.replace(' ', '_')}_plateau.step"
+        # Use ASCII-safe filename (HTTP headers don't support non-ASCII characters)
+        output_filename = "plateau_building.step"
         out_path = os.path.join(out_dir, output_filename)
 
         ok, msg = export_step_from_citygml(
@@ -729,8 +749,6 @@ async def plateau_fetch_and_convert(
             filename=output_filename,
             headers={
                 "X-Building-Count": str(len(building_ids)),
-                "X-Query": query,
-                "X-Geocoded-Address": geocoding.display_name,
                 "Cache-Control": "no-cache"
             }
         )

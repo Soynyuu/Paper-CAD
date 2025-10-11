@@ -1717,10 +1717,9 @@ def _make_xyz_transformer(source_crs: str, target_crs: str):
 def export_step_from_citygml(
     gml_path: str,
     out_step: str,
-    default_height: float = 10.0,
     limit: Optional[int] = None,
     debug: bool = False,
-    method: str = "auto",
+    method: str = "solid",
     sew_tolerance: Optional[float] = None,
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
@@ -1733,14 +1732,13 @@ def export_step_from_citygml(
     Args:
         gml_path: Path to CityGML file
         out_step: Output STEP file path
-        default_height: Default height for extrusion when not available
         limit: Limit number of buildings to process (None for all)
         debug: Enable debug output
         method: Conversion strategy
-            - "solid": Use LOD1/LOD2 Solid data directly (best for PLATEAU)
-            - "extrude": Footprint+height extrusion (LOD0 systems)
+            - "solid": Use LOD2/LOD3 Solid data directly (optimized for PLATEAU, recommended)
+            - "auto": Fallback solid→sew→extrude (compatibility mode)
             - "sew": Sew LOD2 surfaces into solids
-            - "auto": Fallback solid→sew→extrude (recommended)
+            - "extrude": Footprint+height extrusion (requires explicit specification)
         sew_tolerance: Sewing tolerance (auto-computed if None based on precision_mode)
         reproject_to: Target CRS (e.g., 'EPSG:6676')
         source_crs: Source CRS (auto-detected if None)
@@ -1859,8 +1857,11 @@ def export_step_from_citygml(
                     print(f"Sewing failed for building {i}: {e}")
                 continue
 
-    # Fallback to extrusion from footprints
+    # Fallback to extrusion from footprints (only when explicitly requested or in auto mode)
     if not shapes and method in ("extrude", "auto"):
+        # Note: default_height is only used for LOD0 extrusion fallback
+        # LOD2/3 buildings have explicit geometry and don't need this
+        default_height = 10.0
         fplist = parse_citygml_footprints(
             gml_path,
             default_height=default_height,
@@ -1905,23 +1906,26 @@ def export_step_from_citygml(
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Convert CityGML (PLATEAU) to STEP (sew surfaces or extrude footprints)")
+    parser = argparse.ArgumentParser(description="Convert CityGML (PLATEAU) to STEP (LOD2/LOD3 optimized)")
     parser.add_argument("input", help="Path to CityGML (*.gml) file")
     parser.add_argument("output", help="Path to output STEP (*.step) file")
-    parser.add_argument("--default-height", type=float, default=10.0, help="Fallback height (m) if not available in data")
+    parser.add_argument("--default-height", type=float, default=10.0, help="[DEPRECATED] No longer used for LOD2/3 processing")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of buildings for quick tests")
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
-    parser.add_argument("--method", choices=["auto", "sew", "extrude"], default="auto", help="Conversion strategy")
+    parser.add_argument("--method", choices=["solid", "auto", "sew", "extrude"], default="solid", help="Conversion strategy (default: solid for LOD2/3)")
     parser.add_argument("--sew-tolerance", type=float, default=1e-6, help="Sewing tolerance for LOD2 surfaces")
     parser.add_argument("--reproject-to", type=str, default=None, help="Target CRS like 'EPSG:6676' (meters)")
     parser.add_argument("--source-crs", type=str, default=None, help="Override detected source CRS (e.g., 'EPSG:6697')")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    # Warn if deprecated parameter is used
+    if args.default_height != 10.0:
+        print("Warning: --default-height is deprecated and no longer used for LOD2/3 processing", file=sys.stderr)
+
     ok, msg = export_step_from_citygml(
         args.input,
         args.output,
-        default_height=args.default_height,
         limit=args.limit,
         debug=args.debug,
         method=args.method,

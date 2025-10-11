@@ -170,7 +170,6 @@ async def citygml_to_step(
         description="サーバーローカルのCityGMLの絶対パス",
         example="/abs/path/to/53394642_bldg_6697_op.gml",
     ),
-    default_height: float = Form(10.0, description="押し出し時のデフォルト高さ（m）"),
     limit: Union[int, str, None] = Form(
         None,
         description="処理する建物数の上限（未指定で無制限、正数で制限）",
@@ -178,8 +177,8 @@ async def citygml_to_step(
     ),
     debug: bool = Form(False, description="デバッグログ出力を有効化"),
     method: str = Form(
-        "auto",
-        description="変換方式：auto（Solid→縫合→押し出し、推奨）, solid（LOD1/2直接）, sew（縫合）, extrude（押し出し）",
+        "solid",
+        description="変換方式：solid（LOD2/3 Solid直接、推奨）, auto（Solid→縫合→押し出しフォールバック）, sew（縫合）, extrude（押し出し）",
     ),
     reproject_to: Optional[str] = Form(
         None,
@@ -222,10 +221,10 @@ async def citygml_to_step(
     - アップロードファイルまたはローカルパス (gml_path) のどちらかを指定
 
     **変換方式** (method):
-    - auto（推奨）: LOD1/2 Solid → LOD2表面縫合 → フットプリント押し出し の順で自動フォールバック
-    - solid: LOD1/2 Solid データを直接使用（PLATEAUに最適）
+    - solid（推奨）: LOD2/3 Solid データを直接使用（PLATEAU LOD2/LOD3建物に最適化）
+    - auto: LOD2/3 Solid → LOD2表面縫合 → フットプリント押し出し の順で自動フォールバック
     - sew: LOD2の各サーフェスを縫合してソリッド化
-    - extrude: フットプリント＋高さ推定から押し出し（LOD0向け）
+    - extrude: フットプリント＋高さ推定から押し出し（LOD0互換用、明示的指定が必要）
 
     **精度制御** (新機能):
     - precision_mode: 座標範囲に対するtoleranceの割合を制御
@@ -327,7 +326,6 @@ async def citygml_to_step(
         ok, msg = export_step_from_citygml(
             in_path,
             out_path,
-            default_height=default_height,
             limit=normalized_limit,
             debug=debug,
             method=method,

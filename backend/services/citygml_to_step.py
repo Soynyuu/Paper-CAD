@@ -1906,23 +1906,26 @@ def export_step_from_citygml(
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Convert CityGML (PLATEAU) to STEP (sew surfaces or extrude footprints)")
+    parser = argparse.ArgumentParser(description="Convert CityGML (PLATEAU) to STEP (LOD2/LOD3 optimized)")
     parser.add_argument("input", help="Path to CityGML (*.gml) file")
     parser.add_argument("output", help="Path to output STEP (*.step) file")
-    parser.add_argument("--default-height", type=float, default=10.0, help="Fallback height (m) if not available in data")
+    parser.add_argument("--default-height", type=float, default=10.0, help="[DEPRECATED] No longer used for LOD2/3 processing")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of buildings for quick tests")
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
-    parser.add_argument("--method", choices=["auto", "sew", "extrude"], default="auto", help="Conversion strategy")
+    parser.add_argument("--method", choices=["solid", "auto", "sew", "extrude"], default="solid", help="Conversion strategy (default: solid for LOD2/3)")
     parser.add_argument("--sew-tolerance", type=float, default=1e-6, help="Sewing tolerance for LOD2 surfaces")
     parser.add_argument("--reproject-to", type=str, default=None, help="Target CRS like 'EPSG:6676' (meters)")
     parser.add_argument("--source-crs", type=str, default=None, help="Override detected source CRS (e.g., 'EPSG:6697')")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    # Warn if deprecated parameter is used
+    if args.default_height != 10.0:
+        print("Warning: --default-height is deprecated and no longer used for LOD2/3 processing", file=sys.stderr)
+
     ok, msg = export_step_from_citygml(
         args.input,
         args.output,
-        default_height=args.default_height,
         limit=args.limit,
         debug=args.debug,
         method=args.method,

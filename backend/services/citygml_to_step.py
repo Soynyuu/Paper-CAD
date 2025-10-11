@@ -488,17 +488,19 @@ def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]], pre
 
     Args:
         coords: List of (x, y, z) coordinate tuples
-        precision_mode: Precision level ("auto", "high", or "maximum")
+        precision_mode: Precision level ("auto", "high", "maximum", or "ultra")
             - "auto"/"standard": 0.01% of extent (default, good balance)
             - "high": 0.001% of extent (preserves fine details)
             - "maximum": 0.0001% of extent (maximum detail preservation)
+            - "ultra": 0.00001% of extent (ultra-precision for LOD2/LOD3)
 
     Returns:
-        Computed tolerance value (minimum 1e-7, maximum 10.0)
+        Computed tolerance value (minimum 1e-9 for ultra, maximum 10.0)
     """
     if not coords:
         # Fallback values based on precision mode
         fallback = {
+            "ultra": 0.00001,
             "maximum": 0.0001,
             "high": 0.001,
         }
@@ -519,15 +521,28 @@ def _compute_tolerance_from_coords(coords: List[Tuple[float, float, float]], pre
     # Tolerance percentage based on precision mode
     # Higher precision = smaller percentage = more detail preserved
     percentage = {
-        "maximum": 0.000001,  # 0.0001%
-        "high": 0.00001,      # 0.001%
+        "ultra": 0.0000001,    # 0.00001% - for LOD2/LOD3 with fine details
+        "maximum": 0.000001,   # 0.0001% - maximum standard precision
+        "high": 0.00001,       # 0.001% - high precision
     }.get(precision_mode, 0.0001)  # default: 0.01%
 
     tolerance = extent * percentage
 
     # Clamp to reasonable range (tighter bounds for higher precision)
-    min_tol = 1e-7 if precision_mode == "maximum" else 1e-6
-    tolerance = max(min_tol, min(tolerance, 10.0))
+    if precision_mode == "ultra":
+        min_tol = 1e-9
+        max_tol = 1.0
+    elif precision_mode == "maximum":
+        min_tol = 1e-8
+        max_tol = 5.0
+    elif precision_mode == "high":
+        min_tol = 1e-7
+        max_tol = 10.0
+    else:
+        min_tol = 1e-6
+        max_tol = 10.0
+
+    tolerance = max(min_tol, min(tolerance, max_tol))
 
     return tolerance
 
@@ -573,6 +588,7 @@ def _compute_tolerance_from_face_list(faces: List["TopoDS_Face"], precision_mode
     else:
         # Fallback values based on precision mode
         fallback = {
+            "ultra": 0.00001,
             "maximum": 0.0001,
             "high": 0.001,
         }
@@ -734,9 +750,205 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
     return exterior_faces, interior_shells
 
 
+def _normalize_face_orientation(faces: List["TopoDS_Face"], debug: bool = False) -> List["TopoDS_Face"]:
+    """Normalize face orientations to ensure consistent normals.
+
+    This helps prevent issues with shell construction by ensuring all faces
+    have compatible orientations.
+
+    Args:
+        faces: List of TopoDS_Face objects
+        debug: Enable debug output
+
+    Returns:
+        List of faces with normalized orientations
+    """
+    if not faces:
+        return faces
+
+    try:
+        from OCC.Core.BRepTools import BRepTools
+        from OCC.Core.TopAbs import TopAbs_REVERSED
+
+        normalized = []
+        for i, face in enumerate(faces):
+            # Check face orientation
+            orientation = face.Orientation()
+
+            # If face is reversed, try to correct it
+            if orientation == TopAbs_REVERSED:
+                try:
+                    # Reverse the face
+                    face_copy = face.Reversed()
+                    normalized.append(face_copy)
+                    if debug:
+                        print(f"Reversed face {i} orientation")
+                except Exception as e:
+                    if debug:
+                        print(f"Failed to reverse face {i}: {e}")
+                    normalized.append(face)
+            else:
+                normalized.append(face)
+
+        return normalized
+    except Exception as e:
+        if debug:
+            print(f"Face orientation normalization failed: {e}")
+        return faces
+
+
+def _remove_duplicate_vertices(faces: List["TopoDS_Face"], tolerance: float, debug: bool = False) -> List["TopoDS_Face"]:
+    """Remove duplicate vertices from faces within tolerance.
+
+    This helps reduce complexity and improve sewing quality for LOD2/LOD3 data.
+
+    Args:
+        faces: List of TopoDS_Face objects
+        tolerance: Vertex merge tolerance
+        debug: Enable debug output
+
+    Returns:
+        List of faces with deduplicated vertices
+    """
+    if not faces:
+        return faces
+
+    try:
+        from OCC.Core.ShapeFix import ShapeFix_Face
+        from OCC.Core.ShapeBuild import ShapeBuild_ReShape
+
+        cleaned = []
+        for i, face in enumerate(faces):
+            try:
+                # Use ShapeFix_Face to clean up the face
+                fixer = ShapeFix_Face(face)
+                fixer.SetPrecision(tolerance)
+                fixer.SetMaxTolerance(tolerance * 100)
+
+                # Perform fixing
+                fixer.Perform()
+
+                fixed_face = fixer.Face()
+                if fixed_face is not None and not fixed_face.IsNull():
+                    cleaned.append(fixed_face)
+                    if debug and fixed_face != face:
+                        print(f"Cleaned face {i}")
+                else:
+                    cleaned.append(face)
+            except Exception as e:
+                if debug:
+                    print(f"Failed to clean face {i}: {e}")
+                cleaned.append(face)
+
+        return cleaned
+    except Exception as e:
+        if debug:
+            print(f"Vertex deduplication failed: {e}")
+        return faces
+
+
+def _validate_and_fix_face(face: "TopoDS_Face", tolerance: float, debug: bool = False) -> Optional["TopoDS_Face"]:
+    """Validate and fix a single face with multiple strategies.
+
+    Args:
+        face: TopoDS_Face to validate and fix
+        tolerance: Precision tolerance
+        debug: Enable debug output
+
+    Returns:
+        Fixed face or None if unfixable
+    """
+    try:
+        from OCC.Core.BRepCheck import BRepCheck_Analyzer
+        from OCC.Core.ShapeFix import ShapeFix_Face, ShapeFix_Wire
+
+        # First validation
+        analyzer = BRepCheck_Analyzer(face)
+        if analyzer.IsValid():
+            return face
+
+        if debug:
+            print("Face invalid, attempting multi-stage fix...")
+
+        # Stage 1: Basic face fixing
+        fixer = ShapeFix_Face(face)
+        fixer.SetPrecision(tolerance)
+        fixer.SetMaxTolerance(tolerance * 1000)
+        fixer.Perform()
+        fixed = fixer.Face()
+
+        # Validate stage 1
+        if fixed is not None and not fixed.IsNull():
+            analyzer = BRepCheck_Analyzer(fixed)
+            if analyzer.IsValid():
+                if debug:
+                    print("Face fixed in stage 1")
+                return fixed
+
+        # Stage 2: Aggressive wire fixing
+        if fixed is not None and not fixed.IsNull():
+            try:
+                from OCC.Core.TopExp import TopExp_Explorer
+                from OCC.Core.TopAbs import TopAbs_WIRE
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+
+                # Extract and fix wires
+                wire_exp = TopExp_Explorer(fixed, TopAbs_WIRE)
+                fixed_wires = []
+
+                while wire_exp.More():
+                    wire = wire_exp.Current()
+                    wire_fixer = ShapeFix_Wire()
+                    wire_fixer.Load(wire)
+                    wire_fixer.SetPrecision(tolerance)
+                    wire_fixer.SetMaxTolerance(tolerance * 1000)
+                    wire_fixer.Perform()
+
+                    fixed_wire = wire_fixer.Wire()
+                    if fixed_wire is not None and not fixed_wire.IsNull():
+                        fixed_wires.append(fixed_wire)
+
+                    wire_exp.Next()
+
+                # Rebuild face from fixed wires
+                if fixed_wires:
+                    face_maker = BRepBuilderAPI_MakeFace(fixed_wires[0], True)
+                    for wire in fixed_wires[1:]:
+                        face_maker.Add(wire)
+
+                    rebuilt = face_maker.Face()
+                    if rebuilt is not None and not rebuilt.IsNull():
+                        analyzer = BRepCheck_Analyzer(rebuilt)
+                        if analyzer.IsValid():
+                            if debug:
+                                print("Face fixed in stage 2 (wire rebuild)")
+                            return rebuilt
+            except Exception as e:
+                if debug:
+                    print(f"Stage 2 wire fixing failed: {e}")
+
+        # If all stages fail, return best attempt or None
+        if fixed is not None and not fixed.IsNull():
+            return fixed
+
+        return None
+
+    except Exception as e:
+        if debug:
+            print(f"Face validation/fixing failed: {e}")
+        return None
+
+
 def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                             debug: bool = False, shape_fix_level: str = "standard") -> Optional["TopoDS_Shell"]:
     """Build a shell from a list of faces using sewing and fixing.
+
+    Enhanced with multi-stage processing for LOD2/LOD3 precision:
+    1. Validate and fix each face individually
+    2. Normalize face orientations
+    3. Remove duplicate vertices
+    4. Multi-pass sewing with progressively tighter tolerances
+    5. Aggressive shell fixing
 
     Args:
         faces: List of TopoDS_Face objects
@@ -746,6 +958,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             - "minimal": Skip shape fixing to preserve maximum detail
             - "standard": Standard shape fixing (default)
             - "aggressive": More aggressive shape fixing for robustness
+            - "ultra": Maximum fixing for LOD2/LOD3 (multi-stage with validation)
 
     Returns:
         TopoDS_Shell or None if construction fails
@@ -753,27 +966,112 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     if not faces:
         return None
 
-    # Sew faces together
-    sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
-    for fc in faces:
-        sewing.Add(fc)
-    sewing.Perform()
-    sewn_shape = sewing.SewedShape()
+    if debug:
+        print(f"Building shell from {len(faces)} faces with tolerance {tolerance:.9f}")
 
-    # Apply shape fixing based on level
+    # Stage 1: Validate and fix each face individually
+    if shape_fix_level in ("aggressive", "ultra"):
+        if debug:
+            print("Stage 1: Validating and fixing individual faces...")
+
+        validated_faces = []
+        for i, face in enumerate(faces):
+            fixed_face = _validate_and_fix_face(face, tolerance, debug)
+            if fixed_face is not None:
+                validated_faces.append(fixed_face)
+            elif debug:
+                print(f"Warning: Face {i} could not be fixed, skipping")
+
+        if not validated_faces:
+            if debug:
+                print("Error: No valid faces after validation")
+            return None
+
+        faces = validated_faces
+        if debug:
+            print(f"Stage 1 complete: {len(faces)} valid faces")
+
+    # Stage 2: Normalize face orientations
+    if shape_fix_level in ("standard", "aggressive", "ultra"):
+        if debug:
+            print("Stage 2: Normalizing face orientations...")
+        faces = _normalize_face_orientation(faces, debug)
+
+    # Stage 3: Remove duplicate vertices
+    if shape_fix_level in ("aggressive", "ultra"):
+        if debug:
+            print("Stage 3: Removing duplicate vertices...")
+        faces = _remove_duplicate_vertices(faces, tolerance, debug)
+
+    # Stage 4: Multi-pass sewing for ultra mode
+    if shape_fix_level == "ultra":
+        if debug:
+            print("Stage 4: Multi-pass sewing with progressively tighter tolerances...")
+
+        # Try multiple sewing passes with different tolerances
+        tolerances_to_try = [
+            tolerance * 10.0,  # First pass: looser for connectivity
+            tolerance * 5.0,   # Second pass: tighter
+            tolerance,         # Final pass: target tolerance
+        ]
+
+        sewn_shape = None
+        for i, tol in enumerate(tolerances_to_try):
+            if debug:
+                print(f"  Sewing pass {i+1} with tolerance {tol:.9f}")
+
+            sewing = BRepBuilderAPI_Sewing(tol, True, True, True, False)
+            for fc in faces:
+                sewing.Add(fc)
+            sewing.Perform()
+            sewn_shape = sewing.SewedShape()
+
+            # Check if sewing improved
+            if sewn_shape is not None and not sewn_shape.IsNull():
+                if debug:
+                    print(f"  Pass {i+1} successful")
+                # Use this result as input for next pass
+                # Extract faces from sewn shape for next iteration
+                if i < len(tolerances_to_try) - 1:
+                    from OCC.Core.TopAbs import TopAbs_FACE
+                    face_exp = TopExp_Explorer(sewn_shape, TopAbs_FACE)
+                    new_faces = []
+                    while face_exp.More():
+                        from OCC.Core.TopoDS import topods
+                        new_faces.append(topods.Face(face_exp.Current()))
+                        face_exp.Next()
+                    if new_faces:
+                        faces = new_faces
+    else:
+        # Standard single-pass sewing
+        if debug:
+            print("Stage 4: Single-pass sewing...")
+
+        sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+        for fc in faces:
+            sewing.Add(fc)
+        sewing.Perform()
+        sewn_shape = sewing.SewedShape()
+
+    # Stage 5: Apply shape fixing based on level
     if shape_fix_level != "minimal":
         try:
+            if debug:
+                print(f"Stage 5: Applying shape fixing (level: {shape_fix_level})...")
+
             fixer = ShapeFix_Shape(sewn_shape)
 
             # Configure fixer based on level
             if shape_fix_level == "standard":
-                # Standard fixing - balance between robustness and detail preservation
                 fixer.SetPrecision(tolerance)
                 fixer.SetMaxTolerance(tolerance * 10.0)
             elif shape_fix_level == "aggressive":
-                # Aggressive fixing - prioritize robustness over detail
                 fixer.SetPrecision(tolerance * 10.0)
                 fixer.SetMaxTolerance(tolerance * 100.0)
+            elif shape_fix_level == "ultra":
+                # Ultra mode: very tight precision with large tolerance range
+                fixer.SetPrecision(tolerance)
+                fixer.SetMaxTolerance(tolerance * 1000.0)
 
             fixer.Perform()
             sewn_shape = fixer.Shape()
@@ -784,7 +1082,10 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             if debug:
                 print(f"ShapeFix_Shape failed: {e}")
 
-    # Extract shell from sewn shape
+    # Stage 6: Extract and validate shell
+    if debug:
+        print("Stage 6: Extracting and validating shell...")
+
     exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
     if exp.More():
         shell = topods.Shell(exp.Current())
@@ -796,20 +1097,53 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             if not analyzer.IsValid():
                 if debug:
                     print("Warning: Shell is not valid, attempting to fix...")
-                # Try to fix shell
-                try:
-                    from OCC.Core.ShapeFix import ShapeFix_Shell
-                    shell_fixer = ShapeFix_Shell(shell)
-                    shell_fixer.Perform()
-                    shell = shell_fixer.Shell()
-                except Exception as e:
-                    if debug:
-                        print(f"ShapeFix_Shell failed: {e}")
+
+                # Try multiple fixing strategies
+                if shape_fix_level == "ultra":
+                    # Ultra mode: try aggressive shell fixing
+                    try:
+                        from OCC.Core.ShapeFix import ShapeFix_Shell
+
+                        shell_fixer = ShapeFix_Shell(shell)
+                        shell_fixer.SetPrecision(tolerance)
+                        shell_fixer.SetMaxTolerance(tolerance * 1000.0)
+                        shell_fixer.Perform()
+                        fixed_shell = shell_fixer.Shell()
+
+                        # Validate fixed shell
+                        if fixed_shell is not None and not fixed_shell.IsNull():
+                            analyzer = BRepCheck_Analyzer(fixed_shell)
+                            if analyzer.IsValid():
+                                if debug:
+                                    print("Shell fixed successfully")
+                                shell = fixed_shell
+                            else:
+                                if debug:
+                                    print("Shell still invalid after fixing, using best attempt")
+                    except Exception as e:
+                        if debug:
+                            print(f"ShapeFix_Shell failed: {e}")
+                else:
+                    # Standard shell fixing
+                    try:
+                        from OCC.Core.ShapeFix import ShapeFix_Shell
+                        shell_fixer = ShapeFix_Shell(shell)
+                        shell_fixer.Perform()
+                        shell = shell_fixer.Shell()
+                    except Exception as e:
+                        if debug:
+                            print(f"ShapeFix_Shell failed: {e}")
         except Exception as e:
             if debug:
                 print(f"Shell validation failed: {e}")
 
+        if debug:
+            print("Shell construction complete")
+
         return shell
+
+    if debug:
+        print("Error: No shell found in sewn shape")
 
     return None
 
@@ -1391,8 +1725,8 @@ def export_step_from_citygml(
     reproject_to: Optional[str] = None,
     source_crs: Optional[str] = None,
     auto_reproject: bool = True,
-    precision_mode: str = "auto",
-    shape_fix_level: str = "standard",
+    precision_mode: str = "ultra",
+    shape_fix_level: str = "ultra",
 ) -> Tuple[bool, str]:
     """High-level pipeline: CityGML → STEP with precision control.
 
@@ -1412,13 +1746,15 @@ def export_step_from_citygml(
         source_crs: Source CRS (auto-detected if None)
         auto_reproject: Auto-select projection for geographic CRS
         precision_mode: Precision level for detail preservation
-            - "auto"/"standard": 0.01% of extent (balanced, default)
-            - "high": 0.001% of extent (preserves fine details like windows)
+            - "auto"/"standard": 0.01% of extent (balanced)
+            - "high": 0.001% of extent (preserves fine details)
             - "maximum": 0.0001% of extent (maximum detail preservation)
+            - "ultra": 0.00001% of extent (LOD2/LOD3 optimized, default)
         shape_fix_level: Shape fixing aggressiveness
             - "minimal": Skip fixing to preserve maximum detail
-            - "standard": Balanced fixing (default)
+            - "standard": Balanced fixing
             - "aggressive": Prioritize robustness over detail
+            - "ultra": Maximum fixing for LOD2/LOD3 (default)
 
     Returns:
         Tuple of (success, message or output_path)

@@ -163,6 +163,7 @@ export default {
         "error.input.unsupportedInputs": "超过最大输入数",
         "error.import.unsupportedFileType:{0}": "不支持的文件类型: {0}",
         "error.import.notCityGML": "不是有效的CityGML文件",
+        "error.import.invalidFileExtension": "仅支持CityGML文件（.gml、.xml）",
         "error.citygml.conversionFailed:{0}": "CityGML转换失败: {0}",
         "error.citygml.importFailed:{0}": "CityGML导入失败: {0}",
         "error.export.noNodeCanBeExported": "没有可导出的节点",

@@ -91,6 +91,8 @@ export default {
         "citygml.defaultHeight": "Default Height",
         "citygml.buildingLimit": "Building Limit",
         "citygml.autoReproject": "Auto Reproject",
+        "citygml.buildingIds": "Building IDs (comma-separated)",
+        "citygml.filterAttribute": "Filter Attribute",
         "command.measure.angle": "Angle",
         "command.measure.length": "Length",
         "command.measure.select": "Select",

@@ -91,6 +91,8 @@ export default {
         "citygml.defaultHeight": "デフォルト高さ",
         "citygml.buildingLimit": "建物数上限",
         "citygml.autoReproject": "自動再投影",
+        "citygml.buildingIds": "建物ID (カンマ区切り)",
+        "citygml.filterAttribute": "フィルタ属性",
         "command.measure.angle": "角度",
         "command.measure.length": "長さ",
         "command.measure.select": "選択",

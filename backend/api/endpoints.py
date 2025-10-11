@@ -196,14 +196,14 @@ async def citygml_to_step(
         description="地理座標系を検出した場合、自動的に適切な投影座標系に変換",
     ),
     precision_mode: str = Form(
-        "auto",
-        description="精度モード: auto（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）",
-        example="auto",
+        "ultra",
+        description="精度モード: auto（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化）",
+        example="ultra",
     ),
     shape_fix_level: str = Form(
-        "standard",
-        description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）",
-        example="standard",
+        "ultra",
+        description="形状修正レベル: minimal（修正最小、ディティール優先）, standard（標準）, aggressive（修正強化、堅牢性優先）, ultra（最大修正、LOD2/LOD3最適化）",
+        example="ultra",
     ),
 ):
     """
@@ -229,13 +229,15 @@ async def citygml_to_step(
 
     **精度制御** (新機能):
     - precision_mode: 座標範囲に対するtoleranceの割合を制御
-      * auto: 0.01% (デフォルト、バランス重視)
+      * auto: 0.01% (バランス重視)
       * high: 0.001% (細かいディティール保持)
       * maximum: 0.0001% (最大限の精度、窓枠・階段・バルコニーなどの細部を保持)
+      * ultra: 0.00001% (超高精度、LOD2/LOD3最適化、デフォルト)
     - shape_fix_level: 形状修正の強度を制御
       * minimal: 修正を最小限に抑え、細部を優先
-      * standard: 標準的な修正 (デフォルト)
+      * standard: 標準的な修正
       * aggressive: 修正を強化し、堅牢性を優先
+      * ultra: 最大修正、多段階処理、LOD2/LOD3最適化 (デフォルト)
     """
     try:
         # Normalize limit parameter (handle empty string from form)
@@ -262,7 +264,7 @@ async def citygml_to_step(
         normalized_shape_fix_level = shape_fix_level if shape_fix_level and shape_fix_level.strip() else "standard"
 
         # Validate precision_mode
-        valid_precision_modes = ["auto", "high", "maximum"]
+        valid_precision_modes = ["auto", "high", "maximum", "ultra"]
         if normalized_precision_mode not in valid_precision_modes:
             raise HTTPException(
                 status_code=400,
@@ -270,7 +272,7 @@ async def citygml_to_step(
             )
 
         # Validate shape_fix_level
-        valid_shape_fix_levels = ["minimal", "standard", "aggressive"]
+        valid_shape_fix_levels = ["minimal", "standard", "aggressive", "ultra"]
         if normalized_shape_fix_level not in valid_shape_fix_levels:
             raise HTTPException(
                 status_code=400,

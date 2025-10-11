@@ -336,14 +336,17 @@ class StepUnfoldGenerator:
                     page_format=self.page_format,
                     page_orientation=self.page_orientation
                 )
-                paged_groups = self.layout_manager.layout_for_pages(unfolded_groups)
-                
+                paged_groups, layout_warnings = self.layout_manager.layout_for_pages(unfolded_groups)
+
                 # 5. 単一SVGファイルに全ページを出力
                 svg_path = self.export_to_svg_paged_single_file(paged_groups, output_path)
-                
+
                 # 統計情報にページ数を追加
                 self.stats["page_count"] = len(paged_groups)
                 self.stats["svg_files"] = [svg_path]  # 単一ファイル
+                # 警告情報を追加
+                if layout_warnings:
+                    self.stats["warnings"] = layout_warnings
             else:
                 # キャンバスモード: 従来の単一SVG
                 placed_groups = self.layout_unfolded_groups(unfolded_groups)

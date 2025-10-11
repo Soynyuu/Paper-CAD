@@ -417,19 +417,22 @@ class LayoutManager:
         self.printable_width_mm = self.page_width_mm - 2 * self.print_margin_mm
         self.printable_height_mm = self.page_height_mm - 2 * self.print_margin_mm
 
-    def layout_for_pages(self, unfolded_groups: List[Dict]) -> List[List[Dict]]:
+    def layout_for_pages(self, unfolded_groups: List[Dict]) -> Tuple[List[List[Dict]], List[Dict]]:
         """
         展開済みグループをページ単位で配置。
         各ページが印刷可能サイズに収まるようにbinpacking。
-        
+
         Args:
             unfolded_groups: 展開済みグループのリスト
-            
+
         Returns:
-            ページごとに配置されたグループのリスト
+            Tuple[ページごとに配置されたグループのリスト, 警告情報のリスト]
         """
         if not unfolded_groups:
-            return []
+            return [], []
+
+        # 警告情報を収集するリスト
+        warnings = []
         
         # 各グループの境界ボックス計算
         for group in unfolded_groups:
@@ -438,31 +441,57 @@ class LayoutManager:
             
             # グループがページサイズを超える場合は警告
             if bbox["width"] > self.printable_width_mm or bbox["height"] > self.printable_height_mm:
+                original_width = bbox["width"]
+                original_height = bbox["height"]
+
                 print(f"警告: グループサイズ({bbox['width']:.1f}x{bbox['height']:.1f}mm)が" +
                       f"印刷可能エリア({self.printable_width_mm}x{self.printable_height_mm}mm)を超えています")
-                
+
                 # スケールダウンが必要
                 scale_x = self.printable_width_mm / bbox["width"] if bbox["width"] > self.printable_width_mm else 1.0
                 scale_y = self.printable_height_mm / bbox["height"] if bbox["height"] > self.printable_height_mm else 1.0
                 scale = min(scale_x, scale_y) * 0.9  # 90%のサイズに縮小してマージンを確保
-                
+
                 # グループをスケールダウン
                 scaled_polygons = []
                 for polygon in group["polygons"]:
                     scaled_polygon = [(x * scale, y * scale) for x, y in polygon]
                     scaled_polygons.append(scaled_polygon)
                 group["polygons"] = scaled_polygons
-                
+
                 scaled_tabs = []
                 for tab in group.get("tabs", []):
                     scaled_tab = [(x * scale, y * scale) for x, y in tab]
                     scaled_tabs.append(scaled_tab)
                 group["tabs"] = scaled_tabs
-                
+
                 # 境界ボックスを再計算
                 bbox = self._calculate_group_bbox(group["polygons"])
                 group["bbox"] = bbox
                 print(f"  -> スケール調整後: {bbox['width']:.1f}x{bbox['height']:.1f}mm")
+
+                # 警告情報を追加
+                warnings.append({
+                    "type": "size_exceeded",
+                    "message": f"図形が用紙サイズを超えたため、自動的にスケール調整しました / Shape exceeded page size and was automatically scaled",
+                    "details": {
+                        "original_size_mm": {
+                            "width": round(original_width, 1),
+                            "height": round(original_height, 1)
+                        },
+                        "scaled_size_mm": {
+                            "width": round(bbox["width"], 1),
+                            "height": round(bbox["height"], 1)
+                        },
+                        "scale_factor": round(scale, 3),
+                        "page_format": self.page_format,
+                        "page_orientation": self.page_orientation,
+                        "printable_area_mm": {
+                            "width": self.printable_width_mm,
+                            "height": self.printable_height_mm
+                        }
+                    }
+                })
         
         # 面積の大きい順にソート
         unfolded_groups.sort(key=lambda g: g["bbox"]["width"] * g["bbox"]["height"], reverse=True)
@@ -512,9 +541,9 @@ class LayoutManager:
         # 最後のページを追加
         if current_page:
             paged_groups.append(current_page)
-        
+
         print(f"ページレイアウト完了: {len(paged_groups)}ページに分割")
-        return paged_groups
+        return paged_groups, warnings
 
     def _find_position_in_page(self, bbox: Dict, occupied_areas: List[Dict],
                                max_width: float, max_height: float,

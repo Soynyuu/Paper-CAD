@@ -110,17 +110,21 @@ async def unfold_step_to_svg(
                 "svg_content": svg_content,
                 "stats": stats
             }
-            
+
+            # 警告情報を含める
+            if "warnings" in stats and stats["warnings"]:
+                response_data["warnings"] = stats["warnings"]
+
             try:
                 os.unlink(svg_path)
             except:
                 pass
-            
+
             # 面番号データを含める場合
             if return_face_numbers:
                 face_numbers = step_unfold_generator.get_face_numbers()
                 response_data["face_numbers"] = face_numbers
-            
+
             return response_data
         else:
             # SVGファイルレスポンス

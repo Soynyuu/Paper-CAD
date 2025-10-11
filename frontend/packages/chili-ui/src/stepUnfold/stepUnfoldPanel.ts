@@ -20,6 +20,7 @@ import "svgedit/dist/editor/svgedit.css";
 import "./svgedit-override.css"; // Apply our design system overrides
 import style from "./stepUnfoldPanel.module.css";
 import { SimplePDFExporter, SimplePDFExportOptions } from "./pdfExporterSimple";
+import { Dialog } from "../dialog";
 
 export class StepUnfoldPanel extends HTMLElement {
     private static _instance: StepUnfoldPanel | null = null;
@@ -533,6 +534,11 @@ export class StepUnfoldPanel extends HTMLElement {
                     this._applyBackendFaceNumbers(faceNumbers);
                 }
 
+                // 警告がある場合、ダイアログを表示
+                if (responseData.warnings && responseData.warnings.length > 0) {
+                    this._showWarningsDialog(responseData.warnings);
+                }
+
                 console.log("Successfully converted model");
             } else {
                 console.error(`Error: ${result.error}`);
@@ -652,10 +658,54 @@ export class StepUnfoldPanel extends HTMLElement {
             } else {
                 console.log("🚀 No face numbers found in response");
             }
+
+            // 警告がある場合、ダイアログを表示
+            if (data.warnings && data.warnings.length > 0) {
+                this._showWarningsDialog(data.warnings);
+            }
         }
 
         console.log("Unfold diagram generated");
     };
+
+    /**
+     * 警告ダイアログを表示
+     */
+    private _showWarningsDialog(warnings: Array<{ type: string; message: string; details?: any }>): void {
+        console.log("Showing warnings dialog:", warnings);
+
+        // 警告メッセージを整形
+        const warningMessages = warnings.map((warning) => {
+            let message = warning.message;
+
+            // 詳細情報がある場合、追加情報を表示
+            if (warning.details) {
+                const details = warning.details;
+                if (details.original_size_mm && details.scaled_size_mm) {
+                    message += `\n\n詳細:\n`;
+                    message += `元のサイズ: ${details.original_size_mm.width} × ${details.original_size_mm.height} mm\n`;
+                    message += `調整後のサイズ: ${details.scaled_size_mm.width} × ${details.scaled_size_mm.height} mm\n`;
+                    message += `スケール比率: ${details.scale_factor}\n`;
+                    message += `用紙: ${details.page_format} (${details.page_orientation})`;
+                }
+            }
+
+            return message;
+        });
+
+        // ダイアログのコンテンツを作成
+        const content = div(
+            { style: { padding: "10px", maxWidth: "500px" } },
+            ...warningMessages.map((msg) =>
+                div({ style: { marginBottom: "10px", whiteSpace: "pre-line" } }, msg),
+            ),
+        );
+
+        // ダイアログを表示（OKボタンのみ）
+        Dialog.show("stepUnfold.warning" as any, content, () => {
+            console.log("Warning dialog closed");
+        });
+    }
 
     /**
      * バックエンドから受信した面番号データを3Dビューに適用

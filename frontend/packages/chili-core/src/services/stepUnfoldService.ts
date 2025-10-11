@@ -31,6 +31,11 @@ export interface UnfoldResponse {
         tileCount: number;
     }>;
     stats?: any;
+    warnings?: Array<{
+        type: string;
+        message: string;
+        details?: any;
+    }>;
 }
 
 export interface IStepUnfoldService extends IService {

@@ -225,8 +225,37 @@ When working with PLATEAU/CityGML features:
 3. Coordinate system handling is in `services/coordinate_utils.py`
 4. Building ID filtering logic is in `citygml_to_step.py` (see `extract_buildings_from_citygml` function)
 5. For XLink reference resolution, see the `resolve_xlink_references` function in `citygml_to_step.py`
-6. **LOD2 WallSurface extraction**: Strategy 4 in `_extract_single_solid()` handles boundedBy surfaces with multiple fallback methods:
-   - First tries LOD-specific wrappers (`lod2MultiSurface`, `lod2Geometry`)
-   - Falls back to direct `gml:MultiSurface` or `gml:CompositeSurface` children
-   - Final fallback to direct `gml:Polygon` elements
-   - This ensures walls are extracted even when PLATEAU data uses different structural patterns
+6. **LOD (Level of Detail) Support**: The `_extract_single_solid()` function in `citygml_to_step.py` implements a comprehensive LOD extraction hierarchy with priority-based fallback:
+
+   **LOD3 (Highest Detail - Architectural Models):**
+   - Strategy 1: `bldg:lod3Solid//gml:Solid` - Detailed solid structure with architectural elements
+   - Strategy 2: `bldg:lod3MultiSurface` - Multiple independent detailed surfaces
+   - Strategy 3: `bldg:lod3Geometry` - Generic geometry container for LOD3
+   - Strategy 4: `bldg:boundedBy` surfaces - Falls back to boundary surfaces if solids unavailable
+   - **LOD3 Features**: Includes detailed walls/roofs, openings (windows/doors), and BuildingInstallation elements
+
+   **LOD2 (PLATEAU's Primary Use Case - Differentiated Roof Structures):**
+   - Strategy 1: `bldg:lod2Solid//gml:Solid` - Standard solid structure with roof differentiation
+   - Strategy 2: `bldg:lod2MultiSurface` - Multiple independent surfaces
+   - Strategy 3: `bldg:lod2Geometry` - Generic geometry container for LOD2
+   - Strategy 4: `bldg:boundedBy` surfaces - **Multiple fallback methods** for maximum robustness:
+     * First tries LOD-specific wrappers (`lod2MultiSurface`, `lod2Geometry`)
+     * Falls back to direct `gml:MultiSurface` or `gml:CompositeSurface` children
+     * Final fallback to direct `gml:Polygon` elements
+     * This ensures walls/roofs are extracted even when PLATEAU data uses different structural patterns
+
+   **LOD1 (Simple Block Models):**
+   - Strategy 1: `bldg:lod1Solid//gml:Solid` - Simple extruded footprint
+
+   **LOD0 (2D Footprints):**
+   - Supported via `bldg:lod0FootPrint` and `bldg:lod0RoofEdge` (not used for solid extraction)
+
+   **BoundarySurface Types** (all 6 CityGML 2.0 types supported):
+   - `WallSurface`: Vertical exterior walls
+   - `RoofSurface`: Roof structures
+   - `GroundSurface`: Ground contact surfaces
+   - `OuterCeilingSurface`: Exterior ceiling (not a roof)
+   - `OuterFloorSurface`: Exterior upper floor (not a roof)
+   - `ClosureSurface`: Virtual surfaces to close building volumes
+
+   The fallback chain ensures maximum compatibility with various PLATEAU dataset structures while prioritizing higher detail levels when available.

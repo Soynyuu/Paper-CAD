@@ -1614,11 +1614,22 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                           shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
     """Extract a single solid from a building or building part element.
 
-    Enhanced LOD2 extraction with multiple strategies:
-    1. bldg:lod2Solid//gml:Solid (standard solid structure)
-    2. bldg:lod2MultiSurface (multiple independent surfaces)
-    3. bldg:lod2Geometry (generic geometry container)
-    4. bldg:boundedBy surfaces (WallSurface, RoofSurface, GroundSurface)
+    Enhanced LOD extraction with priority-based fallback chain:
+
+    LOD3 (highest detail - architectural models with detailed walls/roofs/openings):
+      1. bldg:lod3Solid//gml:Solid
+      2. bldg:lod3MultiSurface
+      3. bldg:lod3Geometry
+      4. bldg:boundedBy surfaces (with all boundary types)
+
+    LOD2 (differentiated roof structures and thematic surfaces):
+      1. bldg:lod2Solid//gml:Solid (standard solid structure)
+      2. bldg:lod2MultiSurface (multiple independent surfaces)
+      3. bldg:lod2Geometry (generic geometry container)
+      4. bldg:boundedBy surfaces (WallSurface, RoofSurface, GroundSurface, etc.)
+
+    LOD1 (simple block models):
+      1. bldg:lod1Solid//gml:Solid
 
     Args:
         elem: Building or BuildingPart element
@@ -1635,8 +1646,126 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     exterior_faces: List[TopoDS_Face] = []
 
     # =========================================================================
+    # LOD3 Extraction - Highest detail level (architectural models)
+    # =========================================================================
+    # LOD3 represents architectural models with:
+    # - Detailed wall and roof structures with surface textures
+    # - Openings: windows (bldg:Window), doors (bldg:Door)
+    # - BuildingInstallation elements (balconies, chimneys, etc.)
+    # Priority: Try LOD3 first for maximum detail before falling back to LOD2/LOD1
+
+    # Strategy 1: LOD3 Solid (most detailed solid structure)
+    lod3_solid = elem.find(".//bldg:lod3Solid", NS)
+    if lod3_solid is not None:
+        solid_elem = lod3_solid.find(".//gml:Solid", NS)
+        if solid_elem is not None:
+            if debug:
+                print(f"[LOD3] Found bldg:lod3Solid//gml:Solid in {elem_id}")
+
+            # Extract exterior and interior shells
+            exterior_faces_solid, interior_shells_faces = _extract_solid_shells(
+                solid_elem, xyz_transform, id_index, debug
+            )
+
+            if debug:
+                print(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+
+            if exterior_faces_solid:
+                # Build solid with cavities (adaptive tolerance)
+                result = _make_solid_with_cavities(
+                    exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
+                    precision_mode=precision_mode, shape_fix_level=shape_fix_level
+                )
+                if result is not None:
+                    if debug:
+                        print(f"[LOD3] Solid processing successful, returning shape")
+                    return result
+                else:
+                    if debug:
+                        print(f"[LOD3] Solid shell building failed, trying other strategies...")
+            else:
+                if debug:
+                    print(f"[LOD3] Solid extracted 0 faces, trying other strategies...")
+
+    # Strategy 2: LOD3 MultiSurface (multiple detailed surfaces)
+    lod3_multi = elem.find(".//bldg:lod3MultiSurface", NS)
+    if lod3_multi is not None:
+        if debug:
+            print(f"[LOD3] Found bldg:lod3MultiSurface in {elem_id}")
+
+        # Look for MultiSurface or CompositeSurface
+        for surface_container in lod3_multi.findall(".//gml:MultiSurface", NS) + lod3_multi.findall(".//gml:CompositeSurface", NS):
+            faces_multi = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
+            exterior_faces.extend(faces_multi)
+
+        if debug:
+            print(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
+
+        if exterior_faces:
+            # Build solid from collected faces
+            result = _make_solid_with_cavities(
+                exterior_faces, [], tolerance=None, debug=debug,
+                precision_mode=precision_mode, shape_fix_level=shape_fix_level
+            )
+            if result is not None:
+                if debug:
+                    print(f"[LOD3] MultiSurface processing successful, returning shape")
+                return result
+            else:
+                if debug:
+                    print(f"[LOD3] MultiSurface shell building failed, trying other strategies...")
+                # Clear for next strategy
+                exterior_faces = []
+
+    # Strategy 3: LOD3 Geometry (generic LOD3 geometry container)
+    lod3_geom = elem.find(".//bldg:lod3Geometry", NS)
+    if lod3_geom is not None:
+        if debug:
+            print(f"[LOD3] Found bldg:lod3Geometry in {elem_id}")
+
+        # Try to find any surface structures
+        for surface_container in (
+            lod3_geom.findall(".//gml:MultiSurface", NS) +
+            lod3_geom.findall(".//gml:CompositeSurface", NS) +
+            lod3_geom.findall(".//gml:Solid", NS)
+        ):
+            if surface_container.tag.endswith("Solid"):
+                # Process as Solid
+                faces_geom, interior_shells = _extract_solid_shells(surface_container, xyz_transform, id_index, debug)
+                exterior_faces.extend(faces_geom)
+            else:
+                # Process as MultiSurface/CompositeSurface
+                faces_geom = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
+                exterior_faces.extend(faces_geom)
+
+        if debug:
+            print(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
+
+        if exterior_faces:
+            result = _make_solid_with_cavities(
+                exterior_faces, [], tolerance=None, debug=debug,
+                precision_mode=precision_mode, shape_fix_level=shape_fix_level
+            )
+            if result is not None:
+                if debug:
+                    print(f"[LOD3] Geometry processing successful, returning shape")
+                return result
+            else:
+                if debug:
+                    print(f"[LOD3] Geometry shell building failed, trying LOD2...")
+                exterior_faces = []
+
+    if debug and not exterior_faces:
+        print(f"[LOD3] No LOD3 geometry found, falling back to LOD2 for {elem_id}")
+
+    # =========================================================================
     # LOD2 Extraction - Try multiple strategies
     # =========================================================================
+    # LOD2 is PLATEAU's primary use case, representing:
+    # - Buildings with differentiated roof structures (flat, gabled, hipped, etc.)
+    # - Thematic boundary surfaces: WallSurface, RoofSurface, GroundSurface, etc.
+    # - More detailed than LOD1 (simple blocks) but less than LOD3 (architectural models)
+    # This is the most common LOD in PLATEAU datasets
 
     # Strategy 1: LOD2 Solid (standard gml:Solid structure)
     lod2_solid = elem.find(".//bldg:lod2Solid", NS)
@@ -1739,17 +1868,34 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     print(f"[LOD2] Geometry shell building failed, trying other strategies...")
                 exterior_faces = []
 
-    # Strategy 4: LOD2 boundedBy surfaces (WallSurface, RoofSurface, GroundSurface)
+    # Strategy 4: LOD2/LOD3 boundedBy surfaces (all CityGML 2.0 boundary surface types)
+    # This strategy works for both LOD2 and LOD3 when solid structures are unavailable
+    # CityGML 2.0 defines 6 _BoundarySurface types (we support all of them):
+    # - WallSurface: vertical exterior wall (most common)
+    # - RoofSurface: roof structure (most common)
+    # - GroundSurface: ground contact surface (footprint)
+    # - OuterCeilingSurface: exterior ceiling that is not a roof (rare)
+    # - OuterFloorSurface: exterior upper floor that is not a roof (rare)
+    # - ClosureSurface: virtual surfaces to close building volumes (PLATEAU uses these)
     bounded_surfaces = (
         elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
         elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS)
+        elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS) +
+        elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS) +
+        elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS) +
+        elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
     )
     if bounded_surfaces:
         if debug:
-            print(f"[LOD2] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
-            surface_stats = {"WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0}
-            faces_by_type = {"WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0}
+            print(f"[LOD2/LOD3] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
+            surface_stats = {
+                "WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0,
+                "OuterCeilingSurface": 0, "OuterFloorSurface": 0, "ClosureSurface": 0
+            }
+            faces_by_type = {
+                "WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0,
+                "OuterCeilingSurface": 0, "OuterFloorSurface": 0, "ClosureSurface": 0
+            }
 
         for surf in bounded_surfaces:
             # Get surface type for debugging
@@ -1813,8 +1959,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
         if debug:
             print(f"[LOD2] boundedBy extraction summary:")
-            print(f"  - Total surfaces: {len(bounded_surfaces)} (Wall: {surface_stats.get('WallSurface', 0)}, Roof: {surface_stats.get('RoofSurface', 0)}, Ground: {surface_stats.get('GroundSurface', 0)})")
-            print(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)})")
+            print(f"  - Total surfaces: {len(bounded_surfaces)} (Wall: {surface_stats.get('WallSurface', 0)}, Roof: {surface_stats.get('RoofSurface', 0)}, Ground: {surface_stats.get('GroundSurface', 0)}, OuterCeiling: {surface_stats.get('OuterCeilingSurface', 0)}, OuterFloor: {surface_stats.get('OuterFloorSurface', 0)}, Closure: {surface_stats.get('ClosureSurface', 0)})")
+            print(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
 
         if exterior_faces:
             result = _make_solid_with_cavities(
@@ -1835,6 +1981,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     # =========================================================================
     # LOD1 Fallback
     # =========================================================================
+    # LOD1 represents simple 3D block models:
+    # - Building footprint extruded to a uniform height
+    # - No roof differentiation (flat tops)
+    # - Minimal detail, used when LOD2/LOD3 are unavailable
+    # Common in early PLATEAU datasets or overview-level city models
 
     lod1_solid = elem.find(".//bldg:lod1Solid", NS)
     if lod1_solid is not None:

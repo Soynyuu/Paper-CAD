@@ -6,6 +6,7 @@ export * from "./components";
 export * from "./dialog";
 export * from "./keymapSettings";
 export * from "./mainWindow";
+export * from "./plateauSearchDialog";
 export * from "./property";
 export * from "./stepUnfold";
 export * from "./textureSelectionDialog";

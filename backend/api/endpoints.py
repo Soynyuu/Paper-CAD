@@ -591,9 +591,9 @@ async def plateau_fetch_and_convert(
 
     **ワンステップ処理 / One-Step Process:**
     1. 住所検索（Nominatim）
-    2. CityGML取得（PLATEAU API）
+    2. CityGML取得（PLATEAU API） ← 1回のみ
     3. 最近傍建物特定
-    4. STEP変換
+    4. STEP変換（取得済みCityGMLを再利用）
     5. ファイル返却
 
     **入力例 / Example:**
@@ -675,21 +675,16 @@ async def plateau_fetch_and_convert(
             b = selected_buildings[i-1]
             print(f"  {i}. {bid} ({b.distance_meters:.1f}m)")
 
-        # Step 3: Fetch CityGML again and convert to STEP
-        geocoding = search_result["geocoding"]
-        from services.plateau_fetcher import fetch_citygml_from_plateau
-
-        xml_content = fetch_citygml_from_plateau(
-            geocoding.latitude,
-            geocoding.longitude,
-            radius=radius
-        )
+        # Step 3: Reuse CityGML XML from search results (no re-fetch needed!)
+        xml_content = search_result.get("citygml_xml")
 
         if not xml_content:
             raise HTTPException(
                 status_code=500,
                 detail="CityGMLデータの取得に失敗しました"
             )
+
+        print(f"[API] Reusing CityGML from search results ({len(xml_content):,} bytes)")
 
         # Step 4: Save CityGML to temp file
         tmpdir = tempfile.mkdtemp()

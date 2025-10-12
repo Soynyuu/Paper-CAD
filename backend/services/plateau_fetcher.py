@@ -680,6 +680,7 @@ def search_buildings_by_address(
         - success: bool
         - geocoding: GeocodingResult or None
         - buildings: List[BuildingInfo] sorted by distance
+        - citygml_xml: str (CityGML XML content, only if success=True)
         - error: str (if success=False)
 
     Example:
@@ -700,6 +701,7 @@ def search_buildings_by_address(
             "success": False,
             "geocoding": None,
             "buildings": [],
+            "citygml_xml": None,
             "error": f"Address not found: {query}"
         }
 
@@ -714,6 +716,7 @@ def search_buildings_by_address(
             "success": False,
             "geocoding": geocoding,
             "buildings": [],
+            "citygml_xml": None,
             "error": "Failed to fetch CityGML data from PLATEAU"
         }
 
@@ -724,6 +727,7 @@ def search_buildings_by_address(
             "success": False,
             "geocoding": geocoding,
             "buildings": [],
+            "citygml_xml": xml_content,  # Include XML even if no buildings parsed
             "error": "No buildings found in PLATEAU data"
         }
 
@@ -746,6 +750,7 @@ def search_buildings_by_address(
         "success": True,
         "geocoding": geocoding,
         "buildings": sorted_buildings,
+        "citygml_xml": xml_content,  # Include fetched XML to avoid re-fetching
         "error": None
     }
 

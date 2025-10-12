@@ -47,6 +47,11 @@ python main.py        # Starts server on http://localhost:8001
 python test_polygon_overlap.py
 bash test_layout_modes.sh
 python test_brep_export.py
+python test_adjacency_fix.py
+python test_improved_unfold.py
+python test_citygml_to_step.py
+python test_plateau_api.py
+python test_nominatim.py
 
 # Docker/Podman
 docker compose up -d
@@ -111,12 +116,19 @@ npm run dev
   - `brep_exporter.py`: Exports to BREP format
 
 - **`api/`**: FastAPI routes
-  - `endpoints.py`: REST API endpoints (`POST /api/step/unfold`, `GET /api/health`)
+  - `endpoints.py`: REST API endpoints
+    - `POST /api/step/unfold`: STEP → SVG unfolding
+    - `POST /api/citygml/to-step`: CityGML → STEP conversion
+    - `POST /api/citygml/validate`: CityGML validation
+    - `POST /api/plateau/search-by-address`: PLATEAU building search by address
+    - `POST /api/plateau/fetch-and-convert`: One-step PLATEAU fetch & convert
+    - `GET /api/health`: Health check
 
 - **`services/`**: Business logic
   - `step_processor.py`: Orchestrates the unfolding pipeline (calls core modules)
-  - `citygml_to_step.py`: Experimental CityGML → STEP conversion
-  - `coordinate_utils.py`: Coordinate transformation utilities
+  - `citygml_to_step.py`: CityGML → STEP conversion with LOD2/LOD3 support
+  - `plateau_fetcher.py`: PLATEAU Data Catalog API integration (geocoding, building search)
+  - `coordinate_utils.py`: Coordinate transformation utilities (CRS conversion)
 
 - **`models/`**: Pydantic models for API requests/responses
 - **`utils/`**: Shared utilities
@@ -140,13 +152,41 @@ npm run dev
 3. **OpenCASCADE is central**: Both frontend (via WebAssembly) and backend (via pythonOCC) use OpenCASCADE Technology
 4. **Environment-based configuration**: Frontend uses `__APP_CONFIG__` defined in rspack.config.js; backend uses `.env.development`/`.env.production`
 
+### PLATEAU Integration
+
+The backend includes comprehensive support for Japan's PLATEAU 3D city data:
+
+**Key Features:**
+- **Automatic building search**: Search by address or facility name (e.g., "東京駅", "渋谷スクランブルスクエア")
+- **Geocoding**: Uses OpenStreetMap Nominatim API to convert addresses to coordinates
+- **CityGML processing**: Full LOD2/LOD3 support with XLink reference resolution
+- **Building filtering**: Extract specific buildings by ID from large CityGML files
+- **Coordinate transformation**: Automatic reprojection from geographic to planar coordinate systems
+
+**API Workflow:**
+1. `POST /api/plateau/search-by-address`: Search buildings by address → returns building list with IDs
+2. `POST /api/plateau/fetch-and-convert`: One-step fetch & convert (address → STEP file)
+3. `POST /api/citygml/to-step`: Convert CityGML to STEP with precision control
+
+**Precision Control** (CityGML → STEP conversion):
+- `precision_mode`: Controls tolerance calculation (standard/high/maximum/ultra)
+- `shape_fix_level`: Controls geometry repair aggressiveness (minimal/standard/aggressive/ultra)
+- `building_ids`: Filter specific buildings from large datasets
+- `filter_attribute`: Match by `gml:id` or generic attributes like `buildingID`
+
+**Dependencies:**
+- `geopy`: Geocoding (address → coordinates)
+- `requests`: HTTP client for PLATEAU API
+- `pyproj`: Coordinate system transformations
+- `shapely`: Geometry operations
+
 ## Important Notes
 
 - **OpenCASCADE dependency**: Backend requires OpenCASCADE (installed via conda). If OCCT is unavailable, API returns 503 for STEP operations.
 - **Workspace structure**: Frontend uses npm workspaces. Always run `npm install` from the root `/frontend` directory.
 - **API URL configuration**: Update `STEP_UNFOLD_API_URL` in frontend/.env files or rspack.config.js to point to your backend instance.
 - **CORS configuration**: Backend allows configured origins (see `config.py`). Set `CORS_ALLOW_ALL=true` for development.
-- **Git branch**: Main branch is `main`. Current feature branch: `feature/assembly-mode`.
+- **Git branch**: Main branch is `main`. Use `git branch` or `git log` to see the current branch.
 
 ## Testing
 
@@ -178,3 +218,15 @@ When modifying 3D operations:
 1. Check if operation belongs in WebAssembly (`frontend/cpp/src/`) or backend
 2. WebAssembly is for client-side modeling; backend is for server-side STEP processing
 3. Remember to rebuild WASM with `npm run build:wasm` if changing C++ code
+
+When working with PLATEAU/CityGML features:
+1. Test with real PLATEAU data using `test_plateau_api.py` or `test_citygml_to_step.py`
+2. Key files: `services/plateau_fetcher.py` (API integration), `services/citygml_to_step.py` (conversion logic)
+3. Coordinate system handling is in `services/coordinate_utils.py`
+4. Building ID filtering logic is in `citygml_to_step.py` (see `extract_buildings_from_citygml` function)
+5. For XLink reference resolution, see the `resolve_xlink_references` function in `citygml_to_step.py`
+6. **LOD2 WallSurface extraction**: Strategy 4 in `_extract_single_solid()` handles boundedBy surfaces with multiple fallback methods:
+   - First tries LOD-specific wrappers (`lod2MultiSurface`, `lod2Geometry`)
+   - Falls back to direct `gml:MultiSurface` or `gml:CompositeSurface` children
+   - Final fallback to direct `gml:Polygon` elements
+   - This ensures walls are extracted even when PLATEAU data uses different structural patterns

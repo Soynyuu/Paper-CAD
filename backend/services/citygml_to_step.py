@@ -1748,18 +1748,73 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     if bounded_surfaces:
         if debug:
             print(f"[LOD2] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
+            surface_stats = {"WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0}
+            faces_by_type = {"WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0}
 
         for surf in bounded_surfaces:
-            # Check for lod2MultiSurface within each bounded surface
+            # Get surface type for debugging
+            surf_type = surf.tag.split("}")[-1] if "}" in surf.tag else surf.tag
+            if debug:
+                surface_stats[surf_type] = surface_stats.get(surf_type, 0) + 1
+
+            faces_before = len(exterior_faces)
+            found_geometry = False
+
+            # Method 1: Check for lod2MultiSurface or lod2Geometry within each bounded surface
             for lod2_tag in [".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
                 surf_geom = surf.find(lod2_tag, NS)
                 if surf_geom is not None:
+                    found_geometry = True
                     for surface_container in surf_geom.findall(".//gml:MultiSurface", NS) + surf_geom.findall(".//gml:CompositeSurface", NS):
                         faces_bounded = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
                         exterior_faces.extend(faces_bounded)
 
+            # Method 2: Fallback - Check for direct gml:MultiSurface or gml:CompositeSurface children
+            # Some PLATEAU buildings have geometry directly without LOD-specific wrappers
+            if not found_geometry:
+                for direct_container in surf.findall("./gml:MultiSurface", NS) + surf.findall("./gml:CompositeSurface", NS):
+                    found_geometry = True
+                    faces_bounded = _extract_faces_from_surface_container(direct_container, xyz_transform, id_index, debug)
+                    exterior_faces.extend(faces_bounded)
+
+            # Method 3: Fallback - Check for direct gml:Polygon children
+            if not found_geometry:
+                for poly in surf.findall(".//gml:Polygon", NS):
+                    found_geometry = True
+                    ext, holes = _extract_polygon_xyz(poly)
+                    if len(ext) < 3:
+                        continue
+
+                    # Apply coordinate transformation if provided
+                    if xyz_transform:
+                        try:
+                            ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                            holes = [
+                                [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                                for ring in holes
+                            ]
+                        except Exception as e:
+                            if debug:
+                                print(f"    Transform failed for polygon in {surf_type}: {e}")
+                            continue
+
+                    fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
+                    if fc is not None and not fc.IsNull():
+                        exterior_faces.append(fc)
+
+            # Track faces extracted from this surface
+            faces_added = len(exterior_faces) - faces_before
+            if debug:
+                faces_by_type[surf_type] = faces_by_type.get(surf_type, 0) + faces_added
+                if faces_added > 0:
+                    print(f"  - {surf_type}: extracted {faces_added} faces")
+                elif not found_geometry:
+                    print(f"  - {surf_type}: no geometry found (check CityGML structure)")
+
         if debug:
-            print(f"[LOD2] boundedBy extraction: {len(exterior_faces)} faces")
+            print(f"[LOD2] boundedBy extraction summary:")
+            print(f"  - Total surfaces: {len(bounded_surfaces)} (Wall: {surface_stats.get('WallSurface', 0)}, Roof: {surface_stats.get('RoofSurface', 0)}, Ground: {surface_stats.get('GroundSurface', 0)})")
+            print(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)})")
 
         if exterior_faces:
             result = _make_solid_with_cavities(

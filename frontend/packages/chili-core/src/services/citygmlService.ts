@@ -41,6 +41,10 @@ export interface BuildingInfo {
     height?: number;
     usage?: string;
     measured_height?: number;
+    building_structure_type?: string;
+    has_lod2?: boolean;
+    has_lod3?: boolean;
+    name?: string;
 }
 
 export interface GeocodingResult {
@@ -67,9 +71,11 @@ export interface PlateauSearchOptions {
 
 export interface PlateauFetchAndConvertOptions extends PlateauSearchOptions {
     buildingLimit?: number; // Number of buildings to convert
+    buildingIds?: string[]; // Specific building IDs to convert (gml:id format)
     debug?: boolean;
     method?: "auto" | "solid" | "sew" | "extrude";
     autoReproject?: boolean;
+    mergeBuildingParts?: boolean; // Merge BuildingParts into single solid (default: false, preserves detail)
 }
 
 export class CityGMLService implements ICityGMLService {
@@ -263,6 +269,9 @@ export class CityGMLService implements ICityGMLService {
             if (options?.buildingLimit !== undefined) {
                 formData.append("building_limit", options.buildingLimit.toString());
             }
+            if (options?.buildingIds && options.buildingIds.length > 0) {
+                formData.append("building_ids", options.buildingIds.join(","));
+            }
             if (options?.debug !== undefined) {
                 formData.append("debug", options.debug.toString());
             }
@@ -271,6 +280,9 @@ export class CityGMLService implements ICityGMLService {
             }
             if (options?.autoReproject !== undefined) {
                 formData.append("auto_reproject", options.autoReproject.toString());
+            }
+            if (options?.mergeBuildingParts !== undefined) {
+                formData.append("merge_building_parts", options.mergeBuildingParts.toString());
             }
 
             const response = await fetch(`${this.baseUrl}/plateau/fetch-and-convert`, {

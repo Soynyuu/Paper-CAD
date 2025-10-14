@@ -27,7 +27,6 @@ Usage:
 from __future__ import annotations
 
 import time
-import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Dict, Any
@@ -67,6 +66,7 @@ class BuildingInfo:
         height: Building height in meters (optional)
         usage: Building usage type (optional)
         measured_height: Measured height attribute (optional)
+        name: Building name from CityGML (optional)
     """
     building_id: Optional[str]
     gml_id: str
@@ -76,6 +76,7 @@ class BuildingInfo:
     height: Optional[float] = None
     usage: Optional[str] = None
     measured_height: Optional[float] = None
+    name: Optional[str] = None
 
 
 @dataclass
@@ -439,6 +440,7 @@ def parse_buildings_from_citygml(
     - Coordinates (from footprint or first posList)
     - Height (from measuredHeight or buildingHeight)
     - Usage (from bldg:usage)
+    - Building name (from gml:name or uro:buildingName)
 
     Args:
         xml_content: CityGML XML as string
@@ -505,6 +507,18 @@ def parse_buildings_from_citygml(
                 except ValueError:
                     pass
 
+        # Extract building name
+        name = None
+        # Try gml:name first (standard CityGML tag)
+        name_elem = building_elem.find(".//gml:name", NS)
+        if name_elem is not None and name_elem.text:
+            name = name_elem.text.strip()
+        # Fall back to uro:buildingName (PLATEAU-specific extension)
+        if not name:
+            name_elem = building_elem.find(".//uro:buildingName", NS)
+            if name_elem is not None and name_elem.text:
+                name = name_elem.text.strip()
+
         buildings.append(BuildingInfo(
             building_id=building_id,
             gml_id=gml_id,
@@ -513,7 +527,8 @@ def parse_buildings_from_citygml(
             distance_meters=0.0,  # Will be calculated later
             height=height,
             usage=usage,
-            measured_height=measured_height
+            measured_height=measured_height,
+            name=name
         ))
 
     print(f"[PARSE] Extracted {len(buildings)} valid building(s)")
@@ -615,14 +630,23 @@ def _extract_building_height(building_elem: ET.Element) -> Optional[float]:
 def find_nearest_building(
     buildings: List[BuildingInfo],
     target_latitude: float,
-    target_longitude: float
+    target_longitude: float,
+    query: Optional[str] = None
 ) -> List[BuildingInfo]:
-    """Find and sort buildings by distance from target coordinates.
+    """Find and rank buildings by distance from target point.
+
+    Simple approach: Sort by distance only (nearest building wins).
+
+    Process:
+    1. Calculate distances from target point
+    2. Deduplicate by gml_id (removes duplicates)
+    3. Sort by distance (ascending)
 
     Args:
         buildings: List of BuildingInfo objects
         target_latitude: Target latitude
         target_longitude: Target longitude
+        query: Original search query (unused, kept for API compatibility)
 
     Returns:
         List of BuildingInfo sorted by distance (nearest first),
@@ -636,25 +660,50 @@ def find_nearest_building(
     """
     target_point = Point(target_longitude, target_latitude)
 
-    # Calculate distances
+    # Step 1: Calculate distances for all buildings
     for building in buildings:
         building_point = Point(building.longitude, building.latitude)
-        # distance() returns distance in degrees, convert to meters (rough)
         dist_degrees = distance(target_point, building_point)
-        # At equator: 1 degree ≈ 111,000 meters
-        # In Japan (lat ~35): 1 degree lat ≈ 111,000m, 1 degree lon ≈ 91,000m
-        # Use average for rough estimate
         building.distance_meters = float(dist_degrees) * 100000  # Rough conversion
 
-    # Sort by distance
-    sorted_buildings = sorted(buildings, key=lambda b: b.distance_meters)
+    # Step 2: Deduplicate by gml_id (keep first occurrence)
+    # Also filter out buildings with unknown/invalid height (-9999 is PLATEAU's sentinel value)
+    seen_ids = set()
+    unique_buildings = []
+    duplicates_removed = 0
+    unknown_height_removed = 0
 
-    print(f"[DISTANCE] Sorted {len(sorted_buildings)} building(s) by distance")
-    if sorted_buildings:
-        nearest = sorted_buildings[0]
-        print(f"[DISTANCE] Nearest: {nearest.building_id or nearest.gml_id} at {nearest.distance_meters:.1f}m")
+    for building in buildings:
+        # Skip if duplicate
+        if building.gml_id in seen_ids:
+            duplicates_removed += 1
+            continue
 
-    return sorted_buildings
+        # Skip buildings with unknown height (sentinel value -9999)
+        height = building.measured_height or building.height or 0
+        if height < 0:  # Negative heights are invalid (including -9999 sentinel)
+            unknown_height_removed += 1
+            continue
+
+        seen_ids.add(building.gml_id)
+        unique_buildings.append(building)
+
+    if duplicates_removed > 0:
+        print(f"[DEDUP] Removed {duplicates_removed} duplicate building(s)")
+    if unknown_height_removed > 0:
+        print(f"[FILTER] Removed {unknown_height_removed} building(s) with unknown height")
+
+    # Step 3: Sort by distance (simplest approach - nearest building wins)
+    unique_buildings.sort(key=lambda b: b.distance_meters)
+
+    print(f"[SORT] Sorted {len(unique_buildings)} unique building(s) by distance")
+    if unique_buildings:
+        nearest = unique_buildings[0]
+        height_str = f"{nearest.measured_height or nearest.height or 'unknown'}m"
+        print(f"[SORT] Nearest building: {nearest.building_id or nearest.gml_id[:20]}")
+        print(f"[SORT]   Distance: {nearest.distance_meters:.1f}m, Height: {height_str}")
+
+    return unique_buildings
 
 
 def search_buildings_by_address(

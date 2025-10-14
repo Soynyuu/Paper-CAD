@@ -98,6 +98,7 @@ export default {
         "plateau.searchRadius": "搜索半径",
         "plateau.buildingLimit": "建筑物数量",
         "plateau.autoReproject": "自动重投影",
+        "plateau.mergeBuildingParts": "合并建筑部件",
         "command.measure.angle": "角度",
         "command.measure.length": "长度",
         "command.measure.select": "选择",

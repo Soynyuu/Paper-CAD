@@ -93,6 +93,7 @@ const I18N_KEYS = [
     "plateau.searchRadius",
     "plateau.buildingLimit",
     "plateau.autoReproject",
+    "plateau.mergeBuildingParts",
     "command.measure.angle",
     "command.measure.length",
     "command.measure.select",

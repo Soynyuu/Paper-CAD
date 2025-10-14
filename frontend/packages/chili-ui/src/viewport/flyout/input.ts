@@ -65,7 +65,7 @@ export class Input extends HTMLElement implements IDisposable {
 
     private readonly handleKeyDown = (e: KeyboardEvent) => {
         e.stopPropagation();
-        if (e.key === "Enter") {
+        if (e.key === "Enter" && !e.isComposing) {
             this.processEnterKey();
         } else if (e.key === "Escape") {
             this._cancelledCallbacks.forEach((callback) => callback());

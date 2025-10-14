@@ -246,7 +246,7 @@ export class PlateauBuildingSelectionDialog {
             if (e.key === "Escape") {
                 e.preventDefault();
                 closeDialog(DialogResult.cancel);
-            } else if (e.key === "Enter") {
+            } else if (e.key === "Enter" && !e.isComposing) {
                 e.preventDefault();
                 closeDialog(DialogResult.ok);
             }

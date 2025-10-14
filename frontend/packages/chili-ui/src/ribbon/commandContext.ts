@@ -169,7 +169,7 @@ export class CommandContext extends HTMLElement implements IDisposable {
                 value: new Binding(noType, g.name),
                 onkeydown: (e) => {
                     e.stopPropagation();
-                    if (e.key === "Enter") {
+                    if (e.key === "Enter" && !e.isComposing) {
                         const input = e.target as HTMLInputElement;
                         noType[g.name] = converter ? converter(input.value) : input.value;
                         input.blur();

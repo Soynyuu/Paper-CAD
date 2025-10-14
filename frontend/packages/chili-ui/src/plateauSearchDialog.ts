@@ -10,6 +10,7 @@ export interface PlateauSearchOptions {
     radius: number;
     buildingLimit: number;
     autoReproject: boolean;
+    mergeBuildingParts: boolean;
 }
 
 export class PlateauSearchDialog {
@@ -27,6 +28,7 @@ export class PlateauSearchDialog {
         let radius = 0.001; // ~100m default
         let buildingLimit = 1;
         let autoReproject = true;
+        let mergeBuildingParts = false;
 
         // Create form inputs
         const queryInput = input({
@@ -91,6 +93,18 @@ export class PlateauSearchDialog {
             },
             onchange: (e) => {
                 autoReproject = (e.target as HTMLInputElement).checked;
+            },
+        });
+
+        const mergeBuildingPartsCheckbox = input({
+            type: "checkbox",
+            checked: false,
+            style: {
+                marginLeft: "8px",
+                cursor: "pointer",
+            },
+            onchange: (e) => {
+                mergeBuildingParts = (e.target as HTMLInputElement).checked;
             },
         });
 
@@ -200,6 +214,31 @@ export class PlateauSearchDialog {
                     I18n.translate("plateau.autoReproject") ?? "Auto Reproject",
                 ),
             ),
+            div(
+                {
+                    style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                    },
+                },
+                mergeBuildingPartsCheckbox,
+                label(
+                    {
+                        style: {
+                            fontWeight: "var(--font-weight-medium)",
+                            fontSize: "var(--font-size-sm)",
+                            color: "var(--foreground-color)",
+                            cursor: "pointer",
+                        },
+                        onclick: () => {
+                            mergeBuildingPartsCheckbox.checked = !mergeBuildingPartsCheckbox.checked;
+                            mergeBuildingParts = mergeBuildingPartsCheckbox.checked;
+                        },
+                    },
+                    I18n.translate("plateau.mergeBuildingParts") ?? "Merge Building Parts",
+                ),
+            ),
         );
 
         const closeDialog = (result: DialogResult) => {
@@ -219,6 +258,7 @@ export class PlateauSearchDialog {
                     radius,
                     buildingLimit,
                     autoReproject,
+                    mergeBuildingParts,
                 });
             } else {
                 dialog.remove();
@@ -256,8 +296,8 @@ export class PlateauSearchDialog {
             if (e.key === "Escape") {
                 e.preventDefault();
                 closeDialog(DialogResult.cancel);
-            } else if (e.key === "Enter" && e.target === queryInput) {
-                // Allow Enter to submit from the query input
+            } else if (e.key === "Enter" && !e.isComposing && e.target === queryInput) {
+                // Allow Enter to submit from the query input (but not during IME composition)
                 e.preventDefault();
                 closeDialog(DialogResult.ok);
             }

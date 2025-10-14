@@ -107,7 +107,7 @@ export class InputProperty extends PropertyBase {
 
     private readonly handleKeyDown = (e: KeyboardEvent) => {
         e.stopPropagation();
-        if (this.converter && e.key === "Enter") {
+        if (this.converter && e.key === "Enter" && !e.isComposing) {
             this.setValue(e.target as HTMLInputElement);
         }
     };

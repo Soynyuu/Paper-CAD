@@ -272,7 +272,7 @@ export class StepUnfoldPanel extends HTMLElement {
         this._highlightFaceButton.onclick = () => this._highlightSelectedFace();
         this._clearHighlightsButton.onclick = () => this._clearAllHighlights();
         this._faceNumberInput.onkeypress = (e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && !e.isComposing) {
                 this._highlightSelectedFace();
             }
         };

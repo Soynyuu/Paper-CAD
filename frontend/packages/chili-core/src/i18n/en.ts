@@ -98,6 +98,7 @@ export default {
         "plateau.searchRadius": "Search Radius",
         "plateau.buildingLimit": "Building Limit",
         "plateau.autoReproject": "Auto Reproject",
+        "plateau.mergeBuildingParts": "Merge Building Parts",
         "command.measure.angle": "Angle",
         "command.measure.length": "Length",
         "command.measure.select": "Select",

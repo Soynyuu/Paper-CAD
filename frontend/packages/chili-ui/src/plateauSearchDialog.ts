@@ -11,6 +11,8 @@ export interface PlateauSearchOptions {
     buildingLimit: number;
     autoReproject: boolean;
     mergeBuildingParts: boolean;
+    searchMode: "distance" | "name" | "hybrid";
+    nameFilter?: string;
 }
 
 export class PlateauSearchDialog {
@@ -25,15 +27,16 @@ export class PlateauSearchDialog {
 
         // State for form inputs
         let query = "";
-        let radius = 0.001; // ~100m default
-        let buildingLimit = 1;
-        let autoReproject = true;
+        let searchType: "facility" | "address" = "facility"; // New: 検索タイプ
+        let radiusMeters = 100; // ~100m default (in meters)
+        let radius = 0.001; // degrees
+        let autoReproject = true; // 常にtrue（ユーザーには非表示）
         let mergeBuildingParts = false;
 
         // Create form inputs
         const queryInput = input({
             type: "text",
-            placeholder: I18n.translate("plateau.searchQuery") ?? "Address or Facility Name",
+            placeholder: '例: "東京駅", "渋谷スクランブルスクエア"',
             style: {
                 width: "100%",
                 padding: "8px",
@@ -44,63 +47,109 @@ export class PlateauSearchDialog {
             },
             oninput: (e) => {
                 query = (e.target as HTMLInputElement).value;
+                // エラー表示をクリア
+                if (errorContainer) {
+                    errorContainer.style.display = "none";
+                }
             },
         });
 
-        const radiusInput = input({
-            type: "number",
-            value: "0.001",
-            step: "0.0001",
-            min: "0.0001",
-            max: "0.01",
+        // ヒントテキスト（動的に変更可能）
+        const hintText = div(
+            {
+                style: {
+                    fontSize: "var(--font-size-xs)",
+                    color: "var(--neutral-600)",
+                    marginTop: "4px",
+                },
+            },
+            "💡 ヒント: 施設名の方が精度が高くなります",
+        );
+
+        // インラインエラー表示用コンテナ
+        const errorContainer = div({
             style: {
-                width: "100%",
-                padding: "8px",
+                display: "none",
+                padding: "8px 12px",
                 marginTop: "8px",
-                border: "1px solid var(--border-color)",
+                backgroundColor: "#fee2e2",
+                border: "1px solid #dc2626",
                 borderRadius: "var(--radius-sm)",
+                color: "#dc2626",
                 fontSize: "var(--font-size-sm)",
             },
-            oninput: (e) => {
-                radius = parseFloat((e.target as HTMLInputElement).value);
-            },
         });
 
-        const buildingLimitInput = input({
-            type: "number",
-            value: "1",
-            min: "1",
-            max: "10",
-            style: {
-                width: "100%",
-                padding: "8px",
-                marginTop: "8px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "var(--font-size-sm)",
-            },
-            oninput: (e) => {
-                buildingLimit = parseInt((e.target as HTMLInputElement).value);
-            },
-        });
+        function showInlineError(message: string) {
+            errorContainer.textContent = `⚠️ ${message}`;
+            errorContainer.style.display = "block";
+            setTimeout(() => {
+                errorContainer.style.display = "none";
+            }, 5000);
+        }
 
-        const autoReprojectCheckbox = input({
-            type: "checkbox",
+        // 検索タイプラジオボタン
+        const facilityRadio = input({
+            type: "radio",
+            name: "searchType",
+            value: "facility",
             checked: true,
+            style: { cursor: "pointer", marginRight: "8px" },
+            onchange: () => {
+                searchType = "facility";
+                queryInput.placeholder = '例: "東京駅", "渋谷スクランブルスクエア"';
+                hintText.textContent = "💡 ヒント: 施設名で検索すると、建物名マッチングで精度が向上します";
+            },
+        });
+
+        const addressRadio = input({
+            type: "radio",
+            name: "searchType",
+            value: "address",
+            style: { cursor: "pointer", marginRight: "8px" },
+            onchange: () => {
+                searchType = "address";
+                queryInput.placeholder = '例: "東京都千代田区丸の内1-9-1"';
+                hintText.textContent = "💡 ヒント: 住所検索では、最も近い建物を距離で判定します";
+            },
+        });
+
+        // 検索半径スライダー（メートル表記）
+        const radiusLabel = label(
+            {
+                style: {
+                    fontWeight: "var(--font-weight-medium)",
+                    color: "var(--primary-color)",
+                    fontSize: "var(--font-size-sm)",
+                },
+            },
+            "100m",
+        );
+
+        const radiusSlider = input({
+            type: "range",
+            min: "50",
+            max: "500",
+            value: "100",
+            step: "10",
             style: {
-                marginLeft: "8px",
+                width: "100%",
+                marginTop: "8px",
+                accentColor: "var(--primary-color)",
                 cursor: "pointer",
             },
-            onchange: (e) => {
-                autoReproject = (e.target as HTMLInputElement).checked;
+            oninput: (e) => {
+                radiusMeters = parseInt((e.target as HTMLInputElement).value);
+                radiusLabel.textContent = `${radiusMeters}m`;
+                radius = radiusMeters / 111000; // メートル→度数に変換（概算）
             },
         });
 
+        // 詳細設定用チェックボックス（アコーディオン内に配置）
         const mergeBuildingPartsCheckbox = input({
             type: "checkbox",
             checked: false,
             style: {
-                marginLeft: "8px",
                 cursor: "pointer",
             },
             onchange: (e) => {
@@ -108,112 +157,37 @@ export class PlateauSearchDialog {
             },
         });
 
-        const content = div(
+        // 詳細設定アコーディオン
+        let showAdvanced = false;
+        const advancedToggle = button({
+            textContent: "▼ 詳細設定",
+            style: {
+                background: "none",
+                border: "none",
+                color: "var(--primary-color)",
+                cursor: "pointer",
+                fontSize: "var(--font-size-sm)",
+                padding: "4px 0",
+                textAlign: "left",
+            },
+            onclick: () => {
+                showAdvanced = !showAdvanced;
+                advancedToggle.textContent = showAdvanced ? "▲ 詳細設定" : "▼ 詳細設定";
+                advancedContainer.style.display = showAdvanced ? "block" : "none";
+            },
+        });
+
+        const advancedContainer = div(
             {
                 style: {
-                    minWidth: "400px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "16px",
+                    display: "none",
+                    marginTop: "12px",
+                    padding: "12px",
+                    backgroundColor: "var(--neutral-50)",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border-color)",
                 },
             },
-            div(
-                {},
-                label(
-                    {
-                        style: {
-                            fontWeight: "var(--font-weight-medium)",
-                            fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
-                        },
-                    },
-                    I18n.translate("plateau.searchQuery") ?? "Address or Facility Name",
-                ),
-                queryInput,
-                div(
-                    {
-                        style: {
-                            fontSize: "var(--font-size-xs)",
-                            color: "var(--neutral-600)",
-                            marginTop: "4px",
-                        },
-                    },
-                    'e.g. "東京駅", "渋谷スクランブルスクエア", "東京都千代田区丸の内1-9-1"',
-                ),
-            ),
-            div(
-                {},
-                label(
-                    {
-                        style: {
-                            fontWeight: "var(--font-weight-medium)",
-                            fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
-                        },
-                    },
-                    I18n.translate("plateau.searchRadius") ?? "Search Radius",
-                ),
-                radiusInput,
-                div(
-                    {
-                        style: {
-                            fontSize: "var(--font-size-xs)",
-                            color: "var(--neutral-600)",
-                            marginTop: "4px",
-                        },
-                    },
-                    "Default: 0.001 degrees (~100m)",
-                ),
-            ),
-            div(
-                {},
-                label(
-                    {
-                        style: {
-                            fontWeight: "var(--font-weight-medium)",
-                            fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
-                        },
-                    },
-                    I18n.translate("plateau.buildingLimit") ?? "Building Limit",
-                ),
-                buildingLimitInput,
-                div(
-                    {
-                        style: {
-                            fontSize: "var(--font-size-xs)",
-                            color: "var(--neutral-600)",
-                            marginTop: "4px",
-                        },
-                    },
-                    "Number of buildings to import (1-10)",
-                ),
-            ),
-            div(
-                {
-                    style: {
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                    },
-                },
-                autoReprojectCheckbox,
-                label(
-                    {
-                        style: {
-                            fontWeight: "var(--font-weight-medium)",
-                            fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
-                            cursor: "pointer",
-                        },
-                        onclick: () => {
-                            autoReprojectCheckbox.checked = !autoReprojectCheckbox.checked;
-                            autoReproject = autoReprojectCheckbox.checked;
-                        },
-                    },
-                    I18n.translate("plateau.autoReproject") ?? "Auto Reproject",
-                ),
-            ),
             div(
                 {
                     style: {
@@ -226,9 +200,7 @@ export class PlateauSearchDialog {
                 label(
                     {
                         style: {
-                            fontWeight: "var(--font-weight-medium)",
                             fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
                             cursor: "pointer",
                         },
                         onclick: () => {
@@ -236,30 +208,249 @@ export class PlateauSearchDialog {
                             mergeBuildingParts = mergeBuildingPartsCheckbox.checked;
                         },
                     },
-                    I18n.translate("plateau.mergeBuildingParts") ?? "Merge Building Parts",
+                    "建物パーツを結合（詳細保持優先: OFF推奨）",
                 ),
             ),
+        );
+
+        const content = div(
+            {
+                style: {
+                    minWidth: "450px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                },
+            },
+            // 検索タイプ選択
+            div(
+                {},
+                label(
+                    {
+                        style: {
+                            fontWeight: "var(--font-weight-medium)",
+                            fontSize: "var(--font-size-sm)",
+                            color: "var(--foreground-color)",
+                            display: "block",
+                            marginBottom: "12px",
+                        },
+                    },
+                    "検索タイプ *",
+                ),
+                div(
+                    {
+                        style: {
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "12px",
+                            padding: "12px",
+                            backgroundColor: "var(--neutral-50)",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border-color)",
+                        },
+                    },
+                    div(
+                        {
+                            style: {
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "8px",
+                            },
+                        },
+                        facilityRadio,
+                        div(
+                            {
+                                style: {
+                                    flex: "1",
+                                    cursor: "pointer",
+                                },
+                                onclick: () => {
+                                    facilityRadio.checked = true;
+                                    facilityRadio.dispatchEvent(new Event("change"));
+                                },
+                            },
+                            label(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-sm)",
+                                        fontWeight: "var(--font-weight-medium)",
+                                        display: "block",
+                                        cursor: "pointer",
+                                    },
+                                },
+                                "📍 施設名で検索",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-600)",
+                                        marginTop: "2px",
+                                    },
+                                },
+                                "建物の名前がわかる場合（推奨）",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-500)",
+                                        marginTop: "2px",
+                                        fontStyle: "italic",
+                                    },
+                                },
+                                '例: "東京駅", "渋谷スクランブルスクエア"',
+                            ),
+                        ),
+                    ),
+                    div(
+                        {
+                            style: {
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "8px",
+                            },
+                        },
+                        addressRadio,
+                        div(
+                            {
+                                style: {
+                                    flex: "1",
+                                    cursor: "pointer",
+                                },
+                                onclick: () => {
+                                    addressRadio.checked = true;
+                                    addressRadio.dispatchEvent(new Event("change"));
+                                },
+                            },
+                            label(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-sm)",
+                                        fontWeight: "var(--font-weight-medium)",
+                                        display: "block",
+                                        cursor: "pointer",
+                                    },
+                                },
+                                "🏠 住所で検索",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-600)",
+                                        marginTop: "2px",
+                                    },
+                                },
+                                "正確な住所がわかる場合",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-500)",
+                                        marginTop: "2px",
+                                        fontStyle: "italic",
+                                    },
+                                },
+                                '例: "東京都千代田区丸の内1-9-1"',
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            // 住所/施設名入力
+            div(
+                {},
+                label(
+                    {
+                        style: {
+                            fontWeight: "var(--font-weight-medium)",
+                            fontSize: "var(--font-size-sm)",
+                            color: "var(--foreground-color)",
+                        },
+                    },
+                    "住所または施設名 *",
+                ),
+                queryInput,
+                hintText,
+                errorContainer,
+            ),
+            // 検索半径スライダー
+            div(
+                {},
+                div(
+                    {
+                        style: {
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "8px",
+                        },
+                    },
+                    label(
+                        {
+                            style: {
+                                fontWeight: "var(--font-weight-medium)",
+                                fontSize: "var(--font-size-sm)",
+                                color: "var(--foreground-color)",
+                            },
+                        },
+                        "検索半径",
+                    ),
+                    radiusLabel,
+                ),
+                radiusSlider,
+                div(
+                    {
+                        style: {
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: "var(--font-size-xs)",
+                            color: "var(--neutral-500)",
+                            marginTop: "4px",
+                        },
+                    },
+                    div({}, "50m"),
+                    div({}, "500m"),
+                ),
+            ),
+            // 詳細設定
+            advancedToggle,
+            advancedContainer,
         );
 
         const closeDialog = (result: DialogResult) => {
             if (result === DialogResult.ok) {
                 // Validate query
                 if (!query.trim()) {
-                    alert(
-                        I18n.translate("error.plateau.emptyQuery") ??
-                            "Please enter an address or facility name",
-                    );
-                    return; // Don't close dialog if validation fails
+                    showInlineError("住所または施設名を入力してください");
+                    return;
                 }
 
                 dialog.remove();
-                callback?.(DialogResult.ok, {
+
+                // 検索タイプに応じてパラメータを自動設定
+                const options: PlateauSearchOptions = {
                     query: query.trim(),
                     radius,
-                    buildingLimit,
-                    autoReproject,
+                    buildingLimit: 10, // 候補を複数表示（固定）
+                    autoReproject: true, // 常にtrue（固定）
                     mergeBuildingParts,
-                });
+
+                    // 検索タイプに応じて分岐
+                    ...(searchType === "facility"
+                        ? {
+                              searchMode: "hybrid" as const,
+                              nameFilter: query.trim(), // ✅ 施設名をnameFilterに使用
+                          }
+                        : {
+                              searchMode: "distance" as const,
+                              nameFilter: undefined, // ✅ 住所検索ではnameFilterなし
+                          }),
+                };
+
+                callback?.(DialogResult.ok, options);
             } else {
                 dialog.remove();
                 callback?.(DialogResult.cancel);
@@ -269,20 +460,34 @@ export class PlateauSearchDialog {
         dialog.appendChild(
             div(
                 { className: style.root },
-                div(
-                    { className: style.title },
-                    I18n.translate("command.file.importCityGMLByAddress") ?? "Import from Address",
-                ),
+                div({ className: style.title }, "住所からインポート"),
                 div({ className: style.content }, content),
                 div(
                     { className: style.buttons },
                     button({
-                        textContent: I18n.translate("common.confirm"),
+                        textContent: "検索する",
                         onclick: () => closeDialog(DialogResult.ok),
+                        style: {
+                            backgroundColor: "var(--primary-color)",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 16px",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                            fontWeight: "var(--font-weight-medium)",
+                        },
                     }),
                     button({
-                        textContent: I18n.translate("common.cancel"),
+                        textContent: "キャンセル",
                         onclick: () => closeDialog(DialogResult.cancel),
+                        style: {
+                            backgroundColor: "var(--neutral-200)",
+                            color: "var(--foreground-color)",
+                            border: "none",
+                            padding: "8px 16px",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                        },
                     }),
                 ),
             ),

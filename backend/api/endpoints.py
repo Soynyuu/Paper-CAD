@@ -515,11 +515,13 @@ async def plateau_search_by_address(
         print(f"[API] Limit: {request.limit}")
         print(f"{'='*60}\n")
 
-        # Call the search function
+        # Call the search function with name_filter and search_mode
         result = search_buildings_by_address(
             query=request.query,
             radius=request.radius,
-            limit=request.limit
+            limit=request.limit,
+            name_filter=request.name_filter,
+            search_mode=request.search_mode or "hybrid"
         )
 
         if not result["success"]:
@@ -529,6 +531,7 @@ async def plateau_search_by_address(
                 geocoding=None,
                 buildings=[],
                 found_count=0,
+                search_mode=result.get("search_mode", "hybrid"),
                 error=result.get("error", "Unknown error")
             )
 
@@ -552,7 +555,13 @@ async def plateau_search_by_address(
                 distance_meters=b.distance_meters,
                 height=b.height,
                 usage=b.usage,
-                measured_height=b.measured_height
+                measured_height=b.measured_height,
+                name=b.name,
+                relevance_score=b.relevance_score,
+                name_similarity=b.name_similarity,
+                match_reason=b.match_reason,
+                has_lod2=b.has_lod2,
+                has_lod3=b.has_lod3
             )
             for b in result["buildings"]
         ]
@@ -562,6 +571,7 @@ async def plateau_search_by_address(
             geocoding=geocoding_response,
             buildings=buildings_response,
             found_count=len(buildings_response),
+            search_mode=result.get("search_mode", "hybrid"),
             error=None
         )
 
@@ -578,11 +588,13 @@ async def plateau_fetch_and_convert(
     radius: float = Form(0.001, description="検索半径（度）"),
     auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択"),
     building_limit: Union[int, str, None] = Form(None, description="変換する建物数（未指定で無制限）"),
+    building_ids: Optional[str] = Form(None, description="ユーザーが選択した建物IDのリスト（カンマ区切り）"),
     debug: bool = Form(False, description="デバッグモード"),
     method: str = Form("solid", description="変換方式"),
     auto_reproject: bool = Form(True, description="自動再投影"),
     precision_mode: str = Form("standard", description="精度モード（推奨: standard）"),
     shape_fix_level: str = Form("minimal", description="形状修正レベル（推奨: minimal）"),
+    merge_building_parts: bool = Form(False, description="BuildingPartを単一ソリッドに結合（詳細保持優先: False推奨）"),
 ):
     """
     住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
@@ -629,11 +641,19 @@ async def plateau_fetch_and_convert(
             elif isinstance(building_limit, int):
                 normalized_building_limit = building_limit if building_limit > 0 else None
 
+        # Normalize building_ids parameter (comma-separated string to list)
+        normalized_building_ids: Optional[list[str]] = None
+        if building_ids and building_ids.strip():
+            normalized_building_ids = [bid.strip() for bid in building_ids.split(",") if bid.strip()]
+            if not normalized_building_ids:
+                normalized_building_ids = None
+
         print(f"\n{'='*60}")
         print(f"[API] /api/plateau/fetch-and-convert")
         print(f"[API] Query: {query}")
         print(f"[API] Radius: {radius} degrees")
         print(f"[API] Building limit: {normalized_building_limit if normalized_building_limit else 'unlimited'}")
+        print(f"[API] User-selected building IDs: {normalized_building_ids if normalized_building_ids else 'None (auto-select)'}")
         print(f"{'='*60}\n")
 
         # Step 1: Search for buildings
@@ -656,24 +676,51 @@ async def plateau_fetch_and_convert(
                 detail=f"指定された場所に建物が見つかりませんでした: {query}"
             )
 
-        # Step 2: Extract building IDs (prefer building_id over gml_id)
-        selected_buildings = buildings[:normalized_building_limit] if normalized_building_limit else buildings
-        building_ids = []
-        filter_attribute = "gml:id"  # Default
+        # Step 2: Extract gml:id list from user selection OR smart-selected buildings
+        if normalized_building_ids:
+            # User explicitly selected specific buildings - use those IDs directly
+            final_building_ids = normalized_building_ids
+            print(f"[API] Using {len(final_building_ids)} user-selected building(s):")
 
-        for b in selected_buildings:
-            if b.building_id:
-                # Prefer stable PLATEAU building ID (from uro:buildingID)
-                building_ids.append(b.building_id)
-                filter_attribute = "buildingID"  # Use generic attribute extracted from uro:buildingID
-            else:
-                # Fallback to gml:id (technical identifier, may change between versions)
-                building_ids.append(b.gml_id)
+            # Find LOD information for selected buildings
+            for i, bid in enumerate(final_building_ids, 1):
+                # Find matching building in search results to get LOD info
+                matching_building = next((b for b in buildings if b.gml_id == bid), None)
+                if matching_building:
+                    lod_str = []
+                    if matching_building.has_lod3:
+                        lod_str.append("LOD3")
+                    if matching_building.has_lod2:
+                        lod_str.append("LOD2")
+                    if not lod_str:
+                        lod_str.append("LOD1 or lower")
 
-        print(f"[API] Selected {len(building_ids)} building(s):")
-        for i, bid in enumerate(building_ids, 1):
-            b = selected_buildings[i-1]
-            print(f"  {i}. {bid} ({b.distance_meters:.1f}m)")
+                    height = matching_building.measured_height or matching_building.height or 0
+                    name_str = f'"{matching_building.name}"' if matching_building.name else "unnamed"
+                    print(f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)})")
+                    print(f"[API LOD INFO]      ID: {bid[:50]}...")
+                    print(f"[API LOD INFO]      Height: {height:.1f}m, Distance: {matching_building.distance_meters:.1f}m")
+                else:
+                    print(f"[API]   {i}. {bid[:50]}... (LOD info unavailable)")
+        else:
+            # No user selection - fall back to auto-selection from search results
+            selected_buildings = buildings[:normalized_building_limit] if normalized_building_limit else buildings
+            final_building_ids = [b.gml_id for b in selected_buildings]  # Always use gml:id
+
+            print(f"[API] Auto-selected {len(final_building_ids)} building(s) by smart scoring:")
+            for i, (bid, b) in enumerate(zip(final_building_ids, selected_buildings), 1):
+                lod_str = []
+                if b.has_lod3:
+                    lod_str.append("LOD3")
+                if b.has_lod2:
+                    lod_str.append("LOD2")
+                if not lod_str:
+                    lod_str.append("LOD1 or lower")
+
+                height = b.measured_height or b.height or 0
+                name_str = f'"{b.name}"' if b.name else "unnamed"
+                print(f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)}) - {height:.1f}m, {b.distance_meters:.1f}m away")
+                print(f"[API LOD INFO]      ID: {bid[:30]}...")
 
         # Step 3: Reuse CityGML XML from search results (no re-fetch needed!)
         xml_content = search_result.get("citygml_xml")
@@ -692,7 +739,7 @@ async def plateau_fetch_and_convert(
         with open(gml_path, "w", encoding="utf-8") as f:
             f.write(xml_content)
 
-        # Step 5: Convert to STEP
+        # Step 5: Convert to STEP with gml:id filtering
         out_dir = tempfile.mkdtemp()
         # Use ASCII-safe filename (HTTP headers don't support non-ASCII characters)
         output_filename = "plateau_building.step"
@@ -701,14 +748,16 @@ async def plateau_fetch_and_convert(
         ok, msg = export_step_from_citygml(
             gml_path,
             out_path,
-            limit=None,  # We already filtered by building_ids
+            limit=None,  # Don't use limit - we filter by building_ids instead
             debug=debug,
             method=method,
             auto_reproject=auto_reproject,
             precision_mode=precision_mode,
             shape_fix_level=shape_fix_level,
-            building_ids=building_ids,
-            filter_attribute=filter_attribute,
+            merge_building_parts=merge_building_parts,
+            # Use gml:id filtering (consistent, no mixed ID types)
+            building_ids=final_building_ids,
+            filter_attribute="gml:id",
         )
 
         if not ok:
@@ -743,7 +792,6 @@ async def plateau_fetch_and_convert(
             media_type="application/octet-stream",
             filename=output_filename,
             headers={
-                "X-Building-Count": str(len(building_ids)),
                 "Cache-Control": "no-cache"
             }
         )

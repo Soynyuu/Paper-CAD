@@ -53,6 +53,126 @@ NS = {
 }
 
 
+# ============================================================================
+# Name Matching Utilities (for building name search)
+# ============================================================================
+
+def calculate_name_similarity(building_name: Optional[str], query: Optional[str]) -> float:
+    """Calculate similarity score between building name and search query.
+
+    Uses multiple strategies for robust Japanese and English text matching:
+    1. Exact match: 100% score
+    2. Case-insensitive substring match: 80% score
+    3. Levenshtein distance-based similarity: 0-70% score
+    4. Partial token matching: Up to 60% score
+
+    Args:
+        building_name: Building name from CityGML (can be None)
+        query: User search query (can be None)
+
+    Returns:
+        Similarity score from 0.0 (no match) to 1.0 (perfect match)
+
+    Example:
+        >>> calculate_name_similarity("東京駅", "東京駅")
+        1.0
+        >>> calculate_name_similarity("東京国際フォーラム", "東京")
+        0.8  # Substring match
+        >>> calculate_name_similarity("Tokyo Station", "tokyo")
+        0.8  # Case-insensitive substring match
+    """
+    # Handle None or empty strings
+    if not building_name or not query:
+        return 0.0
+
+    # Normalize strings (strip whitespace, lowercase for ASCII)
+    name_lower = building_name.strip().lower()
+    query_lower = query.strip().lower()
+
+    # Strategy 1: Exact match (case-insensitive)
+    if name_lower == query_lower:
+        return 1.0
+
+    # Strategy 2: Substring match (case-insensitive)
+    if query_lower in name_lower or name_lower in query_lower:
+        # Longer matches score higher
+        overlap = min(len(query_lower), len(name_lower))
+        total = max(len(query_lower), len(name_lower))
+        return 0.8 * (overlap / total)
+
+    # Strategy 3: Levenshtein distance (simple implementation)
+    distance = _levenshtein_distance(name_lower, query_lower)
+    max_len = max(len(name_lower), len(query_lower))
+    if max_len == 0:
+        return 0.0
+
+    # Convert distance to similarity (0-70% range)
+    similarity = max(0.0, 1.0 - (distance / max_len))
+    similarity = similarity * 0.7  # Scale to 0-70%
+
+    # Strategy 4: Token-based matching (split by common separators)
+    # Useful for multi-word names like "東京 国際 フォーラム" vs "東京"
+    name_tokens = set(_tokenize(name_lower))
+    query_tokens = set(_tokenize(query_lower))
+
+    if name_tokens and query_tokens:
+        intersection = name_tokens & query_tokens
+        union = name_tokens | query_tokens
+        token_similarity = len(intersection) / len(union) if union else 0.0
+        similarity = max(similarity, token_similarity * 0.6)  # Up to 60% for token match
+
+    return similarity
+
+
+def _levenshtein_distance(s1: str, s2: str) -> int:
+    """Calculate Levenshtein distance between two strings.
+
+    Simple dynamic programming implementation for string edit distance.
+
+    Args:
+        s1: First string
+        s2: Second string
+
+    Returns:
+        Minimum number of single-character edits (insertions, deletions, substitutions)
+    """
+    if len(s1) < len(s2):
+        return _levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            # Cost of insertions, deletions, or substitutions
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+
+    return previous_row[-1]
+
+
+def _tokenize(text: str) -> List[str]:
+    """Tokenize text by splitting on common separators.
+
+    Handles spaces, hyphens, underscores, and Japanese separators.
+
+    Args:
+        text: Input text
+
+    Returns:
+        List of tokens (non-empty strings)
+    """
+    import re
+    # Split by spaces, hyphens, underscores, Japanese middle dot (・), etc.
+    tokens = re.split(r'[\s\-_・]+', text)
+    return [t for t in tokens if t]  # Filter out empty strings
+
+
 @dataclass
 class BuildingInfo:
     """Information about a PLATEAU building.
@@ -67,6 +187,9 @@ class BuildingInfo:
         usage: Building usage type (optional)
         measured_height: Measured height attribute (optional)
         name: Building name from CityGML (optional)
+        relevance_score: Composite relevance score (0.0-1.0, optional)
+        name_similarity: Name matching score (0.0-1.0, optional)
+        match_reason: Human-readable explanation of why this building matched (optional)
     """
     building_id: Optional[str]
     gml_id: str
@@ -77,6 +200,11 @@ class BuildingInfo:
     usage: Optional[str] = None
     measured_height: Optional[float] = None
     name: Optional[str] = None
+    relevance_score: Optional[float] = None
+    name_similarity: Optional[float] = None
+    match_reason: Optional[str] = None
+    has_lod2: bool = False  # Does the building have LOD2 geometry?
+    has_lod3: bool = False  # Does the building have LOD3 geometry?
 
 
 @dataclass
@@ -519,6 +647,9 @@ def parse_buildings_from_citygml(
             if name_elem is not None and name_elem.text:
                 name = name_elem.text.strip()
 
+        # Detect LOD levels
+        has_lod2, has_lod3 = _detect_lod_levels(building_elem, building_id=building_id or gml_id)
+
         buildings.append(BuildingInfo(
             building_id=building_id,
             gml_id=gml_id,
@@ -528,10 +659,22 @@ def parse_buildings_from_citygml(
             height=height,
             usage=usage,
             measured_height=measured_height,
-            name=name
+            name=name,
+            has_lod2=has_lod2,
+            has_lod3=has_lod3
         ))
 
+    # Summary statistics
+    lod3_count = sum(1 for b in buildings if b.has_lod3)
+    lod2_count = sum(1 for b in buildings if b.has_lod2 and not b.has_lod3)
+    lod1_count = len(buildings) - lod3_count - lod2_count
+
     print(f"[PARSE] Extracted {len(buildings)} valid building(s)")
+    print(f"[PARSE] LOD Summary:")
+    print(f"[PARSE]   - LOD3: {lod3_count} building(s) ({100*lod3_count/len(buildings) if buildings else 0:.1f}%)")
+    print(f"[PARSE]   - LOD2: {lod2_count} building(s) ({100*lod2_count/len(buildings) if buildings else 0:.1f}%)")
+    print(f"[PARSE]   - LOD1 or lower: {lod1_count} building(s) ({100*lod1_count/len(buildings) if buildings else 0:.1f}%)")
+
     return buildings
 
 
@@ -627,46 +770,209 @@ def _extract_building_height(building_elem: ET.Element) -> Optional[float]:
     return None
 
 
+def _detect_lod_levels(building_elem: ET.Element, building_id: Optional[str] = None) -> Tuple[bool, bool]:
+    """Detect which LOD levels are available for a building.
+
+    Returns:
+        (has_lod2, has_lod3) tuple of booleans
+
+    Detection strategy:
+    - LOD3: Check for lod3Solid, lod3MultiSurface, lod3Geometry, or detailed BoundarySurfaces
+    - LOD2: Check for lod2Solid, lod2MultiSurface, lod2Geometry, or WallSurface/RoofSurface
+    """
+    has_lod3 = False
+    has_lod2 = False
+    found_tags = []
+
+    building_label = building_id or building_elem.get("{http://www.opengis.net/gml}id", "unknown")[:30]
+    print(f"[LOD DEBUG] Checking building: {building_label}")
+
+    # Check LOD3 indicators
+    lod3_tags = [
+        ".//bldg:lod3Solid",
+        ".//bldg:lod3MultiSurface",
+        ".//bldg:lod3Geometry",
+    ]
+    print(f"[LOD DEBUG]   Searching for LOD3 tags: {[t.split(':')[1] for t in lod3_tags]}")
+    for tag in lod3_tags:
+        elem = building_elem.find(tag, NS)
+        if elem is not None:
+            has_lod3 = True
+            tag_name = tag.split(":")[-1]
+            found_tags.append(f"LOD3:{tag_name}")
+            print(f"[LOD DEBUG]   ✓ Found LOD3 tag: {tag_name}")
+            break
+
+    # Check LOD2 indicators
+    lod2_tags = [
+        ".//bldg:lod2Solid",
+        ".//bldg:lod2MultiSurface",
+        ".//bldg:lod2Geometry",
+    ]
+    print(f"[LOD DEBUG]   Searching for LOD2 tags: {[t.split(':')[1] for t in lod2_tags]}")
+    for tag in lod2_tags:
+        elem = building_elem.find(tag, NS)
+        if elem is not None:
+            has_lod2 = True
+            tag_name = tag.split(":")[-1]
+            found_tags.append(f"LOD2:{tag_name}")
+            print(f"[LOD DEBUG]   ✓ Found LOD2 tag: {tag_name}")
+            break
+
+    # Alternative detection: Check for BoundarySurface types
+    # LOD2/LOD3 buildings typically have WallSurface and RoofSurface
+    if not has_lod2 and not has_lod3:
+        print(f"[LOD DEBUG]   No direct LOD2/LOD3 tags found, checking BoundarySurfaces...")
+        boundary_tags = [
+            ".//bldg:WallSurface",
+            ".//bldg:RoofSurface",
+        ]
+        for tag in boundary_tags:
+            elem = building_elem.find(tag, NS)
+            if elem is not None:
+                has_lod2 = True  # At least LOD2
+                tag_name = tag.split(":")[-1]
+                found_tags.append(f"Boundary:{tag_name}")
+                print(f"[LOD DEBUG]   ✓ Found boundary surface: {tag_name} (implies LOD2)")
+                break
+
+    # Final result
+    result_str = []
+    if has_lod3:
+        result_str.append("LOD3")
+    if has_lod2:
+        result_str.append("LOD2")
+    if not result_str:
+        result_str.append("LOD1 or lower")
+
+    print(f"[LOD DEBUG]   Result: {', '.join(result_str)} | Tags found: {found_tags or 'none'}")
+
+    return (has_lod2, has_lod3)
+
+
 def find_nearest_building(
     buildings: List[BuildingInfo],
     target_latitude: float,
     target_longitude: float,
-    query: Optional[str] = None
+    name_query: Optional[str] = None,
+    search_mode: str = "hybrid"
 ) -> List[BuildingInfo]:
-    """Find and rank buildings by distance from target point.
+    """Find and rank buildings by composite relevance score.
 
-    Simple approach: Sort by distance only (nearest building wins).
+    Smart ranking approach that combines distance and name similarity:
+    - "distance": Sort by distance only (legacy behavior)
+    - "name": Sort by name similarity only (requires name_query)
+    - "hybrid": Combine distance (50%) + name similarity (50%) [DEFAULT]
 
     Process:
     1. Calculate distances from target point
-    2. Deduplicate by gml_id (removes duplicates)
-    3. Sort by distance (ascending)
+    2. Calculate name similarity scores (if name_query provided)
+    3. Compute composite relevance score based on search_mode
+    4. Deduplicate by gml_id (removes duplicates)
+    5. Sort by relevance score (descending) or distance (ascending)
 
     Args:
         buildings: List of BuildingInfo objects
         target_latitude: Target latitude
         target_longitude: Target longitude
-        query: Original search query (unused, kept for API compatibility)
+        name_query: Building name to search for (optional)
+        search_mode: Ranking strategy - "distance", "name", or "hybrid" (default)
 
     Returns:
-        List of BuildingInfo sorted by distance (nearest first),
-        with distance_meters field updated
+        List of BuildingInfo sorted by relevance (best match first),
+        with distance_meters, name_similarity, relevance_score, and match_reason fields updated
 
     Example:
         >>> buildings = parse_buildings_from_citygml(xml)
-        >>> sorted_buildings = find_nearest_building(buildings, 35.681236, 139.767125)
-        >>> nearest = sorted_buildings[0]
-        >>> print(f"Nearest: {nearest.building_id} at {nearest.distance_meters:.1f}m")
+        >>> # Distance-only search
+        >>> sorted_buildings = find_nearest_building(buildings, 35.681236, 139.767125, search_mode="distance")
+        >>> # Name-based search
+        >>> sorted_buildings = find_nearest_building(buildings, 35.681236, 139.767125, name_query="東京駅", search_mode="name")
+        >>> # Hybrid search (best of both)
+        >>> sorted_buildings = find_nearest_building(buildings, 35.681236, 139.767125, name_query="東京駅", search_mode="hybrid")
     """
     target_point = Point(target_longitude, target_latitude)
 
-    # Step 1: Calculate distances for all buildings
+    # Validate search_mode
+    valid_modes = ["distance", "name", "hybrid"]
+    if search_mode not in valid_modes:
+        print(f"[RANK] Invalid search_mode '{search_mode}', defaulting to 'hybrid'")
+        search_mode = "hybrid"
+
+    # If name mode but no query, fall back to distance mode
+    if search_mode == "name" and not name_query:
+        print(f"[RANK] Name search mode requires name_query, falling back to distance mode")
+        search_mode = "distance"
+
+    print(f"[RANK] Search mode: {search_mode}")
+    if name_query:
+        print(f"[RANK] Name query: '{name_query}'")
+
+    # Step 1: Calculate distances and normalize (0.0 = far, 1.0 = very close)
+    max_distance = 0.0
     for building in buildings:
         building_point = Point(building.longitude, building.latitude)
         dist_degrees = distance(target_point, building_point)
         building.distance_meters = float(dist_degrees) * 100000  # Rough conversion
+        max_distance = max(max_distance, building.distance_meters)
 
-    # Step 2: Deduplicate by gml_id (keep first occurrence)
+    # Normalize distances to 0-1 range (inverse: closer = higher score)
+    distance_scores = {}
+    for building in buildings:
+        if max_distance > 0:
+            # Inverse normalized distance (1.0 = closest, 0.0 = farthest)
+            distance_scores[building.gml_id] = 1.0 - (building.distance_meters / max_distance)
+        else:
+            distance_scores[building.gml_id] = 1.0
+
+    # Step 2: Calculate name similarity scores (if applicable)
+    name_scores = {}
+    has_name_matches = False
+    if name_query:
+        for building in buildings:
+            similarity = calculate_name_similarity(building.name, name_query)
+            name_scores[building.gml_id] = similarity
+            building.name_similarity = similarity
+            if similarity > 0.3:  # Threshold for "significant" match
+                has_name_matches = True
+
+        print(f"[RANK] Found {sum(1 for s in name_scores.values() if s > 0.3)} building(s) with significant name matches")
+
+    # Step 3: Compute composite relevance score
+    for building in buildings:
+        distance_score = distance_scores[building.gml_id]
+        name_score = name_scores.get(building.gml_id, 0.0)
+
+        if search_mode == "distance":
+            # Distance only (legacy behavior)
+            relevance = distance_score
+            reason = f"Distance-based ({building.distance_meters:.1f}m away)"
+        elif search_mode == "name":
+            # Name only
+            relevance = name_score
+            if name_score > 0.0:
+                reason = f"Name match (similarity: {name_score:.1%})"
+            else:
+                reason = "No name match"
+        else:  # hybrid
+            # Combine distance (50%) + name (50%)
+            # If name query is provided but building has no name, penalize slightly
+            if name_query and not building.name:
+                relevance = distance_score * 0.5  # Only distance component
+                reason = f"Distance only ({building.distance_meters:.1f}m away, no building name)"
+            else:
+                relevance = (distance_score * 0.5) + (name_score * 0.5)
+                if name_score > 0.3:
+                    reason = f"Name match ({name_score:.1%}) + Distance ({building.distance_meters:.1f}m)"
+                elif name_score > 0.0:
+                    reason = f"Weak name match ({name_score:.1%}) + Distance ({building.distance_meters:.1f}m)"
+                else:
+                    reason = f"Distance-based ({building.distance_meters:.1f}m away)"
+
+        building.relevance_score = relevance
+        building.match_reason = reason
+
+    # Step 4: Deduplicate by gml_id (keep first occurrence)
     # Also filter out buildings with unknown/invalid height (-9999 is PLATEAU's sentinel value)
     seen_ids = set()
     unique_buildings = []
@@ -693,15 +999,25 @@ def find_nearest_building(
     if unknown_height_removed > 0:
         print(f"[FILTER] Removed {unknown_height_removed} building(s) with unknown height")
 
-    # Step 3: Sort by distance (simplest approach - nearest building wins)
-    unique_buildings.sort(key=lambda b: b.distance_meters)
+    # Step 5: Sort by relevance score (descending) or distance (ascending)
+    if search_mode == "distance":
+        # Legacy behavior: sort by distance (ascending)
+        unique_buildings.sort(key=lambda b: b.distance_meters)
+        sort_desc = "distance (ascending)"
+    else:
+        # Sort by relevance score (descending - higher is better)
+        unique_buildings.sort(key=lambda b: b.relevance_score or 0.0, reverse=True)
+        sort_desc = "relevance score (descending)"
 
-    print(f"[SORT] Sorted {len(unique_buildings)} unique building(s) by distance")
+    print(f"[SORT] Sorted {len(unique_buildings)} unique building(s) by {sort_desc}")
     if unique_buildings:
-        nearest = unique_buildings[0]
-        height_str = f"{nearest.measured_height or nearest.height or 'unknown'}m"
-        print(f"[SORT] Nearest building: {nearest.building_id or nearest.gml_id[:20]}")
-        print(f"[SORT]   Distance: {nearest.distance_meters:.1f}m, Height: {height_str}")
+        best = unique_buildings[0]
+        height_str = f"{best.measured_height or best.height or 'unknown'}m"
+        name_str = f'"{best.name}"' if best.name else "unnamed"
+        print(f"[SORT] Best match: {best.building_id or best.gml_id[:20]}")
+        print(f"[SORT]   Name: {name_str}, Height: {height_str}")
+        print(f"[SORT]   Distance: {best.distance_meters:.1f}m, Relevance: {best.relevance_score:.3f}")
+        print(f"[SORT]   Reason: {best.match_reason}")
 
     return unique_buildings
 
@@ -709,38 +1025,50 @@ def find_nearest_building(
 def search_buildings_by_address(
     query: str,
     radius: float = 0.001,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    name_filter: Optional[str] = None,
+    search_mode: str = "hybrid"
 ) -> Dict[str, Any]:
-    """High-level function: Search buildings by address/facility name.
+    """High-level function: Search buildings by address/facility name with smart ranking.
 
     This function combines all steps:
     1. Geocode address to coordinates
     2. Fetch CityGML from PLATEAU
     3. Parse buildings
-    4. Sort by distance
+    4. Smart ranking by distance + name similarity (configurable)
 
     Args:
         query: Address or facility name
         radius: Search radius in degrees (default: 0.001 ≈ 100m)
         limit: Maximum number of buildings to return
+        name_filter: Building name to search for (optional, for name-based ranking)
+        search_mode: Ranking strategy - "distance", "name", or "hybrid" (default)
 
     Returns:
         Dictionary with:
         - success: bool
         - geocoding: GeocodingResult or None
-        - buildings: List[BuildingInfo] sorted by distance
+        - buildings: List[BuildingInfo] sorted by relevance
         - citygml_xml: str (CityGML XML content, only if success=True)
         - error: str (if success=False)
+        - search_mode: str (the mode used for ranking)
 
     Example:
-        >>> result = search_buildings_by_address("東京駅", radius=0.001, limit=10)
+        >>> # Distance-only search (legacy)
+        >>> result = search_buildings_by_address("東京駅", radius=0.001, limit=10, search_mode="distance")
+        >>> # Name-based search
+        >>> result = search_buildings_by_address("千代田区", radius=0.01, limit=20, name_filter="東京駅", search_mode="name")
+        >>> # Hybrid search (recommended)
+        >>> result = search_buildings_by_address("東京駅", radius=0.001, limit=10, name_filter="東京駅", search_mode="hybrid")
         >>> if result["success"]:
         ...     for building in result["buildings"]:
-        ...         print(f"{building.building_id}: {building.distance_meters:.1f}m")
+        ...         print(f"{building.building_id}: {building.match_reason}")
     """
     print(f"\n{'='*60}")
     print(f"[SEARCH] Query: {query}")
     print(f"[SEARCH] Radius: {radius} degrees (~{radius*100000:.0f}m)")
+    print(f"[SEARCH] Name filter: {name_filter or 'None'}")
+    print(f"[SEARCH] Search mode: {search_mode}")
     print(f"{'='*60}\n")
 
     # Step 1: Geocode
@@ -751,6 +1079,7 @@ def search_buildings_by_address(
             "geocoding": None,
             "buildings": [],
             "citygml_xml": None,
+            "search_mode": search_mode,
             "error": f"Address not found: {query}"
         }
 
@@ -766,6 +1095,7 @@ def search_buildings_by_address(
             "geocoding": geocoding,
             "buildings": [],
             "citygml_xml": None,
+            "search_mode": search_mode,
             "error": "Failed to fetch CityGML data from PLATEAU"
         }
 
@@ -777,14 +1107,17 @@ def search_buildings_by_address(
             "geocoding": geocoding,
             "buildings": [],
             "citygml_xml": xml_content,  # Include XML even if no buildings parsed
+            "search_mode": search_mode,
             "error": "No buildings found in PLATEAU data"
         }
 
-    # Step 4: Sort by distance
+    # Step 4: Smart ranking by distance + name similarity
     sorted_buildings = find_nearest_building(
         buildings,
         geocoding.latitude,
-        geocoding.longitude
+        geocoding.longitude,
+        name_query=name_filter,
+        search_mode=search_mode
     )
 
     # Apply limit
@@ -793,6 +1126,10 @@ def search_buildings_by_address(
 
     print(f"\n{'='*60}")
     print(f"[SEARCH] Success: Found {len(sorted_buildings)} building(s)")
+    if sorted_buildings:
+        best = sorted_buildings[0]
+        print(f"[SEARCH] Top result: {best.name or best.gml_id[:30]}")
+        print(f"[SEARCH]   Relevance: {best.relevance_score:.3f}, Reason: {best.match_reason}")
     print(f"{'='*60}\n")
 
     return {
@@ -800,6 +1137,7 @@ def search_buildings_by_address(
         "geocoding": geocoding,
         "buildings": sorted_buildings,
         "citygml_xml": xml_content,  # Include fetched XML to avoid re-fetching
+        "search_mode": search_mode,
         "error": None
     }
 

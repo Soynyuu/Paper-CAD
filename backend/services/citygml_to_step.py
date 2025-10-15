@@ -1645,6 +1645,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
     exterior_faces: List[TopoDS_Face] = []
 
+    # Log conversion start
+    print(f"[CONVERSION DEBUG] ═══ Starting LOD extraction for building: {elem_id[:40]} ═══")
+    print(f"[CONVERSION DEBUG] Precision mode: {precision_mode}, Shape fix level: {shape_fix_level}")
+
     # =========================================================================
     # LOD3 Extraction - Highest detail level (architectural models)
     # =========================================================================
@@ -1657,8 +1661,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     # Strategy 1: LOD3 Solid (most detailed solid structure)
     lod3_solid = elem.find(".//bldg:lod3Solid", NS)
     if lod3_solid is not None:
+        print(f"[CONVERSION DEBUG] Trying LOD3 Strategy 1: lod3Solid")
         solid_elem = lod3_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
+            print(f"[CONVERSION DEBUG]   ✓ Found bldg:lod3Solid//gml:Solid")
             if debug:
                 print(f"[LOD3] Found bldg:lod3Solid//gml:Solid in {elem_id}")
 
@@ -1667,6 +1673,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 solid_elem, xyz_transform, id_index, debug
             )
 
+            print(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
             if debug:
                 print(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
@@ -1677,15 +1684,22 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
+                    print(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED - Returning detailed LOD3 model")
                     if debug:
                         print(f"[LOD3] Solid processing successful, returning shape")
                     return result
                 else:
+                    print(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
                     if debug:
                         print(f"[LOD3] Solid shell building failed, trying other strategies...")
             else:
+                print(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy...")
                 if debug:
                     print(f"[LOD3] Solid extracted 0 faces, trying other strategies...")
+        else:
+            print(f"[CONVERSION DEBUG]   ✗ lod3Solid found but no gml:Solid child")
+    else:
+        print(f"[CONVERSION DEBUG] LOD3 Strategy 1: lod3Solid not found")
 
     # Strategy 2: LOD3 MultiSurface (multiple detailed surfaces)
     lod3_multi = elem.find(".//bldg:lod3MultiSurface", NS)
@@ -1768,10 +1782,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     # This is the most common LOD in PLATEAU datasets
 
     # Strategy 1: LOD2 Solid (standard gml:Solid structure)
+    print(f"[CONVERSION DEBUG] Falling back to LOD2 (PLATEAU's most common LOD)")
     lod2_solid = elem.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
+        print(f"[CONVERSION DEBUG] Trying LOD2 Strategy 1: lod2Solid")
         solid_elem = lod2_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
+            print(f"[CONVERSION DEBUG]   ✓ Found bldg:lod2Solid//gml:Solid")
             if debug:
                 print(f"[LOD2] Found bldg:lod2Solid//gml:Solid in {elem_id}")
 
@@ -1780,6 +1797,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 solid_elem, xyz_transform, id_index, debug
             )
 
+            print(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
             if debug:
                 print(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
@@ -1790,15 +1808,22 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
+                    print(f"[CONVERSION DEBUG]   ✓✓ LOD2 Strategy 1 SUCCEEDED - Returning LOD2 model")
                     if debug:
                         print(f"[LOD2] Solid processing successful, returning shape")
                     return result
                 else:
+                    print(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
                     if debug:
                         print(f"[LOD2] Solid shell building failed, trying other strategies...")
             else:
+                print(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (0 faces), trying next strategy...")
                 if debug:
                     print(f"[LOD2] Solid extracted 0 faces, trying other strategies...")
+        else:
+            print(f"[CONVERSION DEBUG]   ✗ lod2Solid found but no gml:Solid child")
+    else:
+        print(f"[CONVERSION DEBUG] LOD2 Strategy 1: lod2Solid not found")
 
     # Strategy 2: LOD2 MultiSurface (multiple independent surfaces)
     lod2_multi = elem.find(".//bldg:lod2MultiSurface", NS)
@@ -2067,17 +2092,21 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
                                     id_index: Optional[dict[str, ET.Element]] = None,
                                     debug: bool = False,
                                     precision_mode: str = "auto",
-                                    shape_fix_level: str = "standard") -> Optional["TopoDS_Shape"]:
+                                    shape_fix_level: str = "standard",
+                                    merge_building_parts: bool = True) -> Optional["TopoDS_Shape"]:
     """Extract LOD1 or LOD2 solid geometry from a building element.
 
     Now supports:
     - gml:Solid with exterior and interior shells (cavities)
-    - bldg:BuildingPart extraction and merging
+    - bldg:BuildingPart extraction and merging/fusion
     - XLink reference resolution (xlink:href)
     - Proper distinction between exterior and interior geometry
     - Precision mode control for detail preservation
+    - Optional fusion of BuildingParts into single solid
 
-    If the building has BuildingParts, all parts are extracted and merged into a Compound.
+    If the building has BuildingParts:
+    - merge_building_parts=True: Fuse all parts into single solid (recommended for visualization)
+    - merge_building_parts=False: Keep parts separate in a Compound (preserves original structure)
 
     Priority:
     1. LOD2 Solid (most detailed)
@@ -2090,6 +2119,8 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
         debug: Enable debug output
         precision_mode: Precision level for tolerance computation
         shape_fix_level: Shape fixing aggressiveness
+        merge_building_parts: If True, fuse multiple BuildingParts into single solid;
+                              if False, keep as compound (default: True)
 
     Returns the solid shape, compound of shapes, or None if not found.
     """
@@ -2107,20 +2138,122 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
     if len(shapes) == 1:
         return shapes[0]
 
-    # Multiple shapes: create a compound
+    # Multiple shapes: fuse or create compound based on parameter
+    if merge_building_parts:
+        if debug:
+            print(f"[BUILDING] Merging {len(shapes)} BuildingParts into single solid...")
+        return _fuse_shapes(shapes, debug)
+    else:
+        if debug:
+            print(f"[BUILDING] Keeping {len(shapes)} BuildingParts as separate shapes in compound...")
+        return _create_compound(shapes, debug)
+
+
+def _fuse_shapes(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Fuse multiple shapes into a single solid using Boolean union operations.
+
+    This function iteratively fuses shapes using BRepAlgoAPI_Fuse. If fusion fails,
+    it falls back to creating a compound.
+
+    Args:
+        shapes: List of TopoDS_Shape objects to fuse
+        debug: Enable debug output
+
+    Returns:
+        Fused solid shape, or compound if fusion fails, or None if all shapes are invalid
+    """
+    if not OCCT_AVAILABLE:
+        raise RuntimeError("OpenCASCADE (pythonocc-core) is required for shape fusion")
+
+    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
     from OCC.Core.BRep import BRep_Builder
     from OCC.Core.TopoDS import TopoDS_Compound
+
+    # Filter out None and null shapes
+    valid_shapes = [s for s in shapes if s is not None and not s.IsNull()]
+
+    if not valid_shapes:
+        if debug:
+            print("[FUSE] No valid shapes to fuse")
+        return None
+
+    if len(valid_shapes) == 1:
+        if debug:
+            print("[FUSE] Only one shape, returning as-is")
+        return valid_shapes[0]
+
+    if debug:
+        print(f"[FUSE] Attempting to fuse {len(valid_shapes)} shapes...")
+
+    try:
+        # Start with the first shape
+        result = valid_shapes[0]
+
+        # Iteratively fuse with remaining shapes
+        for i, shape in enumerate(valid_shapes[1:], start=2):
+            try:
+                fuse_op = BRepAlgoAPI_Fuse(result, shape)
+                if fuse_op.IsDone():
+                    result = fuse_op.Shape()
+                    if debug:
+                        print(f"[FUSE] Successfully fused shape {i}/{len(valid_shapes)}")
+                else:
+                    if debug:
+                        print(f"[FUSE] Fusion failed at shape {i}/{len(valid_shapes)}, falling back to compound")
+                    # Fallback to compound
+                    return _create_compound(valid_shapes, debug)
+            except Exception as e:
+                if debug:
+                    print(f"[FUSE] Exception during fusion at shape {i}/{len(valid_shapes)}: {e}")
+                # Fallback to compound
+                return _create_compound(valid_shapes, debug)
+
+        if debug:
+            print(f"[FUSE] Successfully fused all {len(valid_shapes)} shapes into single solid")
+
+        return result
+
+    except Exception as e:
+        if debug:
+            print(f"[FUSE] Fusion failed with exception: {e}, falling back to compound")
+        return _create_compound(valid_shapes, debug)
+
+
+def _create_compound(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optional["TopoDS_Shape"]:
+    """Create a compound from multiple shapes.
+
+    Args:
+        shapes: List of TopoDS_Shape objects
+        debug: Enable debug output
+
+    Returns:
+        Compound shape, or None if no valid shapes
+    """
+    from OCC.Core.BRep import BRep_Builder
+    from OCC.Core.TopoDS import TopoDS_Compound
+
+    # Filter out None and null shapes
+    valid_shapes = [s for s in shapes if s is not None and not s.IsNull()]
+
+    if not valid_shapes:
+        if debug:
+            print("[COMPOUND] No valid shapes to create compound")
+        return None
+
+    if len(valid_shapes) == 1:
+        if debug:
+            print("[COMPOUND] Only one shape, returning as-is")
+        return valid_shapes[0]
 
     builder = BRep_Builder()
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
 
-    for shp in shapes:
-        if shp is not None and not shp.IsNull():
-            builder.Add(compound, shp)
+    for shp in valid_shapes:
+        builder.Add(compound, shp)
 
     if debug:
-        print(f"Created compound with {len(shapes)} shapes (Building + BuildingParts)")
+        print(f"[COMPOUND] Created compound with {len(valid_shapes)} shapes")
 
     return compound
 
@@ -2416,6 +2549,108 @@ def _make_xyz_transformer(source_crs: str, target_crs: str):
     return tx
 
 
+def _filter_buildings_by_coordinates(
+    buildings: List[ET.Element],
+    target_latitude: float,
+    target_longitude: float,
+    radius_meters: float,
+    debug: bool = False
+) -> List[ET.Element]:
+    """Filter buildings by distance from target coordinates.
+
+    Args:
+        buildings: List of bldg:Building elements
+        target_latitude: Target latitude (WGS84)
+        target_longitude: Target longitude (WGS84)
+        radius_meters: Maximum distance in meters
+        debug: Enable debug output
+
+    Returns:
+        Filtered list of building elements within radius
+    """
+    from shapely.geometry import Point
+    from shapely import distance as shapely_distance
+
+    target_point = Point(target_longitude, target_latitude)
+    filtered: List[ET.Element] = []
+
+    if debug:
+        print(f"[COORD FILTER] Target: ({target_latitude}, {target_longitude})")
+        print(f"[COORD FILTER] Radius: {radius_meters}m")
+
+    for building in buildings:
+        # Extract coordinates from building
+        coords = _extract_building_coordinates_from_element(building)
+        if not coords:
+            if debug:
+                gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"[COORD FILTER] Skipping {gml_id}: No coordinates found")
+            continue
+
+        lat, lon = coords
+        building_point = Point(lon, lat)
+
+        # Calculate distance (in degrees, then convert to meters)
+        dist_degrees = shapely_distance(target_point, building_point)
+        dist_meters = float(dist_degrees) * 100000  # Rough conversion
+
+        if dist_meters <= radius_meters:
+            filtered.append(building)
+            if debug:
+                gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
+                print(f"[COORD FILTER] ✓ {gml_id[:20]}: {dist_meters:.1f}m (within {radius_meters}m)")
+        elif debug:
+            gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
+            print(f"[COORD FILTER] ✗ {gml_id[:20]}: {dist_meters:.1f}m (exceeds {radius_meters}m)")
+
+    if debug:
+        print(f"[COORD FILTER] Filtered: {len(buildings)} → {len(filtered)} buildings")
+
+    return filtered
+
+
+def _extract_building_coordinates_from_element(building_elem: ET.Element) -> Optional[Tuple[float, float]]:
+    """Extract representative coordinates for a building element.
+
+    Priority:
+    1. lod0FootPrint
+    2. lod0RoofEdge
+    3. First posList in any geometry
+
+    Returns:
+        (latitude, longitude) tuple or None
+    """
+    # Try footprint/roof edge polygons
+    for tag in [".//bldg:lod0FootPrint", ".//bldg:lod0RoofEdge"]:
+        elem = building_elem.find(tag, NS)
+        if elem is not None:
+            poslist = elem.find(".//gml:posList", NS)
+            if poslist is not None and poslist.text:
+                coords = _parse_poslist(poslist)  # Pass element, not text
+                if coords:
+                    # Return first coordinate
+                    x, y, _ = coords[0]
+                    # Check if this looks like lat/lon (WGS84)
+                    if 20 <= x <= 50 and 120 <= y <= 155:
+                        return (x, y)
+                    elif 120 <= x <= 155 and 20 <= y <= 50:
+                        return (y, x)  # Swapped
+
+    # Fallback: any posList
+    poslist = building_elem.find(".//gml:posList", NS)
+    if poslist is not None and poslist.text:
+        coords = _parse_poslist(poslist)  # Pass element, not text
+        if coords:
+            x, y, _ = coords[0]
+            # Guess order based on Japan coordinates
+            if 20 <= x <= 50 and 120 <= y <= 155:
+                return (x, y)
+            elif 120 <= x <= 155 and 20 <= y <= 50:
+                return (y, x)
+
+    return None
+
+
 def export_step_from_citygml(
     gml_path: str,
     out_step: str,
@@ -2430,6 +2665,10 @@ def export_step_from_citygml(
     shape_fix_level: str = "minimal",
     building_ids: Optional[List[str]] = None,
     filter_attribute: str = "gml:id",
+    merge_building_parts: bool = True,
+    target_latitude: Optional[float] = None,
+    target_longitude: Optional[float] = None,
+    radius_meters: float = 100,
 ) -> Tuple[bool, str]:
     """High-level pipeline: CityGML → STEP with precision control.
 
@@ -2461,6 +2700,15 @@ def export_step_from_citygml(
         filter_attribute: Attribute to match building_ids against
             - "gml:id": Match against gml:id attribute (default)
             - Other: Match against generic attribute with this name (e.g., "buildingID")
+        merge_building_parts: Fuse multiple BuildingParts into single solid using Boolean union
+            - True: Merge all BuildingParts into one solid (default, recommended for most use cases)
+            - False: Keep BuildingParts as separate shapes in a compound
+        target_latitude: Target latitude for coordinate-based filtering (WGS84)
+        target_longitude: Target longitude for coordinate-based filtering (WGS84)
+        radius_meters: Radius in meters for coordinate-based filtering (default: 100m)
+            - If target_latitude/longitude are specified, only buildings within this radius are processed
+            - Takes priority over building_ids filtering if both are specified
+            - Simplifies workflow by eliminating ID mismatch issues
 
     Returns:
         Tuple of (success, message or output_path)
@@ -2477,8 +2725,20 @@ def export_step_from_citygml(
     root = tree.getroot()
     bldgs = root.findall(".//bldg:Building", NS)
 
-    # Apply building ID filtering if specified
-    if building_ids:
+    # Apply coordinate-based filtering if specified (takes priority over building_ids)
+    if target_latitude is not None and target_longitude is not None:
+        original_count = len(bldgs)
+        bldgs = _filter_buildings_by_coordinates(
+            bldgs, target_latitude, target_longitude, radius_meters, debug
+        )
+        if debug:
+            print(f"[COORD FILTER] Result: {original_count} → {len(bldgs)} buildings within {radius_meters}m")
+
+        if not bldgs:
+            return False, f"No buildings found within {radius_meters}m of ({target_latitude}, {target_longitude})"
+
+    # Apply building ID filtering if specified (only if coordinate filtering not used)
+    elif building_ids:
         original_count = len(bldgs)
         bldgs = _filter_buildings(bldgs, building_ids, filter_attribute)
         if debug:
@@ -2551,7 +2811,8 @@ def export_step_from_citygml(
                     id_index=id_index,
                     debug=debug,
                     precision_mode=precision_mode,
-                    shape_fix_level=shape_fix_level
+                    shape_fix_level=shape_fix_level,
+                    merge_building_parts=merge_building_parts
                 )
                 if shp is not None and not shp.IsNull():
                     shapes.append(shp)

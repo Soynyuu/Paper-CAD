@@ -1931,9 +1931,12 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             faces_before = len(exterior_faces)
             found_geometry = False
 
-            # Method 1: Check for lod2MultiSurface or lod2Geometry within each bounded surface
-            for lod2_tag in [".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
-                surf_geom = surf.find(lod2_tag, NS)
+            # Method 1: Check for LOD-specific wrappers (LOD3 and LOD2) within each bounded surface
+            # LOD3 has priority for more detailed geometry (walls, roofs with architectural details)
+            # Fix for issue #48: Support LOD3 WallSurface extraction to prevent wall omissions
+            for lod_tag in [".//bldg:lod3MultiSurface", ".//bldg:lod3Geometry",
+                           ".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
+                surf_geom = surf.find(lod_tag, NS)
                 if surf_geom is not None:
                     found_geometry = True
                     for surface_container in surf_geom.findall(".//gml:MultiSurface", NS) + surf_geom.findall(".//gml:CompositeSurface", NS):

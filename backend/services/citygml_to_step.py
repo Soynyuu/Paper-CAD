@@ -1938,10 +1938,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                            ".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
                 surf_geom = surf.find(lod_tag, NS)
                 if surf_geom is not None:
-                    found_geometry = True
+                    faces_extracted_before = len(exterior_faces)
                     for surface_container in surf_geom.findall(".//gml:MultiSurface", NS) + surf_geom.findall(".//gml:CompositeSurface", NS):
                         faces_bounded = _extract_faces_from_surface_container(surface_container, xyz_transform, id_index, debug)
                         exterior_faces.extend(faces_bounded)
+                    # Only mark as found if we actually extracted faces
+                    if len(exterior_faces) > faces_extracted_before:
+                        found_geometry = True
+                        break  # Successfully extracted, no need to try other LOD tags
 
             # Method 2: Fallback - Check for direct gml:MultiSurface or gml:CompositeSurface children
             # Some PLATEAU buildings have geometry directly without LOD-specific wrappers

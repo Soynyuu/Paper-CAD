@@ -101,15 +101,24 @@ export class SimplePDFExporter {
 
         console.log("Page dimensions (mm):", { pageWidth, pageHeight, printableWidth, printableHeight });
 
-        // Get original SVG width (constant across all pages)
-        const svgInfo = this.getSVGDimensions(svgElement);
-        const svgWidthPx = svgInfo.width;
+        // Get original SVG width from page-border element (more reliable for multi-page SVGs)
+        // SVG-Edit may modify the root SVG dimensions, but page-border rects preserve original backend dimensions
+        const firstPageBorder = svgElement.querySelector(".page-border") as SVGRectElement;
+        if (!firstPageBorder) {
+            throw new Error("Page border element not found in multi-page SVG");
+        }
+        const svgWidthPx = parseFloat(firstPageBorder.getAttribute("width") || "0");
+        if (svgWidthPx === 0 || isNaN(svgWidthPx)) {
+            throw new Error("Invalid page width from page-border element");
+        }
 
         // Use the same conversion factor as single-page PDF for consistency
         // 96 DPI: 1 inch = 25.4mm, 1px = 25.4/96mm ≈ 0.264583mm
         const pxToMm = 0.264583;
 
-        console.log(`SVG width: ${svgWidthPx}px, conversion factor: ${pxToMm} mm/px`);
+        console.log(
+            `SVG width from page-border: ${svgWidthPx}px (root SVG may be incorrect), conversion factor: ${pxToMm} mm/px`,
+        );
 
         // Create PDF (first page will be added automatically)
         const pdf = new jsPDF({

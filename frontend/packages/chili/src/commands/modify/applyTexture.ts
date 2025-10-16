@@ -63,6 +63,7 @@ export class TextureParameters {
         return {
             patternId: this.patternId,
             tileCount: this.tileCount,
+            rotation: 0, // 初期回転は0度
             imageUrl: `textures/${this.patternId}.png`,
             repeat: { x: this.tileCount, y: this.tileCount },
         };
@@ -136,10 +137,11 @@ export class ApplyTextureCommand implements ICommand {
         console.log("[ApplyTextureCommand] Texture parameters selected:", {
             patternId: textureResult.patternId,
             tileCount: textureResult.tileCount,
+            rotation: textureResult.rotation,
         });
 
-        // Step 4: テクスチャを適用
-        await this.applyTextureDirectly(document);
+        // Step 4: テクスチャを適用（回転も含めて）
+        await this.applyTextureDirectlyWithRotation(document, textureResult.rotation);
     }
 
     /**
@@ -186,12 +188,14 @@ export class ApplyTextureCommand implements ICommand {
     }
 
     /**
-     * テクスチャを直接適用（確認ダイアログ済み）
+     * テクスチャを直接適用（確認ダイアログ済み、回転付き）
      */
-    private async applyTextureDirectly(document: IDocument): Promise<void> {
+    private async applyTextureDirectlyWithRotation(document: IDocument, rotation: number): Promise<void> {
         // トランザクション内でテクスチャを適用
         Transaction.execute(document, "applyTexture", () => {
             const textureData = this.parameters.toTextureData();
+            // 回転角度を設定
+            textureData.rotation = rotation;
 
             // FaceTextureServiceに保存
             this.faceNumbers.forEach((faceNumber) => {
@@ -202,8 +206,17 @@ export class ApplyTextureCommand implements ICommand {
             this.applyMaterialToFaces(document, textureData);
         });
 
-        console.log(`Applied texture to ${this.faceNumbers.length} faces`);
-        console.log(`[ApplyTextureCommand] Applied texture to ${this.faceNumbers.length} faces`);
+        console.log(`Applied texture to ${this.faceNumbers.length} faces with rotation ${rotation}°`);
+        console.log(
+            `[ApplyTextureCommand] Applied texture to ${this.faceNumbers.length} faces with rotation ${rotation}°`,
+        );
+    }
+
+    /**
+     * テクスチャを直接適用（確認ダイアログ済み）
+     */
+    private async applyTextureDirectly(document: IDocument): Promise<void> {
+        await this.applyTextureDirectlyWithRotation(document, 0);
     }
 
     /**
@@ -309,6 +322,22 @@ export class ApplyTextureCommand implements ICommand {
                 }));
 
                 geometryNode.addFaceMaterial(pairs);
+
+                // ThreeGeometryのdisplayにもテクスチャを適用（回転編集用）
+                const display = geometryNode.display;
+                if (display && typeof (display as any).applyTextureToFace === "function") {
+                    // 全てのテクスチャを非同期で適用
+                    Promise.all(
+                        faceIndices.map(async (faceIndex) => {
+                            console.log(
+                                `[ApplyTextureCommand] Applying texture to ThreeGeometry face ${faceIndex}`,
+                            );
+                            await (display as any).applyTextureToFace(faceIndex, textureData);
+                        }),
+                    ).then(() => {
+                        console.log(`[ApplyTextureCommand] All textures applied to ThreeGeometry`);
+                    });
+                }
             });
 
             // ドキュメント全体の再描画をトリガー

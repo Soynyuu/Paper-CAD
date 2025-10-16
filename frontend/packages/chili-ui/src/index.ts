@@ -10,4 +10,5 @@ export * from "./plateauBuildingSelectionDialog";
 export * from "./plateauSearchDialog";
 export * from "./property";
 export * from "./stepUnfold";
+export * from "./textureRotationToolbar";
 export * from "./textureSelectionDialog";

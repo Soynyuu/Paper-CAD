@@ -4,11 +4,13 @@
 import { button, div, img, input, label, option, select, span } from "chili-controls";
 import { I18n } from "chili-core";
 import { TexturePatternManager, TexturePattern } from "../stepUnfold/texturePatternManager";
+import { RotationControl } from "./rotationControl";
 import style from "./textureSelectionDialog.module.css";
 
 export interface TextureSelectionResult {
     patternId: string;
     tileCount: number;
+    rotation: number; // 0-360 degrees
     confirmed: boolean;
 }
 
@@ -17,12 +19,16 @@ export interface TextureSelectionResult {
  */
 export class TextureSelectionDialog extends HTMLElement {
     private patternManager: TexturePatternManager;
-    private selectedPatternId: string = "grass";
+    private selectedPatternId: string = "brick";
     private tileCount: number = 5;
+    private rotation: number = 0; // 0-360 degrees
     private patternSelector!: HTMLSelectElement;
     private previewContainer!: HTMLDivElement;
     private tileCountInput!: HTMLInputElement;
     private tileCountLabel!: HTMLSpanElement;
+    private rotationControl!: RotationControl;
+    private rotationSlider!: HTMLInputElement;
+    private rotationInput!: HTMLInputElement;
     private applyButton!: HTMLButtonElement;
     private cancelButton!: HTMLButtonElement;
     private dialog!: HTMLDialogElement;
@@ -130,6 +136,86 @@ export class TextureSelectionDialog extends HTMLElement {
         tileSection.appendChild(tileControls);
         container.appendChild(tileSection);
 
+        // Rotation section
+        const rotationSection = div({ className: style.section });
+        rotationSection.appendChild(
+            label({
+                className: style.label,
+                textContent: "回転:",
+            }),
+        );
+
+        // Circular rotation control
+        this.rotationControl = new RotationControl();
+        this.rotationControl.onChange((angle) => {
+            this.rotation = angle;
+            this.rotationSlider.value = angle.toString();
+            this.rotationInput.value = Math.round(angle).toString();
+            this.updatePreview();
+        });
+        rotationSection.appendChild(this.rotationControl);
+
+        // Preset angle buttons
+        const presetButtons = div({ className: style.presetButtons });
+        const presetAngles = [0, 45, 90, 135, 180];
+        presetAngles.forEach((angle) => {
+            const btn = button({
+                className: style.presetButton,
+                textContent: `${angle}°`,
+                onclick: () => this.setRotation(angle),
+            });
+            presetButtons.appendChild(btn);
+        });
+        rotationSection.appendChild(presetButtons);
+
+        // Fine-tune controls (slider + input)
+        const finetuneLabel = label({
+            className: style.finetuneLabel,
+            textContent: "精密調整:",
+        });
+        rotationSection.appendChild(finetuneLabel);
+
+        const finetuneControls = div({ className: style.finetuneControls });
+
+        this.rotationSlider = input({
+            type: "range",
+            min: "0",
+            max: "360",
+            value: "0",
+            step: "1",
+            className: style.rotationSlider,
+            oninput: this.onRotationSliderChange.bind(this),
+        });
+
+        this.rotationInput = input({
+            type: "number",
+            min: "0",
+            max: "360",
+            value: "0",
+            className: style.rotationInput,
+            oninput: this.onRotationInputChange.bind(this),
+        });
+
+        const degreeLabel = span({
+            className: style.degreeLabel,
+            textContent: "°",
+        });
+
+        const resetButton = button({
+            className: style.resetButton,
+            textContent: "🔄",
+            title: "リセット",
+            onclick: () => this.setRotation(0),
+        });
+
+        finetuneControls.appendChild(this.rotationSlider);
+        finetuneControls.appendChild(this.rotationInput);
+        finetuneControls.appendChild(degreeLabel);
+        finetuneControls.appendChild(resetButton);
+        rotationSection.appendChild(finetuneControls);
+
+        container.appendChild(rotationSection);
+
         // Buttons
         const buttonSection = div({ className: style.buttonSection });
 
@@ -228,6 +314,34 @@ export class TextureSelectionDialog extends HTMLElement {
         this.debouncedUpdatePreview();
     }
 
+    private setRotation(angle: number) {
+        this.rotation = angle;
+        this.rotationControl.setAngle(angle);
+        this.rotationSlider.value = angle.toString();
+        this.rotationInput.value = Math.round(angle).toString();
+        this.updatePreview();
+    }
+
+    private onRotationSliderChange(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const angle = parseFloat(input.value);
+        this.rotation = angle;
+        this.rotationControl.setAngle(angle);
+        this.rotationInput.value = Math.round(angle).toString();
+        this.updatePreview();
+    }
+
+    private onRotationInputChange(event: Event) {
+        const input = event.target as HTMLInputElement;
+        let angle = parseFloat(input.value) || 0;
+        // Clamp to 0-360
+        angle = ((angle % 360) + 360) % 360;
+        this.rotation = angle;
+        this.rotationControl.setAngle(angle);
+        this.rotationSlider.value = angle.toString();
+        this.updatePreview();
+    }
+
     private debouncedUpdatePreview() {
         // Clear existing timeout to debounce rapid changes
         if (this.updatePreviewTimeoutId) {
@@ -270,6 +384,9 @@ export class TextureSelectionDialog extends HTMLElement {
         this.previewImage.alt = pattern.name;
         this.previewImage.style.backgroundImage = `url(${imageUrl})`;
         this.previewImage.style.backgroundSize = `${tileSize}px ${tileSize}px`;
+
+        // Apply rotation to preview
+        this.previewImage.style.transform = `rotate(${this.rotation}deg)`;
     }
 
     private onApply() {
@@ -277,6 +394,7 @@ export class TextureSelectionDialog extends HTMLElement {
             this.resolvePromise({
                 patternId: this.selectedPatternId,
                 tileCount: this.tileCount,
+                rotation: this.rotation,
                 confirmed: true,
             });
         }
@@ -288,6 +406,7 @@ export class TextureSelectionDialog extends HTMLElement {
             this.resolvePromise({
                 patternId: this.selectedPatternId,
                 tileCount: this.tileCount,
+                rotation: this.rotation,
                 confirmed: false,
             });
         }

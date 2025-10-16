@@ -183,6 +183,7 @@ export default {
         "file.format": "フォーマット",
         "home.recent": "最近使用したファイル",
         "home.welcome": "Paper-CADへようこそ",
+        "home.createFromAddress": "建物名・住所から模型を作成",
         "items.header": "アイテム",
         "items.tool.delete": "削除",
         "items.tool.expandAll": "すべて展開",

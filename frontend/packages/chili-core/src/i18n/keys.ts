@@ -179,6 +179,7 @@ const I18N_KEYS = [
     "file.format",
     "home.recent",
     "home.welcome",
+    "home.createFromAddress",
     "items.header",
     "items.tool.delete",
     "items.tool.expandAll",

@@ -32,6 +32,11 @@ const applicationCommands = new ObservableCollection<ApplicationCommand>(
         display: "command.doc.open",
         onclick: () => PubSub.default.pub("executeCommand", "doc.open"),
     },
+    {
+        display: "home.createFromAddress",
+        icon: "icon-search-location",
+        onclick: () => PubSub.default.pub("executeCommand", "file.importCityGMLByAddress"),
+    },
 );
 
 export class Home extends HTMLElement {

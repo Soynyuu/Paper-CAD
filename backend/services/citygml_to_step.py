@@ -1695,21 +1695,21 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     # Strategy 1: LOD3 Solid (most detailed solid structure)
     lod3_solid = elem.find(".//bldg:lod3Solid", NS)
     if lod3_solid is not None:
-        print(f"[CONVERSION DEBUG] Trying LOD3 Strategy 1: lod3Solid")
+        log(f"[CONVERSION DEBUG] Trying LOD3 Strategy 1: lod3Solid")
         solid_elem = lod3_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
-            print(f"[CONVERSION DEBUG]   ✓ Found bldg:lod3Solid//gml:Solid")
+            log(f"[CONVERSION DEBUG]   ✓ Found bldg:lod3Solid//gml:Solid")
             if debug:
-                print(f"[LOD3] Found bldg:lod3Solid//gml:Solid in {elem_id}")
+                log(f"[LOD3] Found bldg:lod3Solid//gml:Solid in {elem_id}")
 
             # Extract exterior and interior shells
             exterior_faces_solid, interior_shells_faces = _extract_solid_shells(
                 solid_elem, xyz_transform, id_index, debug
             )
 
-            print(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+            log(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
             if debug:
-                print(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+                log(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
             if exterior_faces_solid:
                 # Build solid with cavities (adaptive tolerance)
@@ -1725,23 +1725,23 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         log_file.close()
                     return result
                 else:
-                    print(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
+                    log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
                     if debug:
-                        print(f"[LOD3] Solid shell building failed, trying other strategies...")
+                        log(f"[LOD3] Solid shell building failed, trying other strategies...")
             else:
-                print(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy...")
+                log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy...")
                 if debug:
-                    print(f"[LOD3] Solid extracted 0 faces, trying other strategies...")
+                    log(f"[LOD3] Solid extracted 0 faces, trying other strategies...")
         else:
-            print(f"[CONVERSION DEBUG]   ✗ lod3Solid found but no gml:Solid child")
+            log(f"[CONVERSION DEBUG]   ✗ lod3Solid found but no gml:Solid child")
     else:
-        print(f"[CONVERSION DEBUG] LOD3 Strategy 1: lod3Solid not found")
+        log(f"[CONVERSION DEBUG] LOD3 Strategy 1: lod3Solid not found")
 
     # Strategy 2: LOD3 MultiSurface (multiple detailed surfaces)
     lod3_multi = elem.find(".//bldg:lod3MultiSurface", NS)
     if lod3_multi is not None:
         if debug:
-            print(f"[LOD3] Found bldg:lod3MultiSurface in {elem_id}")
+            log(f"[LOD3] Found bldg:lod3MultiSurface in {elem_id}")
 
         # Look for MultiSurface or CompositeSurface
         for surface_container in lod3_multi.findall(".//gml:MultiSurface", NS) + lod3_multi.findall(".//gml:CompositeSurface", NS):
@@ -1749,7 +1749,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             exterior_faces.extend(faces_multi)
 
         if debug:
-            print(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
+            log(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
             # Build solid from collected faces
@@ -1765,7 +1765,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 return result
             else:
                 if debug:
-                    print(f"[LOD3] MultiSurface shell building failed, trying other strategies...")
+                    log(f"[LOD3] MultiSurface shell building failed, trying other strategies...")
                 # Clear for next strategy
                 exterior_faces = []
 
@@ -1773,7 +1773,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     lod3_geom = elem.find(".//bldg:lod3Geometry", NS)
     if lod3_geom is not None:
         if debug:
-            print(f"[LOD3] Found bldg:lod3Geometry in {elem_id}")
+            log(f"[LOD3] Found bldg:lod3Geometry in {elem_id}")
 
         # Try to find any surface structures
         for surface_container in (
@@ -1791,7 +1791,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 exterior_faces.extend(faces_geom)
 
         if debug:
-            print(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
+            log(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
             result = _make_solid_with_cavities(
@@ -1800,15 +1800,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
             if result is not None:
                 if debug:
-                    print(f"[LOD3] Geometry processing successful, returning shape")
+                    log(f"[LOD3] Geometry processing successful, returning shape")
                 return result
             else:
                 if debug:
-                    print(f"[LOD3] Geometry shell building failed, trying LOD2...")
+                    log(f"[LOD3] Geometry shell building failed, trying LOD2...")
                 exterior_faces = []
 
     if debug and not exterior_faces:
-        print(f"[LOD3] No LOD3 geometry found, falling back to LOD2 for {elem_id}")
+        log(f"[LOD3] No LOD3 geometry found, falling back to LOD2 for {elem_id}")
 
     # =========================================================================
     # LOD2 Extraction - Try multiple strategies
@@ -1820,24 +1820,24 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     # This is the most common LOD in PLATEAU datasets
 
     # Strategy 1: LOD2 Solid (standard gml:Solid structure)
-    print(f"[CONVERSION DEBUG] Falling back to LOD2 (PLATEAU's most common LOD)")
+    log(f"[CONVERSION DEBUG] Falling back to LOD2 (PLATEAU's most common LOD)")
     lod2_solid = elem.find(".//bldg:lod2Solid", NS)
     if lod2_solid is not None:
-        print(f"[CONVERSION DEBUG] Trying LOD2 Strategy 1: lod2Solid")
+        log(f"[CONVERSION DEBUG] Trying LOD2 Strategy 1: lod2Solid")
         solid_elem = lod2_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
-            print(f"[CONVERSION DEBUG]   ✓ Found bldg:lod2Solid//gml:Solid")
+            log(f"[CONVERSION DEBUG]   ✓ Found bldg:lod2Solid//gml:Solid")
             if debug:
-                print(f"[LOD2] Found bldg:lod2Solid//gml:Solid in {elem_id}")
+                log(f"[LOD2] Found bldg:lod2Solid//gml:Solid in {elem_id}")
 
             # Extract exterior and interior shells
             exterior_faces_solid, interior_shells_faces = _extract_solid_shells(
                 solid_elem, xyz_transform, id_index, debug
             )
 
-            print(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+            log(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
             if debug:
-                print(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+                log(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
             if exterior_faces_solid:
                 # Build solid with cavities (adaptive tolerance)
@@ -1846,28 +1846,28 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
-                    print(f"[CONVERSION DEBUG]   ✓✓ LOD2 Strategy 1 SUCCEEDED - Returning LOD2 model")
+                    log(f"[CONVERSION DEBUG]   ✓✓ LOD2 Strategy 1 SUCCEEDED - Returning LOD2 model")
                     if debug:
-                        print(f"[LOD2] Solid processing successful, returning shape")
+                        log(f"[LOD2] Solid processing successful, returning shape")
                     return result
                 else:
-                    print(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
+                    log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
                     if debug:
-                        print(f"[LOD2] Solid shell building failed, trying other strategies...")
+                        log(f"[LOD2] Solid shell building failed, trying other strategies...")
             else:
-                print(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (0 faces), trying next strategy...")
+                log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (0 faces), trying next strategy...")
                 if debug:
-                    print(f"[LOD2] Solid extracted 0 faces, trying other strategies...")
+                    log(f"[LOD2] Solid extracted 0 faces, trying other strategies...")
         else:
-            print(f"[CONVERSION DEBUG]   ✗ lod2Solid found but no gml:Solid child")
+            log(f"[CONVERSION DEBUG]   ✗ lod2Solid found but no gml:Solid child")
     else:
-        print(f"[CONVERSION DEBUG] LOD2 Strategy 1: lod2Solid not found")
+        log(f"[CONVERSION DEBUG] LOD2 Strategy 1: lod2Solid not found")
 
     # Strategy 2: LOD2 MultiSurface (multiple independent surfaces)
     lod2_multi = elem.find(".//bldg:lod2MultiSurface", NS)
     if lod2_multi is not None:
         if debug:
-            print(f"[LOD2] Found bldg:lod2MultiSurface in {elem_id}")
+            log(f"[LOD2] Found bldg:lod2MultiSurface in {elem_id}")
 
         # Look for MultiSurface or CompositeSurface
         for surface_container in lod2_multi.findall(".//gml:MultiSurface", NS) + lod2_multi.findall(".//gml:CompositeSurface", NS):
@@ -1875,7 +1875,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             exterior_faces.extend(faces_multi)
 
         if debug:
-            print(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
+            log(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
             # Build solid from collected faces
@@ -1885,11 +1885,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
             if result is not None:
                 if debug:
-                    print(f"[LOD2] MultiSurface processing successful, returning shape")
+                    log(f"[LOD2] MultiSurface processing successful, returning shape")
                 return result
             else:
                 if debug:
-                    print(f"[LOD2] MultiSurface shell building failed, trying other strategies...")
+                    log(f"[LOD2] MultiSurface shell building failed, trying other strategies...")
                 # Clear for next strategy
                 exterior_faces = []
 
@@ -1897,7 +1897,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     lod2_geom = elem.find(".//bldg:lod2Geometry", NS)
     if lod2_geom is not None:
         if debug:
-            print(f"[LOD2] Found bldg:lod2Geometry in {elem_id}")
+            log(f"[LOD2] Found bldg:lod2Geometry in {elem_id}")
 
         # Try to find any surface structures
         for surface_container in (
@@ -1915,7 +1915,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 exterior_faces.extend(faces_geom)
 
         if debug:
-            print(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
+            log(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
             result = _make_solid_with_cavities(
@@ -1924,11 +1924,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
             if result is not None:
                 if debug:
-                    print(f"[LOD2] Geometry processing successful, returning shape")
+                    log(f"[LOD2] Geometry processing successful, returning shape")
                 return result
             else:
                 if debug:
-                    print(f"[LOD2] Geometry shell building failed, trying other strategies...")
+                    log(f"[LOD2] Geometry shell building failed, trying other strategies...")
                 exterior_faces = []
 
     # Strategy 4: LOD2/LOD3 boundedBy surfaces (all CityGML 2.0 boundary surface types)
@@ -1950,7 +1950,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     )
     if bounded_surfaces:
         if debug:
-            print(f"[LOD2/LOD3] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
+            log(f"[LOD2/LOD3] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
             surface_stats = {
                 "WallSurface": 0, "RoofSurface": 0, "GroundSurface": 0,
                 "OuterCeilingSurface": 0, "OuterFloorSurface": 0, "ClosureSurface": 0
@@ -2044,9 +2044,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         log(f"  [{surf_type}] ✗ No geometry found - all 3 methods failed")
 
         if debug:
-            print(f"[LOD2] boundedBy extraction summary:")
-            print(f"  - Total surfaces: {len(bounded_surfaces)} (Wall: {surface_stats.get('WallSurface', 0)}, Roof: {surface_stats.get('RoofSurface', 0)}, Ground: {surface_stats.get('GroundSurface', 0)}, OuterCeiling: {surface_stats.get('OuterCeilingSurface', 0)}, OuterFloor: {surface_stats.get('OuterFloorSurface', 0)}, Closure: {surface_stats.get('ClosureSurface', 0)})")
-            print(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
+            log(f"[LOD2] boundedBy extraction summary:")
+            log(f"  - Total surfaces: {len(bounded_surfaces)} (Wall: {surface_stats.get('WallSurface', 0)}, Roof: {surface_stats.get('RoofSurface', 0)}, Ground: {surface_stats.get('GroundSurface', 0)}, OuterCeiling: {surface_stats.get('OuterCeilingSurface', 0)}, OuterFloor: {surface_stats.get('OuterFloorSurface', 0)}, Closure: {surface_stats.get('ClosureSurface', 0)})")
+            log(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
 
         if exterior_faces:
             result = _make_solid_with_cavities(
@@ -2062,10 +2062,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 return result
             else:
                 if debug:
-                    print(f"[LOD2] boundedBy shell building failed")
+                    log(f"[LOD2] boundedBy shell building failed")
 
     if debug and not exterior_faces:
-        print(f"[LOD2] No LOD2 geometry found, falling back to LOD1 for {elem_id}")
+        log(f"[LOD2] No LOD2 geometry found, falling back to LOD1 for {elem_id}")
 
     # =========================================================================
     # LOD1 Fallback
@@ -2081,7 +2081,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
         solid_elem = lod1_solid.find(".//gml:Solid", NS)
         if solid_elem is not None:
             if debug:
-                print(f"[LOD1] Found bldg:lod1Solid//gml:Solid in {elem_id}")
+                log(f"[LOD1] Found bldg:lod1Solid//gml:Solid in {elem_id}")
 
             # Extract exterior and interior shells
             exterior_faces_lod1, interior_shells_lod1 = _extract_solid_shells(

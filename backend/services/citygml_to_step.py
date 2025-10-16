@@ -1846,10 +1846,75 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
-                    log(f"[CONVERSION DEBUG]   ✓✓ LOD2 Strategy 1 SUCCEEDED - Returning LOD2 model")
+                    log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 1 (lod2Solid) SUCCEEDED with {len(exterior_faces_solid)} faces")
                     if debug:
-                        log(f"[LOD2] Solid processing successful, returning shape")
-                    return result
+                        log(f"[LOD2] Solid processing successful")
+
+                    # FIX for Issue #48: Check if boundedBy WallSurfaces exist and have more detail
+                    # Many PLATEAU buildings (especially tall ones like JP Tower) have:
+                    # - lod2Solid: Simplified envelope (basic shape)
+                    # - boundedBy/WallSurface: Detailed wall geometry (architectural details)
+                    # We need to check both and use the more detailed one
+                    log(f"[CONVERSION DEBUG]   Checking if boundedBy has more detailed geometry...")
+
+                    bounded_surfaces_check = (
+                        elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
+                        elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
+                        elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS) +
+                        elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS) +
+                        elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS) +
+                        elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
+                    )
+
+                    if bounded_surfaces_check:
+                        log(f"[CONVERSION DEBUG]   Found {len(bounded_surfaces_check)} boundedBy surfaces")
+                        log(f"[CONVERSION DEBUG]   Comparing lod2Solid ({len(exterior_faces_solid)} faces) vs boundedBy...")
+
+                        # Quick extraction to count boundedBy faces
+                        bounded_faces_count = 0
+                        for surf in bounded_surfaces_check:
+                            surf_face_count = 0
+                            # Try all 3 methods like in the main boundedBy strategy
+                            for lod_tag in [".//bldg:lod3MultiSurface", ".//bldg:lod3Geometry",
+                                           ".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
+                                surf_geom = surf.find(lod_tag, NS)
+                                if surf_geom is not None:
+                                    for container in surf_geom.findall(".//gml:MultiSurface", NS) + surf_geom.findall(".//gml:CompositeSurface", NS):
+                                        polys = container.findall(".//gml:Polygon", NS)
+                                        surf_face_count += len(polys)
+                                    if surf_face_count > 0:
+                                        break
+
+                            # Method 2: Direct containers
+                            if surf_face_count == 0:
+                                for container in surf.findall("./gml:MultiSurface", NS) + surf.findall("./gml:CompositeSurface", NS):
+                                    polys = container.findall(".//gml:Polygon", NS)
+                                    surf_face_count += len(polys)
+
+                            # Method 3: Direct polygons
+                            if surf_face_count == 0:
+                                polys = surf.findall(".//gml:Polygon", NS)
+                                surf_face_count += len(polys)
+
+                            bounded_faces_count += surf_face_count
+
+                        log(f"[CONVERSION DEBUG]   boundedBy would provide approximately {bounded_faces_count} faces")
+
+                        # If boundedBy has significantly more faces (>20% more), prefer it for more detail
+                        if bounded_faces_count > len(exterior_faces_solid) * 1.2:
+                            log(f"[CONVERSION DEBUG]   ✓ boundedBy has {bounded_faces_count} vs lod2Solid's {len(exterior_faces_solid)} faces")
+                            log(f"[CONVERSION DEBUG]   → Preferring boundedBy strategy for more detailed geometry")
+                            # Don't return here - let it fall through to boundedBy strategy below
+                        else:
+                            log(f"[CONVERSION DEBUG]   → lod2Solid has sufficient detail ({len(exterior_faces_solid)} faces), using it")
+                            if log_file:
+                                log_file.close()
+                            return result
+                    else:
+                        log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
+                        if log_file:
+                            log_file.close()
+                        return result
                 else:
                     log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
                     if debug:

@@ -32,6 +32,8 @@ import sys
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Tuple, Callable
 import xml.etree.ElementTree as ET
+from datetime import datetime
+import os
 
 try:
     from services.coordinate_utils import (
@@ -1645,9 +1647,37 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
     exterior_faces: List[TopoDS_Face] = []
 
+    # Open debug log file if debug mode is enabled
+    log_file = None
+    if debug:
+        log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
+        log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+        try:
+            log_file = open(log_path, "w", encoding="utf-8")
+            log_file.write(f"CityGML to STEP Conversion Debug Log\n")
+            log_file.write(f"Building ID: {elem_id}\n")
+            log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            log_file.write(f"Precision mode: {precision_mode}\n")
+            log_file.write(f"Shape fix level: {shape_fix_level}\n")
+            log_file.write(f"{'='*80}\n\n")
+            print(f"[CONVERSION DEBUG] Logging to: {log_path}")
+        except Exception as e:
+            print(f"[CONVERSION DEBUG] Failed to create log file: {e}")
+            log_file = None
+
+    def log(message: str):
+        """Helper function to log both to console and file"""
+        print(message)
+        if log_file:
+            log_file.write(message + "\n")
+            log_file.flush()
+
     # Log conversion start
-    print(f"[CONVERSION DEBUG] ═══ Starting LOD extraction for building: {elem_id[:40]} ═══")
-    print(f"[CONVERSION DEBUG] Precision mode: {precision_mode}, Shape fix level: {shape_fix_level}")
+    log(f"[CONVERSION DEBUG] ═══ Starting LOD extraction for building: {elem_id[:40]} ═══")
+    log(f"[CONVERSION DEBUG] Precision mode: {precision_mode}, Shape fix level: {shape_fix_level}")
 
     # =========================================================================
     # LOD3 Extraction - Highest detail level (architectural models)
@@ -1684,9 +1714,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
                 if result is not None:
-                    print(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED - Returning detailed LOD3 model")
+                    log(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED - Returning detailed LOD3 model")
                     if debug:
-                        print(f"[LOD3] Solid processing successful, returning shape")
+                        log(f"[LOD3] Solid processing successful, returning shape")
+                    if log_file:
+                        log_file.close()
                     return result
                 else:
                     print(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
@@ -1723,7 +1755,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
             if result is not None:
                 if debug:
-                    print(f"[LOD3] MultiSurface processing successful, returning shape")
+                    log(f"[LOD3] MultiSurface processing successful, returning shape")
+                if log_file:
+                    log_file.close()
                 return result
             else:
                 if debug:
@@ -1930,6 +1964,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
             faces_before = len(exterior_faces)
             found_geometry = False
+            method_used = None
 
             # Method 1: Check for LOD-specific wrappers (LOD3 and LOD2) within each bounded surface
             # LOD3 has priority for more detailed geometry (walls, roofs with architectural details)
@@ -1945,20 +1980,28 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     # Only mark as found if we actually extracted faces
                     if len(exterior_faces) > faces_extracted_before:
                         found_geometry = True
+                        method_used = f"Method 1 ({lod_tag.split(':')[-1]})"
+                        if log_file:
+                            log(f"  [{surf_type}] {method_used}: extracted {len(exterior_faces) - faces_extracted_before} faces")
                         break  # Successfully extracted, no need to try other LOD tags
 
             # Method 2: Fallback - Check for direct gml:MultiSurface or gml:CompositeSurface children
             # Some PLATEAU buildings have geometry directly without LOD-specific wrappers
             if not found_geometry:
+                faces_method2_before = len(exterior_faces)
                 for direct_container in surf.findall("./gml:MultiSurface", NS) + surf.findall("./gml:CompositeSurface", NS):
-                    found_geometry = True
                     faces_bounded = _extract_faces_from_surface_container(direct_container, xyz_transform, id_index, debug)
                     exterior_faces.extend(faces_bounded)
+                if len(exterior_faces) > faces_method2_before:
+                    found_geometry = True
+                    method_used = "Method 2 (direct MultiSurface)"
+                    if log_file:
+                        log(f"  [{surf_type}] {method_used}: extracted {len(exterior_faces) - faces_method2_before} faces")
 
             # Method 3: Fallback - Check for direct gml:Polygon children
             if not found_geometry:
+                faces_method3_before = len(exterior_faces)
                 for poly in surf.findall(".//gml:Polygon", NS):
-                    found_geometry = True
                     ext, holes = _extract_polygon_xyz(poly)
                     if len(ext) < 3:
                         continue
@@ -1973,21 +2016,28 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                             ]
                         except Exception as e:
                             if debug:
-                                print(f"    Transform failed for polygon in {surf_type}: {e}")
+                                log(f"    Transform failed for polygon in {surf_type}: {e}")
                             continue
 
                     fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
                     if fc is not None and not fc.IsNull():
                         exterior_faces.append(fc)
 
+                if len(exterior_faces) > faces_method3_before:
+                    found_geometry = True
+                    method_used = "Method 3 (direct Polygon)"
+                    if log_file:
+                        log(f"  [{surf_type}] {method_used}: extracted {len(exterior_faces) - faces_method3_before} faces")
+
             # Track faces extracted from this surface
             faces_added = len(exterior_faces) - faces_before
             if debug:
                 faces_by_type[surf_type] = faces_by_type.get(surf_type, 0) + faces_added
                 if faces_added > 0:
-                    print(f"  - {surf_type}: extracted {faces_added} faces")
+                    log(f"  - {surf_type}: extracted {faces_added} faces")
                 elif not found_geometry:
-                    print(f"  - {surf_type}: no geometry found (check CityGML structure)")
+                    if log_file:
+                        log(f"  [{surf_type}] ✗ No geometry found - all 3 methods failed")
 
         if debug:
             print(f"[LOD2] boundedBy extraction summary:")
@@ -2001,7 +2051,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             )
             if result is not None:
                 if debug:
-                    print(f"[LOD2] boundedBy processing successful, returning shape")
+                    log(f"[LOD2] boundedBy processing successful, returning shape")
+                if log_file:
+                    log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
+                    log_file.close()
                 return result
             else:
                 if debug:
@@ -2039,9 +2092,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 )
                 if result is not None:
                     if debug:
-                        print(f"[LOD1] Processing successful, returning shape")
+                        log(f"[LOD1] Processing successful, returning shape")
+                    if log_file:
+                        log_file.close()
                     return result
 
+    if log_file:
+        log(f"[CONVERSION DEBUG] ✗ All strategies failed - no geometry extracted")
+        log_file.close()
     return None
 
 

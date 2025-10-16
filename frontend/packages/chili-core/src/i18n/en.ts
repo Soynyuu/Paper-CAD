@@ -183,6 +183,7 @@ export default {
         "file.format": "Format",
         "home.recent": "Recent",
         "home.welcome": "Welcome to Paper-CAD",
+        "home.createFromAddress": "Create Model from Building Name/Address",
         "items.header": "Items",
         "items.tool.delete": "Delete",
         "items.tool.expandAll": "Expand All",

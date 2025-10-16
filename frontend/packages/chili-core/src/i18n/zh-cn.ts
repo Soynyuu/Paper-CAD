@@ -183,6 +183,7 @@ export default {
         "file.format": "文件格式",
         "home.recent": "最近使用",
         "home.welcome": "欢迎使用 Paper-CAD",
+        "home.createFromAddress": "从建筑名称/地址创建模型",
         "items.header": "项目",
         "items.tool.delete": "删除",
         "items.tool.expandAll": "展开所有",

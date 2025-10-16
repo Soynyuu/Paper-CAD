@@ -34,6 +34,7 @@ from typing import Iterable, List, Optional, Tuple, Callable
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import os
+import threading
 
 try:
     from services.coordinate_utils import (
@@ -95,6 +96,37 @@ try:
     from core.step_exporter import STEPExporter  # type: ignore
 except Exception:
     STEPExporter = None  # fallback to local writer
+
+
+# Thread-local storage for log file (Issue #48: detailed logging across all functions)
+_thread_local = threading.local()
+
+def log(message: str):
+    """Global log function that writes to both console and thread-local log file.
+
+    This allows all functions (not just _extract_single_solid) to write to the
+    conversion log file. The log file is set via set_log_file() at the start
+    of each conversion.
+
+    Args:
+        message: Message to log
+    """
+    print(message)
+    log_file = getattr(_thread_local, 'log_file', None)
+    if log_file:
+        try:
+            log_file.write(message + "\n")
+            log_file.flush()
+        except Exception:
+            pass  # Silently fail if log file is closed or unavailable
+
+def set_log_file(log_file):
+    """Set the log file for the current thread.
+
+    Args:
+        log_file: File object to write logs to (or None to disable file logging)
+    """
+    _thread_local.log_file = log_file
 
 
 # Common namespaces for CityGML 2.0 / PLATEAU
@@ -301,14 +333,14 @@ def _resolve_xlink(elem: ET.Element, id_index: dict[str, ET.Element], debug: boo
 
     if debug and result is None:
         # XLink resolution failed - provide helpful debug info
-        print(f"      [XLink] Failed to resolve: {href}")
-        print(f"      [XLink] Looking for ID: '{target_id}'")
+        log(f"      [XLink] Failed to resolve: {href}")
+        log(f"      [XLink] Looking for ID: '{target_id}'")
         # Check for similar IDs
         similar_ids = [id for id in id_index.keys() if target_id in id or id in target_id]
         if similar_ids:
-            print(f"      [XLink] Similar IDs found: {similar_ids[:3]}")
+            log(f"      [XLink] Similar IDs found: {similar_ids[:3]}")
         else:
-            print(f"      [XLink] No similar IDs found in index")
+            log(f"      [XLink] No similar IDs found in index")
 
     return result
 
@@ -566,7 +598,7 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
 
         if len(pts) < 2:
             if debug:
-                print(f"Wire creation failed: insufficient points ({len(pts)} < 2)")
+                log(f"Wire creation failed: insufficient points ({len(pts)} < 2)")
             return None
 
         for x, y, z in pts:
@@ -575,13 +607,13 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
 
         if not poly.IsDone():
             if debug:
-                print(f"Wire creation failed: BRepBuilderAPI_MakePolygon.IsDone() = False")
+                log(f"Wire creation failed: BRepBuilderAPI_MakePolygon.IsDone() = False")
             return None
 
         return poly.Wire()
     except Exception as e:
         if debug:
-            print(f"Wire creation failed with exception: {e}")
+            log(f"Wire creation failed with exception: {e}")
         return None
 
 
@@ -621,7 +653,7 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
         outer = _wire_from_coords_xyz(ext, debug=debug)
         if outer is None:
             if debug:
-                print(f"Face creation failed: outer wire creation failed ({len(ext)} points)")
+                log(f"Face creation failed: outer wire creation failed ({len(ext)} points)")
             return None
 
         # Create face with planar_check control
@@ -630,7 +662,7 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
 
         if not face_maker.IsDone():
             if debug:
-                print(f"Face creation failed: BRepBuilderAPI_MakeFace.IsDone() = False (planar_check={planar_check})")
+                log(f"Face creation failed: BRepBuilderAPI_MakeFace.IsDone() = False (planar_check={planar_check})")
             return None
 
         # Add holes if any
@@ -640,18 +672,18 @@ def _face_from_xyz_rings(ext: List[Tuple[float, float, float]], holes: List[List
                 if hole_wire is not None:
                     face_maker.Add(hole_wire)
                 elif debug:
-                    print(f"Skipping hole {i}: wire creation failed")
+                    log(f"Skipping hole {i}: wire creation failed")
 
         face = face_maker.Face()
         if face is None or face.IsNull():
             if debug:
-                print(f"Face creation failed: resulting face is null")
+                log(f"Face creation failed: resulting face is null")
             return None
 
         return face
     except Exception as e:
         if debug:
-            print(f"Face creation failed with exception: {e}")
+            log(f"Face creation failed with exception: {e}")
         return None
 
 
@@ -834,7 +866,7 @@ def _extract_faces_from_surface_container(container: ET.Element, xyz_transform: 
             except Exception as e:
                 stats["transform_failed"] += 1
                 if debug:
-                    print(f"Transform failed for polygon: {e}")
+                    log(f"Transform failed for polygon: {e}")
                 continue
 
         fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -869,7 +901,7 @@ def _extract_faces_from_surface_container(container: ET.Element, xyz_transform: 
             except Exception as e:
                 stats["transform_failed"] += 1
                 if debug:
-                    print(f"Transform failed for polygon: {e}")
+                    log(f"Transform failed for polygon: {e}")
                 continue
 
         fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -881,14 +913,14 @@ def _extract_faces_from_surface_container(container: ET.Element, xyz_transform: 
 
     # Print statistics in debug mode
     if debug:
-        print(f"  Face extraction statistics:")
-        print(f"    - surfaceMembers found: {stats['surfaceMember_count']}")
-        print(f"    - Polygons found: {stats['polygon_found']}")
-        print(f"    - Polygons too small (<3 vertices): {stats['polygon_too_small']}")
-        print(f"    - Transform failures: {stats['transform_failed']}")
-        print(f"    - Face creation successes: {stats['face_creation_success']}")
-        print(f"    - Face creation failures: {stats['face_creation_failed']}")
-        print(f"    - Total faces returned: {len(faces)}")
+        log(f"  Face extraction statistics:")
+        log(f"    - surfaceMembers found: {stats['surfaceMember_count']}")
+        log(f"    - Polygons found: {stats['polygon_found']}")
+        log(f"    - Polygons too small (<3 vertices): {stats['polygon_too_small']}")
+        log(f"    - Transform failures: {stats['transform_failed']}")
+        log(f"    - Face creation successes: {stats['face_creation_success']}")
+        log(f"    - Face creation failures: {stats['face_creation_failed']}")
+        log(f"    - Total faces returned: {len(faces)}")
 
     return faces
 
@@ -915,7 +947,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
         id_index = {}
 
     if debug:
-        print(f"  [Solid] Extracting shells from gml:Solid element")
+        log(f"  [Solid] Extracting shells from gml:Solid element")
 
         # Dump XML structure to temp file for debugging
         try:
@@ -925,38 +957,38 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
             dump_path = os.path.join(tempfile.gettempdir(), "plateau_solid_debug.xml")
             with open(dump_path, "w", encoding="utf-8") as f:
                 f.write(xml_str)
-            print(f"  [Solid] XML structure dumped to: {dump_path}")
+            log(f"  [Solid] XML structure dumped to: {dump_path}")
         except Exception as e:
-            print(f"  [Solid] Failed to dump XML: {e}")
+            log(f"  [Solid] Failed to dump XML: {e}")
 
     # Extract exterior shell polygons
     exterior_elem = solid_elem.find("./gml:exterior", NS)
     if debug:
         if exterior_elem is not None:
-            print(f"  [Solid] Found gml:exterior element")
+            log(f"  [Solid] Found gml:exterior element")
         else:
-            print(f"  [Solid] WARNING: No gml:exterior element found!")
+            log(f"  [Solid] WARNING: No gml:exterior element found!")
     if exterior_elem is not None:
         # Support multiple GML surface patterns - find all surfaceMember elements
         surf_members = exterior_elem.findall(".//gml:surfaceMember", NS)
         if debug:
-            print(f"  [Solid] Found {len(surf_members)} gml:surfaceMember elements in exterior")
+            log(f"  [Solid] Found {len(surf_members)} gml:surfaceMember elements in exterior")
 
         for i, surf_member in enumerate(surf_members):
             # Check for XLink reference
             href = surf_member.get("{http://www.w3.org/1999/xlink}href")
             if debug and href:
-                print(f"  [Solid]   surfaceMember[{i}]: XLink reference: {href}")
+                log(f"  [Solid]   surfaceMember[{i}]: XLink reference: {href}")
 
                 # For first surfaceMember, check if it exists in index
                 if i == 0 and href.startswith("#"):
                     target_id = href[1:]
                     exists = target_id in id_index
-                    print(f"  [Solid]   surfaceMember[{i}]: Target ID '{target_id}' in index: {exists}")
+                    log(f"  [Solid]   surfaceMember[{i}]: Target ID '{target_id}' in index: {exists}")
                     if not exists:
                         # Show some similar IDs
                         similar = [k for k in id_index.keys() if k.startswith("poly-")][:5]
-                        print(f"  [Solid]   surfaceMember[{i}]: Sample polygon IDs in index: {similar}")
+                        log(f"  [Solid]   surfaceMember[{i}]: Sample polygon IDs in index: {similar}")
 
             # Try to extract polygon (with XLink resolution)
             # Force debug=True for first surfaceMember to see detailed XLink resolution
@@ -969,19 +1001,19 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
 
             if poly is None:
                 if debug:
-                    print(f"  [Solid]   surfaceMember[{i}]: No Polygon found (XLink may have failed)")
+                    log(f"  [Solid]   surfaceMember[{i}]: No Polygon found (XLink may have failed)")
                 continue
 
             if debug:
-                print(f"  [Solid]   surfaceMember[{i}]: Polygon found")
+                log(f"  [Solid]   surfaceMember[{i}]: Polygon found")
 
             ext, holes = _extract_polygon_xyz(poly)
             if debug:
-                print(f"  [Solid]   surfaceMember[{i}]: Extracted {len(ext)} vertices, {len(holes)} holes")
+                log(f"  [Solid]   surfaceMember[{i}]: Extracted {len(ext)} vertices, {len(holes)} holes")
 
             if len(ext) < 3:
                 if debug:
-                    print(f"  [Solid]   surfaceMember[{i}]: Insufficient vertices ({len(ext)} < 3), skipping")
+                    log(f"  [Solid]   surfaceMember[{i}]: Insufficient vertices ({len(ext)} < 3), skipping")
                 continue
 
             # Apply coordinate transformation if provided
@@ -994,17 +1026,17 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"  [Solid]   surfaceMember[{i}]: Transform failed: {e}")
+                        log(f"  [Solid]   surfaceMember[{i}]: Transform failed: {e}")
                     continue
 
             fc = _face_from_xyz_rings(ext, holes, debug=False, planar_check=False)
             if fc is not None and not fc.IsNull():
                 exterior_faces.append(fc)
                 if debug:
-                    print(f"  [Solid]   surfaceMember[{i}]: ✓ Face created successfully")
+                    log(f"  [Solid]   surfaceMember[{i}]: ✓ Face created successfully")
             else:
                 if debug:
-                    print(f"  [Solid]   surfaceMember[{i}]: ✗ Face creation failed")
+                    log(f"  [Solid]   surfaceMember[{i}]: ✗ Face creation failed")
 
         # Also search for direct Polygon children (not in surfaceMember)
         for poly in exterior_elem.findall(".//gml:Polygon", NS):
@@ -1027,7 +1059,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"Exterior transform failed: {e}")
+                        log(f"Exterior transform failed: {e}")
                     continue
 
             fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -1062,7 +1094,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"Interior transform failed: {e}")
+                        log(f"Interior transform failed: {e}")
                     continue
 
             fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -1089,7 +1121,7 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"Interior transform failed: {e}")
+                        log(f"Interior transform failed: {e}")
                     continue
 
             fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -1099,10 +1131,10 @@ def _extract_solid_shells(solid_elem: ET.Element, xyz_transform: Optional[Callab
         if interior_faces:
             interior_shells.append(interior_faces)
             if debug:
-                print(f"Found interior shell with {len(interior_faces)} faces (cavity)")
+                log(f"Found interior shell with {len(interior_faces)} faces (cavity)")
 
     if debug:
-        print(f"  [Solid] Extraction complete: {len(exterior_faces)} exterior faces, {len(interior_shells)} interior shells")
+        log(f"  [Solid] Extraction complete: {len(exterior_faces)} exterior faces, {len(interior_shells)} interior shells")
 
     return exterior_faces, interior_shells
 
@@ -1139,10 +1171,10 @@ def _normalize_face_orientation(faces: List["TopoDS_Face"], debug: bool = False)
                     face_copy = face.Reversed()
                     normalized.append(face_copy)
                     if debug:
-                        print(f"Reversed face {i} orientation")
+                        log(f"Reversed face {i} orientation")
                 except Exception as e:
                     if debug:
-                        print(f"Failed to reverse face {i}: {e}")
+                        log(f"Failed to reverse face {i}: {e}")
                     normalized.append(face)
             else:
                 normalized.append(face)
@@ -1150,7 +1182,7 @@ def _normalize_face_orientation(faces: List["TopoDS_Face"], debug: bool = False)
         return normalized
     except Exception as e:
         if debug:
-            print(f"Face orientation normalization failed: {e}")
+            log(f"Face orientation normalization failed: {e}")
         return faces
 
 
@@ -1189,18 +1221,18 @@ def _remove_duplicate_vertices(faces: List["TopoDS_Face"], tolerance: float, deb
                 if fixed_face is not None and not fixed_face.IsNull():
                     cleaned.append(fixed_face)
                     if debug and fixed_face != face:
-                        print(f"Cleaned face {i}")
+                        log(f"Cleaned face {i}")
                 else:
                     cleaned.append(face)
             except Exception as e:
                 if debug:
-                    print(f"Failed to clean face {i}: {e}")
+                    log(f"Failed to clean face {i}: {e}")
                 cleaned.append(face)
 
         return cleaned
     except Exception as e:
         if debug:
-            print(f"Vertex deduplication failed: {e}")
+            log(f"Vertex deduplication failed: {e}")
         return faces
 
 
@@ -1225,7 +1257,7 @@ def _validate_and_fix_face(face: "TopoDS_Face", tolerance: float, debug: bool = 
             return face
 
         if debug:
-            print("Face invalid, attempting multi-stage fix...")
+            log("Face invalid, attempting multi-stage fix...")
 
         # Stage 1: Basic face fixing
         fixer = ShapeFix_Face(face)
@@ -1239,7 +1271,7 @@ def _validate_and_fix_face(face: "TopoDS_Face", tolerance: float, debug: bool = 
             analyzer = BRepCheck_Analyzer(fixed)
             if analyzer.IsValid():
                 if debug:
-                    print("Face fixed in stage 1")
+                    log("Face fixed in stage 1")
                 return fixed
 
         # Stage 2: Aggressive wire fixing
@@ -1278,11 +1310,11 @@ def _validate_and_fix_face(face: "TopoDS_Face", tolerance: float, debug: bool = 
                         analyzer = BRepCheck_Analyzer(rebuilt)
                         if analyzer.IsValid():
                             if debug:
-                                print("Face fixed in stage 2 (wire rebuild)")
+                                log("Face fixed in stage 2 (wire rebuild)")
                             return rebuilt
             except Exception as e:
                 if debug:
-                    print(f"Stage 2 wire fixing failed: {e}")
+                    log(f"Stage 2 wire fixing failed: {e}")
 
         # If all stages fail, return best attempt or None
         if fixed is not None and not fixed.IsNull():
@@ -1292,7 +1324,7 @@ def _validate_and_fix_face(face: "TopoDS_Face", tolerance: float, debug: bool = 
 
     except Exception as e:
         if debug:
-            print(f"Face validation/fixing failed: {e}")
+            log(f"Face validation/fixing failed: {e}")
         return None
 
 
@@ -1327,12 +1359,12 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
         return None
 
     if debug:
-        print(f"Building shell from {len(faces)} faces with tolerance {tolerance:.9f}")
+        log(f"Building shell from {len(faces)} faces with tolerance {tolerance:.9f}")
 
     # Stage 1: Validate and fix each face individually
     if shape_fix_level in ("aggressive", "ultra"):
         if debug:
-            print("Stage 1: Validating and fixing individual faces...")
+            log("Stage 1: Validating and fixing individual faces...")
 
         validated_faces = []
         for i, face in enumerate(faces):
@@ -1340,33 +1372,33 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             if fixed_face is not None:
                 validated_faces.append(fixed_face)
             elif debug:
-                print(f"Warning: Face {i} could not be fixed, skipping")
+                log(f"Warning: Face {i} could not be fixed, skipping")
 
         if not validated_faces:
             if debug:
-                print("Error: No valid faces after validation")
+                log("Error: No valid faces after validation")
             return None
 
         faces = validated_faces
         if debug:
-            print(f"Stage 1 complete: {len(faces)} valid faces")
+            log(f"Stage 1 complete: {len(faces)} valid faces")
 
     # Stage 2: Normalize face orientations
     if shape_fix_level in ("standard", "aggressive", "ultra"):
         if debug:
-            print("Stage 2: Normalizing face orientations...")
+            log("Stage 2: Normalizing face orientations...")
         faces = _normalize_face_orientation(faces, debug)
 
     # Stage 3: Remove duplicate vertices
     if shape_fix_level in ("aggressive", "ultra"):
         if debug:
-            print("Stage 3: Removing duplicate vertices...")
+            log("Stage 3: Removing duplicate vertices...")
         faces = _remove_duplicate_vertices(faces, tolerance, debug)
 
     # Stage 4: Multi-pass sewing for ultra mode
     if shape_fix_level == "ultra":
         if debug:
-            print("Stage 4: Multi-pass sewing with progressively tighter tolerances...")
+            log("Stage 4: Multi-pass sewing with progressively tighter tolerances...")
 
         # Try multiple sewing passes with different tolerances
         tolerances_to_try = [
@@ -1378,7 +1410,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
         sewn_shape = None
         for i, tol in enumerate(tolerances_to_try):
             if debug:
-                print(f"  Sewing pass {i+1} with tolerance {tol:.9f}")
+                log(f"  Sewing pass {i+1} with tolerance {tol:.9f}")
 
             sewing = BRepBuilderAPI_Sewing(tol, True, True, True, False)
             for fc in faces:
@@ -1389,7 +1421,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             # Check if sewing improved
             if sewn_shape is not None and not sewn_shape.IsNull():
                 if debug:
-                    print(f"  Pass {i+1} successful")
+                    log(f"  Pass {i+1} successful")
                 # Use this result as input for next pass
                 # Extract faces from sewn shape for next iteration
                 if i < len(tolerances_to_try) - 1:
@@ -1404,7 +1436,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     else:
         # Standard single-pass sewing
         if debug:
-            print("Stage 4: Single-pass sewing...")
+            log("Stage 4: Single-pass sewing...")
 
         sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
         for fc in faces:
@@ -1416,7 +1448,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     if shape_fix_level != "minimal":
         try:
             if debug:
-                print(f"Stage 5: Applying shape fixing (level: {shape_fix_level})...")
+                log(f"Stage 5: Applying shape fixing (level: {shape_fix_level})...")
 
             fixer = ShapeFix_Shape(sewn_shape)
 
@@ -1436,14 +1468,14 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             sewn_shape = fixer.Shape()
 
             if debug:
-                print(f"Shape fixing applied (level: {shape_fix_level})")
+                log(f"Shape fixing applied (level: {shape_fix_level})")
         except Exception as e:
             if debug:
-                print(f"ShapeFix_Shape failed: {e}")
+                log(f"ShapeFix_Shape failed: {e}")
 
     # Stage 6: Extract and validate shell
     if debug:
-        print("Stage 6: Extracting and validating shell...")
+        log("Stage 6: Extracting and validating shell...")
 
     exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
     if exp.More():
@@ -1455,7 +1487,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             analyzer = BRepCheck_Analyzer(shell)
             if not analyzer.IsValid():
                 if debug:
-                    print("Warning: Shell is not valid, attempting to fix...")
+                    log("Warning: Shell is not valid, attempting to fix...")
 
                 # Try multiple fixing strategies
                 if shape_fix_level == "ultra":
@@ -1474,14 +1506,14 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                             analyzer = BRepCheck_Analyzer(fixed_shell)
                             if analyzer.IsValid():
                                 if debug:
-                                    print("Shell fixed successfully")
+                                    log("Shell fixed successfully")
                                 shell = fixed_shell
                             else:
                                 if debug:
-                                    print("Shell still invalid after fixing, using best attempt")
+                                    log("Shell still invalid after fixing, using best attempt")
                     except Exception as e:
                         if debug:
-                            print(f"ShapeFix_Shell failed: {e}")
+                            log(f"ShapeFix_Shell failed: {e}")
                 else:
                     # Standard shell fixing
                     try:
@@ -1491,18 +1523,18 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                         shell = shell_fixer.Shell()
                     except Exception as e:
                         if debug:
-                            print(f"ShapeFix_Shell failed: {e}")
+                            log(f"ShapeFix_Shell failed: {e}")
         except Exception as e:
             if debug:
-                print(f"Shell validation failed: {e}")
+                log(f"Shell validation failed: {e}")
 
         if debug:
-            print("Shell construction complete")
+            log("Shell construction complete")
 
         return shell
 
     if debug:
-        print("Error: No shell found in sewn shape")
+        log("Error: No shell found in sewn shape")
 
     return None
 
@@ -1532,15 +1564,15 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
     if tolerance is None:
         tolerance = _compute_tolerance_from_face_list(exterior_faces, precision_mode)
         if debug:
-            print(f"Auto-computed tolerance: {tolerance:.6f} (precision_mode: {precision_mode})")
+            log(f"Auto-computed tolerance: {tolerance:.6f} (precision_mode: {precision_mode})")
 
     # Build exterior shell
     if debug:
-        print(f"Attempting to build exterior shell from {len(exterior_faces)} faces...")
+        log(f"Attempting to build exterior shell from {len(exterior_faces)} faces...")
     exterior_shell = _build_shell_from_faces(exterior_faces, tolerance, debug, shape_fix_level)
     if exterior_shell is None:
         if debug:
-            print(f"ERROR: Failed to build exterior shell (sewing or shell extraction failed)")
+            log(f"ERROR: Failed to build exterior shell (sewing or shell extraction failed)")
         return None
 
     # Check if exterior shell is closed
@@ -1548,13 +1580,13 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
         is_closed = BRep_Tool.IsClosed(exterior_shell)
         if not is_closed:
             if debug:
-                print(f"WARNING: Exterior shell is not closed, returning shell instead of solid")
+                log(f"WARNING: Exterior shell is not closed, returning shell instead of solid")
         else:
             if debug:
-                print(f"Exterior shell is closed, will attempt to create solid")
+                log(f"Exterior shell is closed, will attempt to create solid")
     except Exception as e:
         if debug:
-            print(f"Failed to check if shell is closed: {e}")
+            log(f"Failed to check if shell is closed: {e}")
         is_closed = False
 
     # Build interior shells
@@ -1566,13 +1598,13 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                 if BRep_Tool.IsClosed(int_shell):
                     interior_shells.append(int_shell)
                     if debug:
-                        print(f"Added interior shell {i+1} (closed)")
+                        log(f"Added interior shell {i+1} (closed)")
                 else:
                     if debug:
-                        print(f"Interior shell {i+1} is not closed, skipping")
+                        log(f"Interior shell {i+1} is not closed, skipping")
             except Exception as e:
                 if debug:
-                    print(f"Interior shell {i+1} check failed: {e}")
+                    log(f"Interior shell {i+1} check failed: {e}")
 
     # Try to create solid
     if is_closed:
@@ -1585,7 +1617,7 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                     mk_solid.Add(int_shell)
                 except Exception as e:
                     if debug:
-                        print(f"Failed to add interior shell: {e}")
+                        log(f"Failed to add interior shell: {e}")
 
             solid = mk_solid.Solid()
 
@@ -1593,19 +1625,19 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
             analyzer = BRepCheck_Analyzer(solid)
             if analyzer.IsValid():
                 if debug:
-                    print(f"Created valid solid with {len(interior_shells)} cavities")
+                    log(f"Created valid solid with {len(interior_shells)} cavities")
                 return solid
             else:
                 if debug:
-                    print("Solid validation failed, returning shell")
+                    log("Solid validation failed, returning shell")
                 return exterior_shell
         except Exception as e:
             if debug:
-                print(f"Solid creation failed: {e}, returning shell")
+                log(f"Solid creation failed: {e}, returning shell")
             return exterior_shell
     else:
         if debug:
-            print("Exterior shell not closed, cannot create solid")
+            log("Exterior shell not closed, cannot create solid")
         return exterior_shell
 
 
@@ -1668,17 +1700,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
         log_file.write(f"Shape fix level: {shape_fix_level}\n")
         log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
         log_file.write(f"{'='*80}\n\n")
-        print(f"[CONVERSION] Logging to: {log_path}")
+        log(f"[CONVERSION] Logging to: {log_path}")
+        # Set log file for this thread (now all functions can use global log())
+        set_log_file(log_file)
     except Exception as e:
-        print(f"[CONVERSION] Warning: Failed to create log file: {e}")
+        log(f"[CONVERSION] Warning: Failed to create log file: {e}")
         log_file = None
-
-    def log(message: str):
-        """Helper function to log both to console and file"""
-        print(message)
-        if log_file:
-            log_file.write(message + "\n")
-            log_file.flush()
+        set_log_file(None)
 
     # Log conversion start
     log(f"[CONVERSION DEBUG] ═══ Starting LOD extraction for building: {elem_id[:40]} ═══")
@@ -1723,7 +1751,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     if debug:
                         log(f"[LOD3] Solid processing successful, returning shape")
                     if log_file:
-                        log_file.close()
+                        set_log_file(None)
+                        set_log_file(None)
+                    log_file.close()
                     return result
                 else:
                     log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
@@ -1762,6 +1792,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 if debug:
                     log(f"[LOD3] MultiSurface processing successful, returning shape")
                 if log_file:
+                    set_log_file(None)
                     log_file.close()
                 return result
             else:
@@ -1914,12 +1945,16 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         else:
                             log(f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it")
                             if log_file:
-                                log_file.close()
+                                set_log_file(None)
+                        set_log_file(None)
+                    log_file.close()
                             return result
                     else:
                         log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
                         if log_file:
-                            log_file.close()
+                            set_log_file(None)
+                        set_log_file(None)
+                    log_file.close()
                         return result
                 else:
                     log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
@@ -2137,6 +2172,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     log(f"[LOD2] boundedBy processing successful, returning shape")
                 if log_file:
                     log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
+                    set_log_file(None)
                     log_file.close()
                 return result
             else:
@@ -2177,11 +2213,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     if debug:
                         log(f"[LOD1] Processing successful, returning shape")
                     if log_file:
-                        log_file.close()
+                        set_log_file(None)
+                        set_log_file(None)
+                    log_file.close()
                     return result
 
     if log_file:
         log(f"[CONVERSION DEBUG] ✗ All strategies failed - no geometry extracted")
+        set_log_file(None)
         log_file.close()
     return None
 
@@ -2216,13 +2255,13 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
     if main_shape is not None:
         shapes.append(main_shape)
         if debug:
-            print("Extracted geometry from main Building")
+            log("Extracted geometry from main Building")
 
     # Extract from all BuildingParts
     building_parts = building.findall(".//bldg:BuildingPart", NS)
     if building_parts:
         if debug:
-            print(f"Found {len(building_parts)} BuildingPart(s)")
+            log(f"Found {len(building_parts)} BuildingPart(s)")
 
         for i, part in enumerate(building_parts):
             part_shape = _extract_single_solid(part, xyz_transform, id_index, debug,
@@ -2231,7 +2270,7 @@ def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Cal
                 shapes.append(part_shape)
                 if debug:
                     part_id = part.get("{http://www.opengis.net/gml}id") or f"part_{i+1}"
-                    print(f"Extracted geometry from BuildingPart: {part_id}")
+                    log(f"Extracted geometry from BuildingPart: {part_id}")
 
     return shapes
 
@@ -2289,11 +2328,11 @@ def extract_lod_solid_from_building(building: ET.Element, xyz_transform: Optiona
     # Multiple shapes: fuse or create compound based on parameter
     if merge_building_parts:
         if debug:
-            print(f"[BUILDING] Merging {len(shapes)} BuildingParts into single solid...")
+            log(f"[BUILDING] Merging {len(shapes)} BuildingParts into single solid...")
         return _fuse_shapes(shapes, debug)
     else:
         if debug:
-            print(f"[BUILDING] Keeping {len(shapes)} BuildingParts as separate shapes in compound...")
+            log(f"[BUILDING] Keeping {len(shapes)} BuildingParts as separate shapes in compound...")
         return _create_compound(shapes, debug)
 
 
@@ -2322,16 +2361,16 @@ def _fuse_shapes(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optional[
 
     if not valid_shapes:
         if debug:
-            print("[FUSE] No valid shapes to fuse")
+            log("[FUSE] No valid shapes to fuse")
         return None
 
     if len(valid_shapes) == 1:
         if debug:
-            print("[FUSE] Only one shape, returning as-is")
+            log("[FUSE] Only one shape, returning as-is")
         return valid_shapes[0]
 
     if debug:
-        print(f"[FUSE] Attempting to fuse {len(valid_shapes)} shapes...")
+        log(f"[FUSE] Attempting to fuse {len(valid_shapes)} shapes...")
 
     try:
         # Start with the first shape
@@ -2344,26 +2383,26 @@ def _fuse_shapes(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optional[
                 if fuse_op.IsDone():
                     result = fuse_op.Shape()
                     if debug:
-                        print(f"[FUSE] Successfully fused shape {i}/{len(valid_shapes)}")
+                        log(f"[FUSE] Successfully fused shape {i}/{len(valid_shapes)}")
                 else:
                     if debug:
-                        print(f"[FUSE] Fusion failed at shape {i}/{len(valid_shapes)}, falling back to compound")
+                        log(f"[FUSE] Fusion failed at shape {i}/{len(valid_shapes)}, falling back to compound")
                     # Fallback to compound
                     return _create_compound(valid_shapes, debug)
             except Exception as e:
                 if debug:
-                    print(f"[FUSE] Exception during fusion at shape {i}/{len(valid_shapes)}: {e}")
+                    log(f"[FUSE] Exception during fusion at shape {i}/{len(valid_shapes)}: {e}")
                 # Fallback to compound
                 return _create_compound(valid_shapes, debug)
 
         if debug:
-            print(f"[FUSE] Successfully fused all {len(valid_shapes)} shapes into single solid")
+            log(f"[FUSE] Successfully fused all {len(valid_shapes)} shapes into single solid")
 
         return result
 
     except Exception as e:
         if debug:
-            print(f"[FUSE] Fusion failed with exception: {e}, falling back to compound")
+            log(f"[FUSE] Fusion failed with exception: {e}, falling back to compound")
         return _create_compound(valid_shapes, debug)
 
 
@@ -2385,12 +2424,12 @@ def _create_compound(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optio
 
     if not valid_shapes:
         if debug:
-            print("[COMPOUND] No valid shapes to create compound")
+            log("[COMPOUND] No valid shapes to create compound")
         return None
 
     if len(valid_shapes) == 1:
         if debug:
-            print("[COMPOUND] Only one shape, returning as-is")
+            log("[COMPOUND] Only one shape, returning as-is")
         return valid_shapes[0]
 
     builder = BRep_Builder()
@@ -2401,7 +2440,7 @@ def _create_compound(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optio
         builder.Add(compound, shp)
 
     if debug:
-        print(f"[COMPOUND] Created compound with {len(valid_shapes)} shapes")
+        log(f"[COMPOUND] Created compound with {len(valid_shapes)} shapes")
 
     return compound
 
@@ -2453,7 +2492,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
                     ]
                 except Exception as e:
                     if debug:
-                        print(f"Transform failed: {e}")
+                        log(f"Transform failed: {e}")
                     continue
 
             fc = _face_from_xyz_rings(ext, holes, debug=debug, planar_check=False)
@@ -2467,7 +2506,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
     if sew_tolerance is None:
         sew_tolerance = _compute_tolerance_from_face_list(faces, precision_mode)
         if debug:
-            print(f"Auto-computed sewing tolerance: {sew_tolerance:.6f} (precision_mode: {precision_mode})")
+            log(f"Auto-computed sewing tolerance: {sew_tolerance:.6f} (precision_mode: {precision_mode})")
 
     sewing = BRepBuilderAPI_Sewing(sew_tolerance, True, True, True, False)
     for fc in faces:
@@ -2492,10 +2531,10 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
             sewn = fixer.Shape()
 
             if debug:
-                print(f"Shape fixing applied to sewn shape (level: {shape_fix_level})")
+                log(f"Shape fixing applied to sewn shape (level: {shape_fix_level})")
         except Exception as e:
             if debug:
-                print(f"ShapeFix_Shape failed: {e}")
+                log(f"ShapeFix_Shape failed: {e}")
 
     # Try to make solids from shells
     solids: List[TopoDS_Shape] = []
@@ -2513,7 +2552,7 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
                     solids.append(solid)
         except Exception as e:
             if debug:
-                print(f"Shell to solid failed: {e}")
+                log(f"Shell to solid failed: {e}")
         exp.Next()
 
     if solids:
@@ -2582,11 +2621,11 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, deb
         Interface_Static.SetIVal("write.surfacecurve.mode", 0)
 
         if debug:
-            print("STEP writer configured: AP214CD schema, MM units, 1e-6 precision")
+            log("STEP writer configured: AP214CD schema, MM units, 1e-6 precision")
 
     except Exception as e:
         if debug:
-            print(f"Warning: STEP writer configuration failed: {e}")
+            log(f"Warning: STEP writer configuration failed: {e}")
         # Continue with default settings
 
     writer = STEPControl_Writer()
@@ -2598,7 +2637,7 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, deb
         return False, f"STEP write failed: {wr}"
 
     if debug:
-        print(f"STEP file written successfully: {out_step}")
+        log(f"STEP file written successfully: {out_step}")
 
     return True, out_step
 
@@ -2723,8 +2762,8 @@ def _filter_buildings_by_coordinates(
     filtered: List[ET.Element] = []
 
     if debug:
-        print(f"[COORD FILTER] Target: ({target_latitude}, {target_longitude})")
-        print(f"[COORD FILTER] Radius: {radius_meters}m")
+        log(f"[COORD FILTER] Target: ({target_latitude}, {target_longitude})")
+        log(f"[COORD FILTER] Radius: {radius_meters}m")
 
     for building in buildings:
         # Extract coordinates from building
@@ -2732,7 +2771,7 @@ def _filter_buildings_by_coordinates(
         if not coords:
             if debug:
                 gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
-                print(f"[COORD FILTER] Skipping {gml_id}: No coordinates found")
+                log(f"[COORD FILTER] Skipping {gml_id}: No coordinates found")
             continue
 
         lat, lon = coords
@@ -2746,13 +2785,13 @@ def _filter_buildings_by_coordinates(
             filtered.append(building)
             if debug:
                 gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
-                print(f"[COORD FILTER] ✓ {gml_id[:20]}: {dist_meters:.1f}m (within {radius_meters}m)")
+                log(f"[COORD FILTER] ✓ {gml_id[:20]}: {dist_meters:.1f}m (within {radius_meters}m)")
         elif debug:
             gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
-            print(f"[COORD FILTER] ✗ {gml_id[:20]}: {dist_meters:.1f}m (exceeds {radius_meters}m)")
+            log(f"[COORD FILTER] ✗ {gml_id[:20]}: {dist_meters:.1f}m (exceeds {radius_meters}m)")
 
     if debug:
-        print(f"[COORD FILTER] Filtered: {len(buildings)} → {len(filtered)} buildings")
+        log(f"[COORD FILTER] Filtered: {len(buildings)} → {len(filtered)} buildings")
 
     return filtered
 
@@ -2880,7 +2919,7 @@ def export_step_from_citygml(
             bldgs, target_latitude, target_longitude, radius_meters, debug
         )
         if debug:
-            print(f"[COORD FILTER] Result: {original_count} → {len(bldgs)} buildings within {radius_meters}m")
+            log(f"[COORD FILTER] Result: {original_count} → {len(bldgs)} buildings within {radius_meters}m")
 
         if not bldgs:
             return False, f"No buildings found within {radius_meters}m of ({target_latitude}, {target_longitude})"
@@ -2890,9 +2929,9 @@ def export_step_from_citygml(
         original_count = len(bldgs)
         bldgs = _filter_buildings(bldgs, building_ids, filter_attribute)
         if debug:
-            print(f"Building ID filter: {original_count} → {len(bldgs)} buildings")
-            print(f"Filter attribute: {filter_attribute}")
-            print(f"Requested IDs: {building_ids}")
+            log(f"Building ID filter: {original_count} → {len(bldgs)} buildings")
+            log(f"Filter attribute: {filter_attribute}")
+            log(f"Requested IDs: {building_ids}")
 
         if not bldgs:
             return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
@@ -2900,17 +2939,17 @@ def export_step_from_citygml(
     # Build XLink resolution index
     id_index = _build_id_index(root)
     if debug and id_index:
-        print(f"Built XLink index with {len(id_index)} gml:id entries")
+        log(f"Built XLink index with {len(id_index)} gml:id entries")
 
         # Check for polygon IDs in the index
         poly_ids = [id for id in id_index.keys() if id.startswith("poly-")]
         if poly_ids:
-            print(f"  Found {len(poly_ids)} polygon IDs in index (sample: {poly_ids[:5]})")
+            log(f"  Found {len(poly_ids)} polygon IDs in index (sample: {poly_ids[:5]})")
         else:
-            print(f"  WARNING: No polygon IDs (starting with 'poly-') found in index!")
+            log(f"  WARNING: No polygon IDs (starting with 'poly-') found in index!")
             # Show sample of what's actually in the index
             sample_ids = list(id_index.keys())[:10]
-            print(f"  Sample of actual IDs in index: {sample_ids}")
+            log(f"  Sample of actual IDs in index: {sample_ids}")
 
     # Detect source CRS and sample coordinates
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)
@@ -2923,18 +2962,18 @@ def export_step_from_citygml(
             if debug and reproject_to:
                 src_info = get_crs_info(src)
                 tgt_info = get_crs_info(reproject_to)
-                print(f"Auto-reprojection: Detected geographic CRS {src} ({src_info['name']})")
-                print(f"  Sample coordinates: lat={sample_lat:.6f}, lon={sample_lon:.6f}" if sample_lat else "")
-                print(f"  Auto-selected projection: {reproject_to} ({tgt_info['name']})")
+                log(f"Auto-reprojection: Detected geographic CRS {src} ({src_info['name']})")
+                log(f"  Sample coordinates: lat={sample_lat:.6f}, lon={sample_lon:.6f}" if sample_lat else "")
+                log(f"  Auto-selected projection: {reproject_to} ({tgt_info['name']})")
                 if 'regions' in tgt_info:
-                    print(f"  Coverage area: {tgt_info['regions']}")
+                    log(f"  Coverage area: {tgt_info['regions']}")
     
     # Build transformers if requested
     xy_transform = None
     xyz_transform = None
     if reproject_to:
         if debug:
-            print(f"Reprojecting from {src} to {reproject_to}")
+            log(f"Reprojecting from {src} to {reproject_to}")
         try:
             xy_transform = _make_xy_transformer(src, reproject_to)
             xyz_transform = _make_xyz_transformer(src, reproject_to)
@@ -2966,10 +3005,10 @@ def export_step_from_citygml(
                     shapes.append(shp)
                     count += 1
                     if debug:
-                        print(f"Successfully extracted solid from building {i}")
+                        log(f"Successfully extracted solid from building {i}")
             except Exception as e:
                 if debug:
-                    print(f"Solid extraction failed for building {i}: {e}")
+                    log(f"Solid extraction failed for building {i}: {e}")
                 continue
 
     # Try sew method if solid didn't work
@@ -2993,7 +3032,7 @@ def export_step_from_citygml(
                     count += 1
             except Exception as e:
                 if debug:
-                    print(f"Sewing failed for building {i}: {e}")
+                    log(f"Sewing failed for building {i}: {e}")
                 continue
 
     # Fallback to extrusion from footprints (only when explicitly requested or in auto mode)
@@ -3008,14 +3047,14 @@ def export_step_from_citygml(
             xy_transform=xy_transform,
         )
         if debug:
-            print(f"Parsed buildings with footprints: {len(fplist)}")
+            log(f"Parsed buildings with footprints: {len(fplist)}")
         for fp in fplist:
             try:
                 shp = extrude_footprint(fp)
                 shapes.append(shp)
             except Exception as e:
                 if debug:
-                    print(f"Extrusion failed for {fp.building_id}: {e}")
+                    log(f"Extrusion failed for {fp.building_id}: {e}")
                 continue
 
     if not shapes:
@@ -3038,7 +3077,7 @@ def export_step_from_citygml(
             return True, out_step
         except Exception as e:
             if debug:
-                print(f"STEPExporter failed, falling back to local writer: {e}")
+                log(f"STEPExporter failed, falling back to local writer: {e}")
             # continue to fallback
 
     return _export_step_compound_local(shapes, out_step, debug=debug)
@@ -3060,7 +3099,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     # Warn if deprecated parameter is used
     if args.default_height != 10.0:
-        print("Warning: --default-height is deprecated and no longer used for LOD2/3 processing", file=sys.stderr)
+        log("Warning: --default-height is deprecated and no longer used for LOD2/3 processing", file=sys.stderr)
 
     ok, msg = export_step_from_citygml(
         args.input,
@@ -3073,10 +3112,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         source_crs=args.source_crs,
     )
     if ok:
-        print(f"Wrote STEP: {msg}")
+        log(f"Wrote STEP: {msg}")
         return 0
     else:
-        print(f"Error: {msg}")
+        log(f"Error: {msg}")
         return 1
 
 

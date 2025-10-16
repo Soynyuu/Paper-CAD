@@ -89,7 +89,9 @@ if OCCT_AVAILABLE:
     from OCC.Core.TopAbs import TopAbs_SHELL
     from OCC.Core.TopExp import TopExp_Explorer
     from OCC.Core.BRepCheck import BRepCheck_Analyzer
-    from OCC.Core.ShapeFix import ShapeFix_Shape
+    from OCC.Core.ShapeFix import ShapeFix_Shape, ShapeFix_Solid
+    from OCC.Core.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
+    from OCC.Core.BRep import BRep_Tool
 
 try:
     # Local exporter is optional; we avoid importing FastAPI-dependent config
@@ -1905,14 +1907,149 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
             solid = mk_solid.Solid()
 
             # Validate solid
+            log(f"\n[PHASE:4] SOLID VALIDATION")
             analyzer = BRepCheck_Analyzer(solid)
             if analyzer.IsValid():
+                log(f"[VALIDATION] ✓ Initial solid validation succeeded")
                 if debug:
-                    log(f"Created valid solid with {len(interior_shells)} cavities")
+                    log(f"[INFO] Created valid solid with {len(interior_shells)} cavities")
                 return solid
             else:
-                if debug:
-                    log("Solid validation failed, returning shell")
+                log(f"[VALIDATION] ✗ Initial solid validation failed")
+                log(f"\n[PHASE:5] AUTOMATIC REPAIR WITH AUTO-ESCALATION")
+
+                # Define escalation levels (minimal → standard → aggressive → ultra)
+                escalation_map = {
+                    'minimal': ['minimal', 'standard', 'aggressive', 'ultra'],
+                    'standard': ['standard', 'aggressive', 'ultra'],
+                    'aggressive': ['aggressive', 'ultra'],
+                    'ultra': ['ultra']
+                }
+
+                levels_to_try = escalation_map.get(shape_fix_level, ['minimal', 'standard', 'aggressive', 'ultra'])
+                log(f"[INFO] Auto-escalation enabled: will try levels {' → '.join(levels_to_try)}")
+                log(f"[INFO] Starting from: {shape_fix_level}")
+                log(f"")
+
+                # Try each escalation level
+                for current_level_idx, current_level in enumerate(levels_to_try):
+                    if current_level_idx > 0:
+                        log(f"\n{'='*80}")
+                        log(f"[ESCALATION] Previous level failed, escalating to: {current_level}")
+                        log(f"{'='*80}")
+
+                    log(f"\n[REPAIR LEVEL: {current_level.upper()}]")
+
+                    # Repair Strategy 1: ShapeFix_Solid (always try)
+                    log(f"\n[STEP 1/4] Trying ShapeFix_Solid...")
+                    try:
+                        fixer = ShapeFix_Solid(solid)
+                        fixer.SetPrecision(tolerance)
+                        fixer.SetMaxTolerance(tolerance * 10)
+                        fixer.Perform()
+                        repaired_solid = fixer.Solid()
+
+                        analyzer_repaired = BRepCheck_Analyzer(repaired_solid)
+                        if analyzer_repaired.IsValid():
+                            log(f"[REPAIR] ✓ ShapeFix_Solid succeeded at level '{current_level}'!")
+                            log(f"[INFO] Repaired solid is now valid")
+                            if current_level_idx > 0:
+                                log(f"[INFO] Success after escalation from '{shape_fix_level}' to '{current_level}'")
+                            return repaired_solid
+                        else:
+                            log(f"[REPAIR] ✗ ShapeFix_Solid did not fix all issues")
+                            solid = repaired_solid  # Use partially repaired version for next attempts
+                    except Exception as e:
+                        log(f"[REPAIR] ✗ ShapeFix_Solid raised exception: {type(e).__name__}: {str(e)}")
+
+                    # Repair Strategy 2: ShapeUpgrade_UnifySameDomain (standard+)
+                    if current_level in ['standard', 'aggressive', 'ultra']:
+                        log(f"\n[STEP 2/4] Trying ShapeUpgrade_UnifySameDomain (topology simplification)...")
+                        try:
+                            unifier = ShapeUpgrade_UnifySameDomain(solid, True, True, True)
+                            unifier.Build()
+                            unified_shape = unifier.Shape()
+
+                            analyzer_unified = BRepCheck_Analyzer(unified_shape)
+                            if analyzer_unified.IsValid():
+                                log(f"[REPAIR] ✓ ShapeUpgrade_UnifySameDomain succeeded at level '{current_level}'!")
+                                log(f"[INFO] Unified shape is now valid")
+                                if current_level_idx > 0:
+                                    log(f"[INFO] Success after escalation from '{shape_fix_level}' to '{current_level}'")
+                                return unified_shape
+                            else:
+                                log(f"[REPAIR] ✗ Topology simplification did not create valid solid")
+                        except Exception as e:
+                            log(f"[REPAIR] ✗ ShapeUpgrade_UnifySameDomain raised exception: {type(e).__name__}: {str(e)}")
+                    else:
+                        log(f"[STEP 2/4] Skipped (requires level standard+)")
+
+                    # Repair Strategy 3: Rebuild with relaxed tolerance (aggressive+)
+                    if current_level in ['aggressive', 'ultra']:
+                        log(f"\n[STEP 3/4] Trying rebuild with relaxed tolerance (2x)...")
+                        try:
+                            relaxed_tolerance = tolerance * 2.0
+                            log(f"[INFO] Original tolerance: {tolerance:.6f}")
+                            log(f"[INFO] Relaxed tolerance: {relaxed_tolerance:.6f}")
+
+                            # Rebuild shell with relaxed tolerance
+                            relaxed_shell = _build_shell_from_faces(exterior_faces, relaxed_tolerance, debug, current_level)
+                            if relaxed_shell is not None and BRep_Tool.IsClosed(relaxed_shell):
+                                mk_solid_relaxed = BRepBuilderAPI_MakeSolid(relaxed_shell)
+                                for int_shell in interior_shells:
+                                    try:
+                                        mk_solid_relaxed.Add(int_shell)
+                                    except Exception:
+                                        pass
+
+                                relaxed_solid = mk_solid_relaxed.Solid()
+                                analyzer_relaxed = BRepCheck_Analyzer(relaxed_solid)
+                                if analyzer_relaxed.IsValid():
+                                    log(f"[REPAIR] ✓ Rebuild with relaxed tolerance succeeded at level '{current_level}'!")
+                                    if current_level_idx > 0:
+                                        log(f"[INFO] Success after escalation from '{shape_fix_level}' to '{current_level}'")
+                                    return relaxed_solid
+                                else:
+                                    log(f"[REPAIR] ✗ Relaxed tolerance rebuild did not create valid solid")
+                            else:
+                                log(f"[REPAIR] ✗ Could not rebuild closed shell with relaxed tolerance")
+                        except Exception as e:
+                            log(f"[REPAIR] ✗ Relaxed tolerance rebuild raised exception: {type(e).__name__}: {str(e)}")
+                    else:
+                        log(f"[STEP 3/4] Skipped (requires level aggressive+)")
+
+                    # Repair Strategy 4: ShapeFix_Shape (ultra only)
+                    if current_level == 'ultra':
+                        log(f"\n[STEP 4/4] Trying ShapeFix_Shape (most aggressive)...")
+                        try:
+                            shape_fixer = ShapeFix_Shape(solid)
+                            shape_fixer.SetPrecision(tolerance)
+                            shape_fixer.SetMaxTolerance(tolerance * 100)
+                            shape_fixer.Perform()
+                            fixed_shape = shape_fixer.Shape()
+
+                            analyzer_fixed = BRepCheck_Analyzer(fixed_shape)
+                            if analyzer_fixed.IsValid():
+                                log(f"[REPAIR] ✓ ShapeFix_Shape succeeded at level 'ultra'!")
+                                if current_level_idx > 0:
+                                    log(f"[INFO] Success after escalation from '{shape_fix_level}' to 'ultra'")
+                                return fixed_shape
+                            else:
+                                log(f"[REPAIR] ✗ ShapeFix_Shape did not create valid solid")
+                        except Exception as e:
+                            log(f"[REPAIR] ✗ ShapeFix_Shape raised exception: {type(e).__name__}: {str(e)}")
+                    else:
+                        log(f"[STEP 4/4] Skipped (requires level ultra)")
+
+                    log(f"\n[REPAIR LEVEL: {current_level.upper()}] ✗ All strategies failed at this level")
+
+                # All escalation levels exhausted
+                log(f"\n{'='*80}")
+                log(f"[REPAIR] ✗ All repair attempts exhausted across all escalation levels")
+                log(f"[INFO] Tried levels: {' → '.join(levels_to_try)}")
+                log(f"[DECISION] → Returning shell instead of solid (may cause issues in merging/export)")
+                log(f"⚠ WARNING: This shape may fail in BuildingPart fusion or STEP export")
+                log(f"⚠ WARNING: The building geometry has fundamental topology issues")
                 return exterior_shell
         except Exception as e:
             if debug:
@@ -1976,12 +2113,43 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
     try:
         log_file = open(log_path, "w", encoding="utf-8")
-        log_file.write(f"CityGML to STEP Conversion Log\n")
+        # Write comprehensive log header with legend for LLM analysis
+        log_file.write(f"{'='*80}\n")
+        log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
+        log_file.write(f"{'='*80}\n")
         log_file.write(f"Building ID: {elem_id}\n")
         log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
         log_file.write(f"Precision mode: {precision_mode}\n")
         log_file.write(f"Shape fix level: {shape_fix_level}\n")
         log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
+        log_file.write(f"{'='*80}\n\n")
+
+        # Log Legend for LLM Analysis (凡例)
+        log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
+        log_file.write(f"{'-'*80}\n")
+        log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
+        log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
+        log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
+        log_file.write(f"  ✗ FAILED        = Operation failed\n")
+        log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
+        log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
+        log_file.write(f"  ├─              = Child operation (subprocess)\n")
+        log_file.write(f"  └─              = Final result of operation\n")
+        log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
+        log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
+        log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
+        log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
+        log_file.write(f"  [INFO]          = Informational message\n")
+        log_file.write(f"{'-'*80}\n\n")
+
+        log_file.write(f"PROCESSING PHASES:\n")
+        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+        log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
+        log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
+        log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
+        log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
+        log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
+        log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
         log_file.write(f"{'='*80}\n\n")
         log(f"[CONVERSION] Logging to: {log_path}")
         # Set log file for this thread (now all functions can use global log())
@@ -1993,9 +2161,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
     # Wrap entire conversion in try-finally to ensure log cleanup on exception
     try:
-        # Log conversion start
-        log(f"[CONVERSION DEBUG] ═══ Starting LOD extraction for building: {elem_id[:40]} ═══")
-        log(f"[CONVERSION DEBUG] Precision mode: {precision_mode}, Shape fix level: {shape_fix_level}")
+        # Log conversion start with structured format
+        log(f"\n{'='*80}")
+        log(f"[PHASE:1] LOD STRATEGY SELECTION")
+        log(f"{'='*80}")
+        log(f"[INFO] Building ID: {elem_id}")
+        log(f"[INFO] Precision mode: {precision_mode}")
+        log(f"[INFO] Shape fix level: {shape_fix_level}")
+        log(f"[INFO] Strategy: LOD3 → LOD2 → LOD1 (with fallback to boundedBy)")
+        log(f"")
 
         # =========================================================================
         # LOD3 Extraction - Highest detail level (architectural models)
@@ -2635,40 +2809,81 @@ def _fuse_shapes(shapes: List["TopoDS_Shape"], debug: bool = False) -> Optional[
             log("[FUSE] Only one shape, returning as-is")
         return valid_shapes[0]
 
-    if debug:
-        log(f"[FUSE] Attempting to fuse {len(valid_shapes)} shapes...")
+    log(f"\n{'='*80}")
+    log(f"[PHASE:6] BUILDINGPART FUSION (Boolean Union)")
+    log(f"{'='*80}")
+    log(f"[INFO] Number of parts to fuse: {len(valid_shapes)}")
+    log(f"")
 
     try:
         # Start with the first shape
         result = valid_shapes[0]
+        log(f"[STEP 1/{len(valid_shapes)}] Using first BuildingPart as base")
 
         # Iteratively fuse with remaining shapes
         for i, shape in enumerate(valid_shapes[1:], start=2):
+            log(f"\n[STEP {i}/{len(valid_shapes)}] Fusing BuildingPart {i}...")
+            log(f"├─ [GEOMETRY] Attempting Boolean Fuse operation...")
+
             try:
                 fuse_op = BRepAlgoAPI_Fuse(result, shape)
+
                 if fuse_op.IsDone():
                     result = fuse_op.Shape()
-                    if debug:
-                        log(f"[FUSE] Successfully fused shape {i}/{len(valid_shapes)}")
+
+                    # Validate fused result
+                    analyzer = BRepCheck_Analyzer(result)
+                    if analyzer.IsValid():
+                        log(f"├─ [VALIDATION] ✓ Fused shape is valid")
+                        log(f"└─ [RESULT] ✓ Fusion succeeded")
+                    else:
+                        log(f"├─ [VALIDATION] ⚠ Fused shape is invalid (but continuing)")
+                        log(f"└─ [RESULT] ⚠ Fusion succeeded with invalid topology")
                 else:
-                    if debug:
-                        log(f"[FUSE] Fusion failed at shape {i}/{len(valid_shapes)}, falling back to compound")
-                    # Fallback to compound
+                    log(f"├─ [ERROR] ✗ BRepAlgoAPI_Fuse.IsDone() returned False")
+                    log(f"├─ [DECISION] → Fusion operation failed, cannot continue")
+                    log(f"└─ [FALLBACK] Creating compound instead of fused solid")
                     return _create_compound(valid_shapes, debug)
+
             except Exception as e:
+                log(f"├─ [ERROR] ✗ Exception during fusion")
+                log(f"├─ [ERROR] Exception type: {type(e).__name__}")
+                log(f"├─ [ERROR] Exception message: {str(e)}")
                 if debug:
-                    log(f"[FUSE] Exception during fusion at shape {i}/{len(valid_shapes)}: {e}")
-                # Fallback to compound
+                    import traceback
+                    log(f"├─ [ERROR] Traceback:")
+                    for line in traceback.format_exc().split('\n'):
+                        if line.strip():
+                            log(f"│  {line}")
+                log(f"└─ [FALLBACK] Creating compound instead of fused solid")
                 return _create_compound(valid_shapes, debug)
 
-        if debug:
-            log(f"[FUSE] Successfully fused all {len(valid_shapes)} shapes into single solid")
+        log(f"\n{'='*80}")
+        log(f"[PHASE:6] FUSION SUMMARY")
+        log(f"{'='*80}")
+        log(f"[RESULT] ✓ Successfully fused all {len(valid_shapes)} BuildingParts")
+
+        # Final validation
+        final_analyzer = BRepCheck_Analyzer(result)
+        if final_analyzer.IsValid():
+            log(f"[VALIDATION] ✓ Final fused solid is topologically valid")
+        else:
+            log(f"[VALIDATION] ⚠ Final fused solid has topology issues")
+        log(f"")
 
         return result
 
     except Exception as e:
+        log(f"\n[ERROR] ✗ Unexpected exception in fusion process")
+        log(f"[ERROR] Exception type: {type(e).__name__}")
+        log(f"[ERROR] Exception message: {str(e)}")
         if debug:
-            log(f"[FUSE] Fusion failed with exception: {e}, falling back to compound")
+            import traceback
+            log(f"[ERROR] Traceback:")
+            for line in traceback.format_exc().split('\n'):
+                if line.strip():
+                    log(f"  {line}")
+        log(f"[FALLBACK] Creating compound instead of fused solid")
         return _create_compound(valid_shapes, debug)
 
 
@@ -3254,9 +3469,28 @@ def export_step_from_citygml(
     if method in ("solid", "auto"):
         tried_solid = True
         count = 0
+
+        # Log extraction phase start
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Solid Method)")
+        log(f"{'='*80}")
+        log(f"[INFO] Total buildings to process: {len(bldgs)}")
+        log(f"[INFO] Limit: {limit if limit else 'unlimited'}")
+        log(f"[INFO] Extraction method: {method}")
+        log(f"")
+
         for i, b in enumerate(bldgs):
             if limit is not None and count >= limit:
+                log(f"\n[INFO] Reached limit of {limit} buildings, stopping extraction")
                 break
+
+            # Get building ID for logging
+            building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
+
+            log(f"\n{'─'*80}")
+            log(f"[BUILDING {i+1}/{len(bldgs)}] Processing: {building_id[:60]}")
+            log(f"├─ [STEP 1/3] Extracting LOD geometry...")
+
             try:
                 shp = extract_lod_solid_from_building(
                     b,
@@ -3267,15 +3501,56 @@ def export_step_from_citygml(
                     shape_fix_level=shape_fix_level,
                     merge_building_parts=merge_building_parts
                 )
-                if shp is not None and not shp.IsNull():
-                    shapes.append(shp)
-                    count += 1
-                    if debug:
-                        log(f"Successfully extracted solid from building {i}")
+
+                if shp is None:
+                    log(f"├─ [GEOMETRY] ✗ Extraction returned None")
+                    log(f"└─ [RESULT] Skipping building {building_id[:40]}")
+                    continue
+
+                if shp.IsNull():
+                    log(f"├─ [GEOMETRY] ✗ Shape is null")
+                    log(f"└─ [RESULT] Skipping building {building_id[:40]}")
+                    continue
+
+                # Validate shape before adding
+                log(f"├─ [STEP 2/3] Validating shape...")
+                analyzer = BRepCheck_Analyzer(shp)
+                shape_type = shp.ShapeType()
+
+                if not analyzer.IsValid():
+                    log(f"├─ [VALIDATION] ⚠ Shape is topologically invalid")
+                    log(f"├─ [INFO] Shape type: {shape_type}")
+                    log(f"├─ [DECISION] → Will attempt export anyway (may fail)")
+                else:
+                    log(f"├─ [VALIDATION] ✓ Shape is topologically valid")
+                    log(f"├─ [INFO] Shape type: {shape_type}")
+
+                log(f"├─ [STEP 3/3] Adding to shape list...")
+                shapes.append(shp)
+                count += 1
+                log(f"└─ [RESULT] ✓ Successfully added (total valid shapes: {count})")
+
             except Exception as e:
+                log(f"├─ [ERROR] ✗ Exception during extraction")
+                log(f"├─ [ERROR] Exception type: {type(e).__name__}")
+                log(f"├─ [ERROR] Exception message: {str(e)}")
                 if debug:
-                    log(f"Solid extraction failed for building {i}: {e}")
+                    import traceback
+                    log(f"├─ [ERROR] Traceback:")
+                    for line in traceback.format_exc().split('\n'):
+                        if line.strip():
+                            log(f"│  {line}")
+                log(f"└─ [RESULT] ✗ Failed, skipping building {building_id[:40]}")
                 continue
+
+        # Log extraction summary
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] EXTRACTION SUMMARY")
+        log(f"{'='*80}")
+        log(f"[INFO] Buildings processed: {len(bldgs)}")
+        log(f"[INFO] Shapes extracted: {count}")
+        log(f"[INFO] Success rate: {count}/{len(bldgs)} ({100*count/len(bldgs) if len(bldgs) > 0 else 0:.1f}%)")
+        log(f"")
 
     # Try sew method if solid didn't work
     if not shapes and method in ("sew", "auto"):
@@ -3323,7 +3598,19 @@ def export_step_from_citygml(
                     log(f"Extrusion failed for {fp.building_id}: {e}")
                 continue
 
+    # Pre-export validation phase
+    log(f"\n{'='*80}")
+    log(f"[PHASE:7] STEP EXPORT PREPARATION")
+    log(f"{'='*80}")
+    log(f"[INFO] Total shapes extracted: {len(shapes)}")
+
     if not shapes:
+        log(f"[ERROR] ✗ No valid shapes to export")
+        log(f"[ERROR] Conversion method used: {method}")
+        log(f"[ERROR] Buildings attempted: {len(bldgs)}")
+        log(f"[ERROR] Tried solid method: {tried_solid}")
+        log(f"[ERROR] Tried sew method: {tried_sew}")
+
         if method == "auto":
             return False, "No shapes created via solid extraction, sewing, or extrusion."
         elif method == "solid":
@@ -3332,6 +3619,43 @@ def export_step_from_citygml(
             return False, "Sew method produced no shapes (insufficient LOD2 surfaces)."
         else:
             return False, "No valid solids constructed from footprints."
+
+    # Validate all shapes before export
+    log(f"\n[VALIDATION] Pre-export shape validation:")
+    valid_count = 0
+    invalid_count = 0
+    shape_type_counts = {}
+
+    for i, shp in enumerate(shapes):
+        analyzer = BRepCheck_Analyzer(shp)
+        shape_type = shp.ShapeType()
+        shape_type_counts[shape_type] = shape_type_counts.get(shape_type, 0) + 1
+
+        if analyzer.IsValid():
+            valid_count += 1
+            log(f"  [{i+1}/{len(shapes)}] ✓ Valid - Type: {shape_type}")
+        else:
+            invalid_count += 1
+            log(f"  [{i+1}/{len(shapes)}] ⚠ Invalid - Type: {shape_type}")
+
+    log(f"\n[VALIDATION] Summary:")
+    log(f"  ✓ Valid shapes: {valid_count}")
+    log(f"  ⚠ Invalid shapes: {invalid_count}")
+    log(f"  Shape type distribution:")
+    for shape_type, count in sorted(shape_type_counts.items()):
+        log(f"    - Type {shape_type}: {count} shape(s)")
+
+    if valid_count == 0:
+        log(f"\n[ERROR] ✗ All extracted shapes are topologically invalid")
+        log(f"[ERROR] STEP export will likely fail")
+        return False, f"All {len(shapes)} extracted shapes are topologically invalid. Try using shape_fix_level='standard' or higher."
+
+    if invalid_count > 0:
+        log(f"\n⚠ WARNING: {invalid_count} shape(s) are invalid, but will attempt export")
+        log(f"⚠ WARNING: STEP export may partially fail or produce incorrect geometry")
+
+    log(f"\n[INFO] Proceeding to STEP export with {len(shapes)} shape(s)...")
+    log(f"")
 
     # Prefer core STEPExporter if importable, else fallback local
     if STEPExporter is not None:

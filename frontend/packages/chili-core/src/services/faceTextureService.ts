@@ -10,6 +10,7 @@ import { IService } from "../service";
 export interface TextureData {
     patternId: string;
     tileCount: number;
+    rotation?: number; // Rotation angle in degrees (0-360)
     imageUrl: string;
     repeat?: { x: number; y: number };
     offset?: { x: number; y: number };
@@ -31,6 +32,11 @@ export interface FaceTextureMapping {
 export class FaceTextureService implements IService {
     private textureMappings: Map<number, TextureData> = new Map();
     private app: IApplication | null = null;
+
+    // Rotation editing state
+    private isEditingRotation: boolean = false;
+    private editingFaceNumber: number | null = null;
+    private initialRotation: number = 0;
 
     register(app: IApplication): void {
         this.app = app;
@@ -105,11 +111,13 @@ export class FaceTextureService implements IService {
         faceNumber: number;
         patternId: string;
         tileCount: number;
+        rotation?: number;
     }> {
         return this.getAllMappings().map((mapping) => ({
             faceNumber: mapping.faceNumber,
             patternId: mapping.texture.patternId,
             tileCount: mapping.texture.tileCount,
+            rotation: mapping.texture.rotation,
         }));
     }
 
@@ -198,5 +206,93 @@ export class FaceTextureService implements IService {
             texture.tileCount = tileCount;
             console.log(`[FaceTextureService] Updated tile count for face ${faceNumber} to ${tileCount}`);
         }
+    }
+
+    /**
+     * テクスチャの回転角度を更新
+     * @param faceNumber 面番号
+     * @param rotation 回転角度（度数、0-360）
+     */
+    updateTextureRotation(faceNumber: number, rotation: number): void {
+        const texture = this.textureMappings.get(faceNumber);
+        if (texture) {
+            texture.rotation = rotation;
+            console.log(`[FaceTextureService] Updated rotation for face ${faceNumber} to ${rotation}°`);
+        }
+    }
+
+    /**
+     * テクスチャの回転角度を取得
+     * @param faceNumber 面番号
+     * @returns 回転角度（度数）、テクスチャがない場合は0
+     */
+    getTextureRotation(faceNumber: number): number {
+        const texture = this.textureMappings.get(faceNumber);
+        return texture?.rotation ?? 0;
+    }
+
+    /**
+     * 回転編集モードを開始
+     * @param faceNumber 編集する面番号
+     * @returns 現在の回転角度
+     */
+    startRotationEdit(faceNumber: number): number {
+        const texture = this.textureMappings.get(faceNumber);
+        if (!texture) {
+            console.warn(`[FaceTextureService] No texture found for face ${faceNumber}`);
+            return 0;
+        }
+
+        this.isEditingRotation = true;
+        this.editingFaceNumber = faceNumber;
+        this.initialRotation = texture.rotation ?? 0;
+
+        console.log(
+            `[FaceTextureService] Started rotation edit for face ${faceNumber}, initial: ${this.initialRotation}°`,
+        );
+        return this.initialRotation;
+    }
+
+    /**
+     * 回転編集モードを確定
+     */
+    confirmRotationEdit(): void {
+        if (this.isEditingRotation && this.editingFaceNumber !== null) {
+            console.log(`[FaceTextureService] Confirmed rotation edit for face ${this.editingFaceNumber}`);
+            this.isEditingRotation = false;
+            this.editingFaceNumber = null;
+            this.initialRotation = 0;
+        }
+    }
+
+    /**
+     * 回転編集モードをキャンセル（元の角度に戻す）
+     */
+    cancelRotationEdit(): void {
+        if (this.isEditingRotation && this.editingFaceNumber !== null) {
+            // Restore initial rotation
+            this.updateTextureRotation(this.editingFaceNumber, this.initialRotation);
+            console.log(
+                `[FaceTextureService] Canceled rotation edit for face ${this.editingFaceNumber}, restored to ${this.initialRotation}°`,
+            );
+
+            this.isEditingRotation = false;
+            this.editingFaceNumber = null;
+            this.initialRotation = 0;
+        }
+    }
+
+    /**
+     * 現在編集中かどうか
+     */
+    isEditing(): boolean {
+        return this.isEditingRotation;
+    }
+
+    /**
+     * 現在編集中の面番号を取得
+     */
+    getEditingFaceNumber(): number | null {
+        return this.editingFaceNumber;
     }
 }

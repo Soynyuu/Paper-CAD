@@ -110,6 +110,13 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
             texture.offset.set(textureData.offset.x, textureData.offset.y);
         }
 
+        // 回転を設定
+        if (textureData.rotation !== undefined && textureData.rotation !== 0) {
+            const rotationRadians = (textureData.rotation * Math.PI) / 180;
+            texture.center.set(0.5, 0.5);
+            texture.rotation = rotationRadians;
+        }
+
         // テクスチャ付きマテリアルを作成
         const texturedMaterial = new MeshLambertMaterial({
             map: texture,
@@ -170,6 +177,60 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         // Meshのマテリアルを更新
         this._faces.material = materials;
         console.log(`Updated multi-material with ${materials.length} materials`);
+    }
+
+    /**
+     * Update texture rotation for a specific face (real-time editing)
+     * @param faceIndex Face index
+     * @param rotationDegrees Rotation angle in degrees (0-360)
+     */
+    updateTextureRotation(faceIndex: number, rotationDegrees: number) {
+        const material = this._texturedMaterials.get(faceIndex);
+        if (!material || !(material instanceof MeshLambertMaterial)) {
+            console.warn(`No textured material found for face ${faceIndex}`);
+            return;
+        }
+
+        const texture = material.map;
+        if (!texture) {
+            console.warn(`No texture found in material for face ${faceIndex}`);
+            return;
+        }
+
+        // Convert degrees to radians
+        const rotationRadians = (rotationDegrees * Math.PI) / 180;
+
+        // Set rotation center to the middle of the texture
+        texture.center.set(0.5, 0.5);
+
+        // Apply rotation
+        texture.rotation = rotationRadians;
+
+        // Mark texture as needing update
+        texture.needsUpdate = true;
+
+        console.log(`Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`);
+    }
+
+    /**
+     * Get current texture rotation for a face
+     * @param faceIndex Face index
+     * @returns Rotation angle in degrees, or null if no texture
+     */
+    getTextureRotation(faceIndex: number): number | null {
+        const material = this._texturedMaterials.get(faceIndex);
+        if (!material || !(material instanceof MeshLambertMaterial)) {
+            return null;
+        }
+
+        const texture = material.map;
+        if (!texture) {
+            return null;
+        }
+
+        // Convert radians to degrees
+        const rotationDegrees = (texture.rotation * 180) / Math.PI;
+        return rotationDegrees;
     }
 
     /**

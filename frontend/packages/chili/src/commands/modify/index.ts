@@ -5,6 +5,7 @@ export * from "./applyTexture";
 export * from "./break";
 export * from "./brush";
 export * from "./chamfer";
+export * from "./editTextureRotation";
 export * from "./explode";
 export * from "./fillet";
 export * from "./mirror";

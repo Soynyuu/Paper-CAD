@@ -1900,13 +1900,16 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
                         log(f"[CONVERSION DEBUG]   boundedBy would provide approximately {bounded_faces_count} faces")
 
-                        # If boundedBy has significantly more faces (>20% more), prefer it for more detail
-                        if bounded_faces_count > len(exterior_faces_solid) * 1.2:
+                        # If boundedBy has same or more faces, prefer it for more detail
+                        # Fix for Issue #48: Relaxed threshold from 1.2 (20% more) to 1.0 (same or more)
+                        # Previous: 80 > 74*1.2 (88.8) = False → chose lod2Solid (wrong!)
+                        # Now: 80 >= 74*1.0 (74) = True → choose boundedBy (correct!)
+                        if bounded_faces_count >= len(exterior_faces_solid):
                             log(f"[CONVERSION DEBUG]   ✓ boundedBy has {bounded_faces_count} vs lod2Solid's {len(exterior_faces_solid)} faces")
                             log(f"[CONVERSION DEBUG]   → Preferring boundedBy strategy for more detailed geometry")
                             # Don't return here - let it fall through to boundedBy strategy below
                         else:
-                            log(f"[CONVERSION DEBUG]   → lod2Solid has sufficient detail ({len(exterior_faces_solid)} faces), using it")
+                            log(f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it")
                             if log_file:
                                 log_file.close()
                             return result

@@ -1644,6 +1644,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     Returns:
         TopoDS_Shape or None
     """
+    # Force debug mode for comprehensive logging (issue #48 diagnostics)
+    # This ensures detailed logs are always available for troubleshooting geometry extraction issues
+    debug = True
+
     elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
     exterior_faces: List[TopoDS_Face] = []
 
@@ -1661,7 +1665,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
         log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
         log_file.write(f"Precision mode: {precision_mode}\n")
         log_file.write(f"Shape fix level: {shape_fix_level}\n")
-        log_file.write(f"Debug mode: {debug}\n")
+        log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
         log_file.write(f"{'='*80}\n\n")
         print(f"[CONVERSION] Logging to: {log_path}")
     except Exception as e:

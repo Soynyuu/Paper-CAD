@@ -1650,6 +1650,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
 
     elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
     exterior_faces: List[TopoDS_Face] = []
+    prefer_bounded_by = False  # Flag to skip intermediate strategies if boundedBy is preferred
 
     # Always create log file for conversion tracking (not just in debug mode)
     log_file = None
@@ -1907,6 +1908,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         if bounded_faces_count >= len(exterior_faces_solid):
                             log(f"[CONVERSION DEBUG]   ✓ boundedBy has {bounded_faces_count} vs lod2Solid's {len(exterior_faces_solid)} faces")
                             log(f"[CONVERSION DEBUG]   → Preferring boundedBy strategy for more detailed geometry")
+                            log(f"[CONVERSION DEBUG]   → Skipping MultiSurface/Geometry strategies, jumping to boundedBy")
+                            prefer_bounded_by = True  # Skip intermediate strategies
                             # Don't return here - let it fall through to boundedBy strategy below
                         else:
                             log(f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it")
@@ -1932,7 +1935,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
         log(f"[CONVERSION DEBUG] LOD2 Strategy 1: lod2Solid not found")
 
     # Strategy 2: LOD2 MultiSurface (multiple independent surfaces)
-    lod2_multi = elem.find(".//bldg:lod2MultiSurface", NS)
+    # Skip if boundedBy was preferred (Issue #48 fix)
+    if not prefer_bounded_by:
+        lod2_multi = elem.find(".//bldg:lod2MultiSurface", NS)
+    else:
+        lod2_multi = None  # Force skip
     if lod2_multi is not None:
         if debug:
             log(f"[LOD2] Found bldg:lod2MultiSurface in {elem_id}")
@@ -1962,7 +1969,11 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 exterior_faces = []
 
     # Strategy 3: LOD2 Geometry (generic geometry container)
-    lod2_geom = elem.find(".//bldg:lod2Geometry", NS)
+    # Skip if boundedBy was preferred (Issue #48 fix)
+    if not prefer_bounded_by:
+        lod2_geom = elem.find(".//bldg:lod2Geometry", NS)
+    else:
+        lod2_geom = None  # Force skip
     if lod2_geom is not None:
         if debug:
             log(f"[LOD2] Found bldg:lod2Geometry in {elem_id}")

@@ -1647,26 +1647,26 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     elem_id = elem.get("{http://www.opengis.net/gml}id") or "unknown"
     exterior_faces: List[TopoDS_Face] = []
 
-    # Open debug log file if debug mode is enabled
+    # Always create log file for conversion tracking (not just in debug mode)
     log_file = None
-    if debug:
-        log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
-        os.makedirs(log_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
-        log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
-        try:
-            log_file = open(log_path, "w", encoding="utf-8")
-            log_file.write(f"CityGML to STEP Conversion Debug Log\n")
-            log_file.write(f"Building ID: {elem_id}\n")
-            log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
-            log_file.write(f"Precision mode: {precision_mode}\n")
-            log_file.write(f"Shape fix level: {shape_fix_level}\n")
-            log_file.write(f"{'='*80}\n\n")
-            print(f"[CONVERSION DEBUG] Logging to: {log_path}")
-        except Exception as e:
-            print(f"[CONVERSION DEBUG] Failed to create log file: {e}")
-            log_file = None
+    log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
+    log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+    try:
+        log_file = open(log_path, "w", encoding="utf-8")
+        log_file.write(f"CityGML to STEP Conversion Log\n")
+        log_file.write(f"Building ID: {elem_id}\n")
+        log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
+        log_file.write(f"Precision mode: {precision_mode}\n")
+        log_file.write(f"Shape fix level: {shape_fix_level}\n")
+        log_file.write(f"Debug mode: {debug}\n")
+        log_file.write(f"{'='*80}\n\n")
+        print(f"[CONVERSION] Logging to: {log_path}")
+    except Exception as e:
+        print(f"[CONVERSION] Warning: Failed to create log file: {e}")
+        log_file = None
 
     def log(message: str):
         """Helper function to log both to console and file"""

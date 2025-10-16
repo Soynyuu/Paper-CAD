@@ -1946,15 +1946,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                             log(f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it")
                             if log_file:
                                 set_log_file(None)
-                        set_log_file(None)
-                    log_file.close()
+                                log_file.close()
                             return result
                     else:
                         log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
                         if log_file:
                             set_log_file(None)
-                        set_log_file(None)
-                    log_file.close()
+                            log_file.close()
                         return result
                 else:
                     log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")

@@ -105,9 +105,9 @@ export class SimplePDFExporter {
         const svgInfo = this.getSVGDimensions(svgElement);
         const svgWidthPx = svgInfo.width;
 
-        // Backend uses mm_to_px = 3.78, so we use the inverse for px → mm conversion
-        // 1px = (1/3.78)mm ≈ 0.2646mm
-        const pxToMm = 1 / 3.78;
+        // Use the same conversion factor as single-page PDF for consistency
+        // 96 DPI: 1 inch = 25.4mm, 1px = 25.4/96mm ≈ 0.264583mm
+        const pxToMm = 0.264583;
 
         console.log(`SVG width: ${svgWidthPx}px, conversion factor: ${pxToMm} mm/px`);
 
@@ -128,16 +128,22 @@ export class SimplePDFExporter {
                 pdf.addPage();
             }
 
-            // Clone SVG and set viewBox to clip this page
+            // Clone SVG for this page
             const svgClone = svgElement.cloneNode(true) as SVGElement;
 
-            // Set viewBox to show only this page region
-            // viewBox format: "min-x min-y width height"
-            svgClone.setAttribute("viewBox", `0 ${page.yOffset} ${svgWidthPx} ${page.height}`);
+            // CRITICAL FIX: Don't use viewBox for clipping, instead adjust the SVG size
+            // and use preserveAspectRatio to ensure correct scaling
+            // Set the SVG to be exactly one page size in pixels
             svgClone.setAttribute("width", String(svgWidthPx));
             svgClone.setAttribute("height", String(page.height));
 
-            console.log(`Page ${page.pageNumber} viewBox: 0 ${page.yOffset} ${svgWidthPx} ${page.height}`);
+            // Set viewBox to match exactly - this ensures 1:1 pixel mapping
+            svgClone.setAttribute("viewBox", `0 ${page.yOffset} ${svgWidthPx} ${page.height}`);
+            svgClone.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+            console.log(
+                `Page ${page.pageNumber} SVG: ${svgWidthPx}x${page.height}px, viewBox: 0 ${page.yOffset} ${svgWidthPx} ${page.height}`,
+            );
 
             // Convert SVG pixel dimensions to mm
             const svgWidthMm = svgWidthPx * pxToMm;
@@ -173,12 +179,15 @@ export class SimplePDFExporter {
                     height: renderHeight,
                 });
 
-                // Add page number footer
+                // Add debug info to PDF
                 pdf.setFontSize(8);
                 pdf.setTextColor(150);
-                pdf.text(`Page ${page.pageNumber}/${pages.length}`, pageWidth / 2, pageHeight - 5, {
-                    align: "center",
-                });
+                pdf.text(
+                    `Page ${page.pageNumber}/${pages.length} | SVG: ${svgWidthPx.toFixed(0)}x${page.height.toFixed(0)}px | Scale: ${scale.toFixed(2)} | Size: ${renderWidth.toFixed(1)}x${renderHeight.toFixed(1)}mm`,
+                    pageWidth / 2,
+                    pageHeight - 5,
+                    { align: "center" },
+                );
 
                 console.log(`Page ${page.pageNumber} rendered successfully`);
             } catch (error) {

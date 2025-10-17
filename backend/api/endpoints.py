@@ -207,9 +207,9 @@ async def citygml_to_step(
         description="地理座標系を検出した場合、自動的に適切な投影座標系に変換",
     ),
     precision_mode: str = Form(
-        "standard",
-        description="精度モード: standard（標準、0.01%、推奨）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化）",
-        example="standard",
+        "ultra",
+        description="精度モード: standard（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化、推奨）",
+        example="ultra",
     ),
     shape_fix_level: str = Form(
         "minimal",
@@ -592,7 +592,7 @@ async def plateau_fetch_and_convert(
     debug: bool = Form(False, description="デバッグモード"),
     method: str = Form("solid", description="変換方式"),
     auto_reproject: bool = Form(True, description="自動再投影"),
-    precision_mode: str = Form("standard", description="精度モード（推奨: standard）"),
+    precision_mode: str = Form("ultra", description="精度モード（推奨: ultra）"),
     shape_fix_level: str = Form("minimal", description="形状修正レベル（推奨: minimal）"),
     merge_building_parts: bool = Form(False, description="BuildingPartを単一ソリッドに結合（詳細保持優先: False推奨）"),
 ):

@@ -206,6 +206,11 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         // Apply rotation
         texture.rotation = rotationRadians;
 
+        // Explicitly update texture matrix (CRITICAL for texture transform changes)
+        // Without this, rotation/offset/repeat changes don't take effect
+        texture.matrixAutoUpdate = true;
+        texture.updateMatrix();
+
         // Mark texture as needing update
         texture.needsUpdate = true;
 

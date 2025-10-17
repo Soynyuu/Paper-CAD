@@ -55,11 +55,17 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
     private _texturedMaterials: Map<number, Material> = new Map();
     private _faceTextureService: FaceTextureService | null = null;
 
+    // Instance ID for debugging
+    private static _instanceCounter = 0;
+    private readonly _instanceId: number;
+
     constructor(
         readonly geometryNode: GeometryNode,
         readonly context: ThreeVisualContext,
     ) {
         super(geometryNode);
+        this._instanceId = ++ThreeGeometry._instanceCounter;
+        console.log(`[ThreeGeometry] Created instance #${this._instanceId} for node:`, geometryNode);
         this._faceMaterial = context.getMaterial(geometryNode.materialId);
         this.generateShape();
         geometryNode.onPropertyChanged(this.handleGeometryPropertyChanged);
@@ -89,8 +95,16 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
      * @param textureData テクスチャデータ
      */
     async applyTextureToFace(faceIndex: number, textureData: TextureData) {
-        if (!this._faces || !this._faces.geometry.groups || this._faces.geometry.groups.length === 0) {
-            console.warn("ThreeGeometry: No face groups available for texture application");
+        console.log(
+            `[applyTextureToFace] ===== START ===== instance #${this._instanceId}, faceIndex=${faceIndex}`,
+        );
+        console.log(`[applyTextureToFace] textureData:`, textureData);
+        console.log(
+            `[applyTextureToFace] rotation value: ${textureData.rotation}, type: ${typeof textureData.rotation}`,
+        );
+
+        if (!this._faces) {
+            console.warn("ThreeGeometry: No faces mesh available for texture application");
             return;
         }
 
@@ -105,19 +119,39 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         texture.wrapS = texture.wrapT = RepeatWrapping;
         if (textureData.repeat) {
             texture.repeat.set(textureData.repeat.x, textureData.repeat.y);
+            console.log(`[applyTextureToFace] Set repeat: ${textureData.repeat.x}, ${textureData.repeat.y}`);
         }
         if (textureData.offset) {
             texture.offset.set(textureData.offset.x, textureData.offset.y);
+            console.log(`[applyTextureToFace] Set offset: ${textureData.offset.x}, ${textureData.offset.y}`);
         }
 
         // 回転を設定
+        console.log(
+            `[applyTextureToFace] Checking rotation condition: rotation=${textureData.rotation}, undefined=${textureData.rotation !== undefined}, nonzero=${textureData.rotation !== 0}`,
+        );
         if (textureData.rotation !== undefined && textureData.rotation !== 0) {
+            console.log(`[applyTextureToFace] ✓ Applying rotation: ${textureData.rotation}°`);
             const rotationRadians = (textureData.rotation * Math.PI) / 180;
+            console.log(`[applyTextureToFace] Rotation in radians: ${rotationRadians}`);
+
             texture.center.set(0.5, 0.5);
+            console.log(`[applyTextureToFace] Set texture center to (0.5, 0.5)`);
+
             texture.rotation = rotationRadians;
+            console.log(`[applyTextureToFace] Set texture.rotation = ${rotationRadians}`);
+
             // Explicitly update texture matrix for initial rotation
-            texture.matrixAutoUpdate = true;
+            // CRITICAL: matrixAutoUpdate MUST be false to prevent Three.js from overwriting our rotation
+            texture.matrixAutoUpdate = false;
             texture.updateMatrix();
+            texture.needsUpdate = true;
+            console.log(`[applyTextureToFace] Called texture.updateMatrix() with matrixAutoUpdate=false`);
+            console.log(`[applyTextureToFace] Texture matrix:`, texture.matrix);
+        } else {
+            console.log(
+                `[applyTextureToFace] ✗ Skipping rotation: rotation=${textureData.rotation} (undefined=${textureData.rotation === undefined}, zero=${textureData.rotation === 0})`,
+            );
         }
 
         // テクスチャ付きマテリアルを作成
@@ -127,12 +161,27 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
             transparent: true,
         });
 
+        // Mark material as needing update (critical for Multi-Material rendering)
+        texturedMaterial.needsUpdate = true;
+
         // マテリアルを保存
+        console.log(
+            `[applyTextureToFace] Storing material in Map for faceIndex=${faceIndex} (type: ${typeof faceIndex})`,
+        );
         this._texturedMaterials.set(faceIndex, texturedMaterial);
+        console.log(`[applyTextureToFace] Map size after set: ${this._texturedMaterials.size}`);
+        console.log(`[applyTextureToFace] Map keys after set:`, Array.from(this._texturedMaterials.keys()));
+        console.log(
+            `[applyTextureToFace] Verification - can retrieve material:`,
+            this._texturedMaterials.has(faceIndex),
+        );
 
         // Note: updateMultiMaterial() will be called automatically when faceMaterialPair changes
         // via handleGeometryPropertyChanged() after addFaceMaterial() completes
-        console.log(`[applyTextureToFace] Stored textured material for faceIndex=${faceIndex}`);
+        console.log(
+            `[applyTextureToFace] ✓ Stored textured material for faceIndex=${faceIndex}, final texture.rotation=${texture.rotation}`,
+        );
+        console.log(`[applyTextureToFace] ===== END =====`);
     }
 
     /**
@@ -210,38 +259,42 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
      * @param rotationDegrees Rotation angle in degrees (0-360)
      */
     updateTextureRotation(faceIndex: number, rotationDegrees: number) {
+        console.log(
+            `[updateTextureRotation] ===== START ===== instance #${this._instanceId}, faceIndex=${faceIndex}, rotation=${rotationDegrees}°`,
+        );
+
         if (!this._faces) {
             console.warn(`[updateTextureRotation] No faces mesh available`);
             return;
         }
 
-        // CRITICAL: Find the material using faceMaterialPair mapping
-        // After addFaceMaterial() rebuilds geometry groups, faceIndex doesn't directly
-        // map to material array index. Must use faceMaterialPair to find correct materialIndex.
-        const facePair = this.geometryNode.faceMaterialPair.find((p) => p.faceIndex === faceIndex);
+        // Debug: Show what's in the Map
+        console.log(`[updateTextureRotation] _texturedMaterials Map size: ${this._texturedMaterials.size}`);
+        console.log(
+            `[updateTextureRotation] _texturedMaterials Map keys:`,
+            Array.from(this._texturedMaterials.keys()),
+        );
+        console.log(
+            `[updateTextureRotation] Requesting material for faceIndex: ${faceIndex} (type: ${typeof faceIndex})`,
+        );
 
-        let material: Material | undefined;
+        // Get material directly from _texturedMaterials Map (single source of truth)
+        // DO NOT use _faces.material array as it gets overwritten by removeTemperaryMaterial()
+        const material = this._texturedMaterials.get(faceIndex);
 
-        if (facePair !== undefined) {
-            // Use faceMaterialPair mapping to get material from array
-            const materials = Array.isArray(this._faces.material)
-                ? this._faces.material
-                : [this._faces.material];
-            material = materials[facePair.materialIndex];
-            console.log(
-                `[updateTextureRotation] Found material via facePair: faceIndex=${faceIndex} → materialIndex=${facePair.materialIndex}`,
-            );
-        } else {
-            // Fallback: Try to get from _texturedMaterials Map
-            material = this._texturedMaterials.get(faceIndex);
-            console.log(
-                `[updateTextureRotation] Fallback to _texturedMaterials Map for faceIndex=${faceIndex}`,
-            );
-        }
+        console.log(`[updateTextureRotation] Material found:`, material ? "YES" : "NO");
+        console.log(
+            `[updateTextureRotation] Is MeshLambertMaterial:`,
+            material instanceof MeshLambertMaterial,
+        );
 
         if (!material || !(material instanceof MeshLambertMaterial)) {
             console.warn(
-                `[updateTextureRotation] No textured material found for face ${faceIndex}, facePair=${facePair ? "found" : "not found"}`,
+                `[updateTextureRotation] ✗ FAILED: No textured material found for face ${faceIndex}`,
+            );
+            console.warn(
+                `[updateTextureRotation] Available face indices in Map:`,
+                Array.from(this._texturedMaterials.keys()),
             );
             return;
         }
@@ -262,8 +315,9 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         texture.rotation = rotationRadians;
 
         // Explicitly update texture matrix (CRITICAL for texture transform changes)
+        // CRITICAL: matrixAutoUpdate MUST be false to prevent Three.js from overwriting our rotation
         // Without this, rotation/offset/repeat changes don't take effect
-        texture.matrixAutoUpdate = true;
+        texture.matrixAutoUpdate = false;
         texture.updateMatrix();
 
         // Mark texture as needing update
@@ -273,8 +327,10 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         material.needsUpdate = true;
 
         console.log(
-            `[updateTextureRotation] Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`,
+            `[updateTextureRotation] ✓ SUCCESS: Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`,
         );
+        console.log(`[updateTextureRotation] Final texture.rotation in radians: ${texture.rotation}`);
+        console.log(`[updateTextureRotation] ===== END =====`);
     }
 
     /**
@@ -302,6 +358,10 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
      * 全てのテクスチャをクリア
      */
     clearAllTextures() {
+        console.log(
+            `[ThreeGeometry #${this._instanceId}] Clearing all textures, Map size: ${this._texturedMaterials.size}`,
+        );
+        console.trace("[ThreeGeometry] clearAllTextures called from:");
         this._texturedMaterials.clear();
         if (this._faces) {
             this._faces.material = this._faceMaterial;
@@ -342,6 +402,10 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
     }
 
     override dispose() {
+        console.log(
+            `[ThreeGeometry #${this._instanceId}] dispose called, Map size: ${this._texturedMaterials.size}`,
+        );
+        console.trace("[ThreeGeometry] dispose called from:");
         super.dispose();
         this._edges?.material.dispose();
         this._edgeMaterial = null as any;
@@ -351,6 +415,10 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
     }
 
     private removeMeshes() {
+        console.log(
+            `[ThreeGeometry #${this._instanceId}] removeMeshes called, Map size: ${this._texturedMaterials.size}`,
+        );
+        console.trace("[ThreeGeometry] removeMeshes called from:");
         if (this._edges) {
             this.remove(this._edges);
             this._edges.geometry.dispose();
@@ -365,6 +433,8 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
             this.remove(this._faceNumbers);
             this._faceNumbers = null as any;
         }
+        // NOTE: _texturedMaterials Map is NOT cleared here intentionally
+        // The Map should persist even when meshes are regenerated
     }
 
     /**

@@ -217,8 +217,8 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         // Mark material as needing update (critical for Multi-Material rendering)
         material.needsUpdate = true;
 
-        // Force multi-material update to ensure changes propagate to mesh
-        this.updateMultiMaterial();
+        // Note: No need to call updateMultiMaterial() here because we're only changing
+        // properties of an existing material, not adding/removing materials from the array
 
         console.log(`Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`);
     }

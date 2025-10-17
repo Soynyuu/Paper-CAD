@@ -1,27 +1,12 @@
 {
     "patterns": [
         {
-            "id": "grass",
-            "name": "芝生",
-            "nameEn": "Grass",
-            "description": "自然な芝生のテクスチャ",
-            "descriptionEn": "Natural grass texture",
-            "image": "grass.png",
-            "scale": 0.5,
-            "category": "nature",
-            "svgPattern": {
-                "width": 100,
-                "height": 100,
-                "patternUnits": "userSpaceOnUse"
-            }
-        },
-        {
-            "id": "wood",
-            "name": "木目",
-            "nameEn": "Wood",
-            "description": "木材の質感",
-            "descriptionEn": "Wood grain texture",
-            "image": "wood.png",
+            "id": "brick",
+            "name": "レンガ",
+            "nameEn": "Brick",
+            "description": "レンガ壁のテクスチャ",
+            "descriptionEn": "Brick wall texture",
+            "image": "brick.png",
             "scale": 0.8,
             "category": "material",
             "svgPattern": {
@@ -32,17 +17,12 @@
         }
     ],
     "categories": {
-        "nature": {
-            "name": "自然",
-            "nameEn": "Nature",
-            "icon": "🌿"
-        },
         "material": {
             "name": "素材",
             "nameEn": "Material",
             "icon": "🏗️"
         }
     },
-    "defaultPattern": "grass",
+    "defaultPattern": "brick",
     "version": "1.0.0"
 }

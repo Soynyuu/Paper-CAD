@@ -57,6 +57,8 @@ class PlateauSearchRequest(BaseModel):
     radius: Optional[float] = 0.001  # Search radius in degrees (default: ~100m)
     limit: Optional[int] = 10  # Maximum number of buildings to return
     auto_select_nearest: Optional[bool] = True  # Auto-select nearest building
+    name_filter: Optional[str] = None  # Building name to filter/rank by (for name-based search)
+    search_mode: Optional[str] = "hybrid"  # Ranking strategy: "distance", "name", or "hybrid"
 
 
 class PlateauFetchAndConvertRequest(BaseModel):
@@ -65,6 +67,7 @@ class PlateauFetchAndConvertRequest(BaseModel):
     radius: Optional[float] = 0.001  # Search radius in degrees
     auto_select_nearest: Optional[bool] = True  # Auto-select nearest building
     building_limit: Optional[int] = 1  # Number of buildings to convert
+    building_ids: Optional[list[str]] = None  # Specific building IDs to convert (user selection)
     # Conversion options (reuse existing CityGML conversion parameters)
     debug: Optional[bool] = False
     method: Optional[str] = "solid"
@@ -83,6 +86,12 @@ class BuildingInfoResponse(BaseModel):
     height: Optional[float] = None
     usage: Optional[str] = None
     measured_height: Optional[float] = None
+    name: Optional[str] = None  # Building name from CityGML
+    relevance_score: Optional[float] = None  # Composite relevance score (0.0-1.0)
+    name_similarity: Optional[float] = None  # Name matching score (0.0-1.0)
+    match_reason: Optional[str] = None  # Explanation of why this building matched
+    has_lod2: bool = False  # Does the building have LOD2 geometry?
+    has_lod3: bool = False  # Does the building have LOD3 geometry?
 
 
 class GeocodingResultResponse(BaseModel):
@@ -101,4 +110,5 @@ class PlateauSearchResponse(BaseModel):
     geocoding: Optional[GeocodingResultResponse]
     buildings: list[BuildingInfoResponse]
     found_count: int
+    search_mode: Optional[str] = "hybrid"  # The search mode that was used
     error: Optional[str] = None

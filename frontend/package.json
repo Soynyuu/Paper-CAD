@@ -47,6 +47,7 @@
         "typescript-plugin-css-modules": "^5.1.0"
     },
     "dependencies": {
+        "lottie-web": "^5.13.0",
         "svgedit": "^7.3.8"
     }
 }

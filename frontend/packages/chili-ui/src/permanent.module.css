@@ -9,6 +9,14 @@ dialog::backdrop {
     background-color: rgba(0, 0, 0, 0.5);
 }
 
+.lottieContainer {
+    width: 250px;
+    height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .loading {
     position: relative;
     width: 48px;

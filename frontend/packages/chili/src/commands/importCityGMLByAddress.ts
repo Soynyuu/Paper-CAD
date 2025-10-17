@@ -22,7 +22,7 @@ import {
 
 @command({
     key: "file.importCityGMLByAddress",
-    icon: "icon-search-location",
+    icon: "icon-import",
     isApplicationCommand: true,
 })
 export class ImportCityGMLByAddress implements ICommand {

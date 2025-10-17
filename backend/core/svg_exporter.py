@@ -58,14 +58,14 @@ class SVGExporter:
 
         # テクスチャマッピング情報
         self.texture_mappings: List[Dict] = []
-        # [{faceNumber: int, patternId: str, tileCount: int}, ...]
+        # [{faceNumber: int, patternId: str, tileCount: int, rotation: float (optional)}, ...]
 
     def set_texture_mappings(self, texture_mappings: List[Dict]):
         """
         テクスチャマッピング情報を設定する。
 
         Args:
-            texture_mappings: [{faceNumber: int, patternId: str, tileCount: int}, ...]
+            texture_mappings: [{faceNumber: int, patternId: str, tileCount: int, rotation: float (optional)}, ...]
         """
         self.texture_mappings = texture_mappings
         print(f"[SVGExporter] Set {len(texture_mappings)} texture mappings")
@@ -158,12 +158,18 @@ class SVGExporter:
             # 面番号を取得
             face_number = None
             texture_mapping = None
+            pattern_id = None
             if "face_numbers" in group and len(group["face_numbers"]) > 0:
                 face_number = group["face_numbers"][0]
                 # テクスチャマッピングを検索
                 for mapping in self.texture_mappings:
                     if mapping.get("faceNumber") == face_number:
                         texture_mapping = mapping
+                        # パターンIDを生成（rotation込み）
+                        rotation = mapping.get('rotation', 0)
+                        pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
+                        if rotation != 0:
+                            pattern_id += f"_r{int(rotation)}"
                         break
 
             # 複数のポリゴンがある場合は穴付きポリゴンとして描画（SVG path使用）
@@ -189,8 +195,7 @@ class SVGExporter:
                 # pathを作成して描画
                 full_path = " ".join(path_parts)
 
-                if texture_mapping:
-                    pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
+                if texture_mapping and pattern_id:
                     dwg.add(dwg.path(
                         d=full_path,
                         class_="face-polygon-textured",
@@ -234,8 +239,7 @@ class SVGExporter:
                         points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
 
                         # テクスチャがある場合はパターンを適用
-                        if texture_mapping:
-                            pattern_id = f"pattern_{texture_mapping['patternId']}_{texture_mapping['tileCount']}"
+                        if texture_mapping and pattern_id:
                             # パターンのfillに加えて、fillOpacityも設定
                             polygon_elem = dwg.polygon(
                                 points=points,
@@ -360,11 +364,17 @@ class SVGExporter:
         # ユニークなパターンIDのセットを作成
         unique_patterns = {}
         for mapping in self.texture_mappings:
+            # rotation も含めてユニークなIDを生成
+            rotation = mapping.get('rotation', 0)
             pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
+            if rotation != 0:
+                pattern_id += f"_r{int(rotation)}"
+
             if pattern_id not in unique_patterns:
                 unique_patterns[pattern_id] = {
                     'patternId': mapping['patternId'],
                     'tileCount': mapping['tileCount'],
+                    'rotation': rotation,
                     'imageData': mapping.get('imageData')  # Base64画像データ（オプション）
                 }
 
@@ -440,6 +450,16 @@ class SVGExporter:
                     pattern.add(dwg.rect((0, 0), ('100%', '100%'), fill='#E0E0E0'))
                     pattern.add(dwg.line((0, '50%'), ('100%', '50%'), stroke='#C0C0C0', stroke_width=1))
                     pattern.add(dwg.line(('50%', 0), ('50%', '100%'), stroke='#C0C0C0', stroke_width=1))
+
+            # 回転を適用（0度以外の場合）
+            rotation_angle = pattern_info.get('rotation', 0)
+            if rotation_angle != 0:
+                # パターンの中心を回転中心とする
+                center_x = pattern_info['tileCount'] / 2
+                center_y = pattern_info['tileCount'] / 2
+                transform = f"rotate({rotation_angle} {center_x} {center_y})"
+                pattern.attribs['patternTransform'] = transform
+                print(f"[SVGExporter] Applied rotation {rotation_angle}° to pattern: {pattern_id}")
 
             dwg.defs.add(pattern)
             print(f"[SVGExporter] Generated pattern: {pattern_id}")

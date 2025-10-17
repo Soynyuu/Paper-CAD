@@ -16,6 +16,7 @@ export interface UnfoldOptions {
         faceNumber: number;
         patternId: string;
         tileCount: number;
+        rotation?: number; // Rotation angle in degrees (0-360)
         imageData?: string; // Base64エンコードされた画像データ（data:image/png;base64,...形式）
     }>;
 }
@@ -29,6 +30,7 @@ export interface UnfoldResponse {
         faceNumber: number;
         patternId: string;
         tileCount: number;
+        rotation?: number; // Rotation angle in degrees (0-360)
     }>;
     stats?: any;
     warnings?: Array<{

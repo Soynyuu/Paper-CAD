@@ -2442,7 +2442,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         else:
                             log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
                             return result
-                    else:
+                    elif result is not None:
                         # Result is not a valid solid (likely an invalid shell)
                         log(f"[CONVERSION DEBUG]   ⚠ LOD2 Strategy 1 returned invalid solid/shell, trying boundedBy fallback...")
                         if debug:

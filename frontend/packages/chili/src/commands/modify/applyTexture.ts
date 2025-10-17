@@ -191,20 +191,19 @@ export class ApplyTextureCommand implements ICommand {
      * テクスチャを直接適用（確認ダイアログ済み、回転付き）
      */
     private async applyTextureDirectlyWithRotation(document: IDocument, rotation: number): Promise<void> {
-        // トランザクション内でテクスチャを適用
-        Transaction.execute(document, "applyTexture", () => {
-            const textureData = this.parameters.toTextureData();
-            // 回転角度を設定
-            textureData.rotation = rotation;
+        // テクスチャデータを準備
+        const textureData = this.parameters.toTextureData();
+        textureData.rotation = rotation;
 
-            // FaceTextureServiceに保存
+        // Step 1: トランザクション内でメタデータを保存（同期処理）
+        Transaction.execute(document, "applyTexture", () => {
             this.faceNumbers.forEach((faceNumber) => {
                 this.textureService?.applyTextureToFace(faceNumber, textureData);
             });
-
-            // 各面にマテリアルを適用
-            this.applyMaterialToFaces(document, textureData);
         });
+
+        // Step 2: 非同期でマテリアルとテクスチャを適用（レンダリング処理）
+        await this.applyMaterialToFaces(document, textureData);
 
         console.log(`Applied texture to ${this.faceNumbers.length} faces with rotation ${rotation}°`);
         console.log(
@@ -230,27 +229,28 @@ export class ApplyTextureCommand implements ICommand {
             return;
         }
 
-        // トランザクション内でテクスチャを適用
-        Transaction.execute(document, "applyTexture", () => {
-            const textureData = this.parameters.toTextureData();
+        // テクスチャデータを準備
+        const textureData = this.parameters.toTextureData();
 
-            // FaceTextureServiceに保存
+        // Step 1: トランザクション内でメタデータを保存（同期処理）
+        Transaction.execute(document, "applyTexture", () => {
             this.faceNumbers.forEach((faceNumber) => {
                 this.textureService?.applyTextureToFace(faceNumber, textureData);
             });
-
-            // 各面にマテリアルを適用
-            this.applyMaterialToFaces(document, textureData);
         });
+
+        // Step 2: 非同期でマテリアルとテクスチャを適用（レンダリング処理）
+        await this.applyMaterialToFaces(document, textureData);
 
         console.log(`Applied texture to ${this.faceNumbers.length} faces`);
         console.log(`[ApplyTextureCommand] Applied texture to ${this.faceNumbers.length} faces`);
     }
 
     /**
-     * 面にマテリアルを適用
+     * 面にマテリアルを適用（非同期）
+     * テクスチャローディングを待機してから面マテリアルを適用
      */
-    private applyMaterialToFaces(document: IDocument, textureData: TextureData): void {
+    private async applyMaterialToFaces(document: IDocument, textureData: TextureData): Promise<void> {
         // テクスチャ付きマテリアルを作成
         const material = new PhongMaterial(
             document,
@@ -310,35 +310,45 @@ export class ApplyTextureCommand implements ICommand {
 
         // 各GeometryNodeに対して面ごとにマテリアルを適用
         if (geometryNodeMap.size > 0) {
-            geometryNodeMap.forEach((faceIndices, geometryNode) => {
+            // forEach ではなく for...of を使用して await を有効にする
+            for (const [geometryNode, faceIndices] of geometryNodeMap.entries()) {
                 console.log(
                     `[ApplyTextureCommand] Applying material to ${faceIndices.length} faces on geometry node`,
                 );
 
-                // addFaceMaterialメソッドを使用して面ごとにマテリアルを適用
+                // STEP 1: addFaceMaterialを先に呼んで、ThreeGeometryインスタンスを再構築させる
+                // Note: addFaceMaterial() → updateVisual() → redrawNode() → dispose(old) → new ThreeGeometry
                 const pairs = faceIndices.map((faceIndex) => ({
                     faceIndex: faceIndex,
                     materialId: material.id,
                 }));
 
+                console.log(`[ApplyTextureCommand] Calling addFaceMaterial to rebuild geometry instance`);
                 geometryNode.addFaceMaterial(pairs);
 
-                // ThreeGeometryのdisplayにもテクスチャを適用（回転編集用）
-                const display = geometryNode.display;
+                // STEP 2: 新しく作成されたThreeGeometryインスタンスを取得
+                // CRITICAL: Must get display AFTER addFaceMaterial to get the NEW instance
+                const display = document.visual.context.getVisual(geometryNode);
+                console.log(`[ApplyTextureCommand] Retrieved display after rebuild:`, display);
+
+                // STEP 3: 新しいインスタンスにテクスチャを適用
                 if (display && typeof (display as any).applyTextureToFace === "function") {
-                    // 全てのテクスチャを非同期で適用
-                    Promise.all(
+                    // 全てのテクスチャを非同期で適用（必ず完了を待つ）
+                    await Promise.all(
                         faceIndices.map(async (faceIndex) => {
                             console.log(
-                                `[ApplyTextureCommand] Applying texture to ThreeGeometry face ${faceIndex}`,
+                                `[ApplyTextureCommand] Applying texture to NEW ThreeGeometry instance, face ${faceIndex}`,
                             );
                             await (display as any).applyTextureToFace(faceIndex, textureData);
                         }),
-                    ).then(() => {
-                        console.log(`[ApplyTextureCommand] All textures applied to ThreeGeometry`);
-                    });
+                    );
+                    console.log(`[ApplyTextureCommand] All textures applied to NEW ThreeGeometry instance`);
+                } else {
+                    console.warn(
+                        `[ApplyTextureCommand] Display not found or applyTextureToFace method missing`,
+                    );
                 }
-            });
+            }
 
             // ドキュメント全体の再描画をトリガー
             document.visual.update();

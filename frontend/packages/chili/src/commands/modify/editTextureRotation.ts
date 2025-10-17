@@ -187,8 +187,8 @@ export class EditTextureRotationCommand implements ICommand {
             return;
         }
 
-        // GeometryNodeのdisplayからThreeGeometryを取得
-        const display = this.geometryNode.display;
+        // VisualContextからThreeGeometryを取得
+        const display = document.visual.context.getVisual(this.geometryNode);
         if (!display) {
             console.warn("[EditTextureRotationCommand] No display found on GeometryNode");
             return;

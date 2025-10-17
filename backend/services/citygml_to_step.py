@@ -1824,6 +1824,37 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     return None
 
 
+def _is_valid_solid(shape) -> bool:
+    """Check if a shape is a valid solid (not just any shape or invalid shell).
+
+    This is used to validate results from _make_solid_with_cavities(), which can return
+    invalid shells when solid construction fails. Without this check, invalid shells
+    are returned to callers, preventing fallback to alternative strategies.
+
+    Args:
+        shape: TopoDS_Shape to validate
+
+    Returns:
+        True if shape is a valid solid, False otherwise
+    """
+    from OCC.Core.BRepCheck import BRepCheck_Analyzer
+    from OCC.Core.TopAbs import TopAbs_SOLID
+
+    if shape is None:
+        return False
+
+    try:
+        # Check if it's actually a solid (not a shell, face, etc.)
+        if shape.ShapeType() != TopAbs_SOLID:
+            return False
+
+        # Check if the solid is topologically valid
+        analyzer = BRepCheck_Analyzer(shape)
+        return analyzer.IsValid()
+    except Exception:
+        return False
+
+
 def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                                interior_shells_faces: List[List["TopoDS_Face"]],
                                tolerance: Optional[float] = None,
@@ -2205,15 +2236,20 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None:
-                        log(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED - Returning detailed LOD3 model")
+                    if result is not None and _is_valid_solid(result):
+                        log(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED with valid solid - Returning detailed LOD3 model")
                         if debug:
                             log(f"[LOD3] Solid processing successful, returning shape")
                         return result
                     else:
-                        log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
-                        if debug:
-                            log(f"[LOD3] Solid shell building failed, trying other strategies...")
+                        if result is not None:
+                            log(f"[CONVERSION DEBUG]   ⚠ LOD3 Strategy 1 returned invalid solid/shell, trying next strategy...")
+                            if debug:
+                                log(f"[LOD3] Solid validation failed, trying other strategies...")
+                        else:
+                            log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (shell building), trying next strategy...")
+                            if debug:
+                                log(f"[LOD3] Solid shell building failed, trying other strategies...")
                 else:
                     log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy...")
                     if debug:
@@ -2243,10 +2279,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD3] MultiSurface processing successful, returning shape")
+                        log(f"[LOD3] MultiSurface processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD3] MultiSurface returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD3] MultiSurface shell building failed, trying other strategies...")
@@ -2282,10 +2321,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD3] Geometry processing successful, returning shape")
+                        log(f"[LOD3] Geometry processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD3] Geometry returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD3] Geometry shell building failed, trying LOD2...")
@@ -2329,8 +2371,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None:
-                        log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 1 (lod2Solid) SUCCEEDED with {len(exterior_faces_solid)} faces")
+                    if result is not None and _is_valid_solid(result):
+                        log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 1 (lod2Solid) SUCCEEDED with valid solid ({len(exterior_faces_solid)} faces)")
                         if debug:
                             log(f"[LOD2] Solid processing successful")
 
@@ -2342,13 +2384,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         log(f"[CONVERSION DEBUG]   Checking if boundedBy has more detailed geometry...")
 
                         bounded_surfaces_check = (
-                            elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
-                            elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
-                            elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS) +
-                            elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS) +
-                            elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS) +
-                            elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
-                        )
+                                elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
+                                elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
+                                elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS) +
+                                elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS) +
+                                elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS) +
+                                elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
+                            )
 
                         if bounded_surfaces_check:
                             log(f"[CONVERSION DEBUG]   Found {len(bounded_surfaces_check)} boundedBy surfaces")
@@ -2400,6 +2442,12 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         else:
                             log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
                             return result
+                    elif result is not None:
+                        # Result is not a valid solid (likely an invalid shell)
+                        log(f"[CONVERSION DEBUG]   ⚠ LOD2 Strategy 1 returned invalid solid/shell, trying boundedBy fallback...")
+                        if debug:
+                            log(f"[LOD2] Solid validation failed, enabling boundedBy fallback")
+                        prefer_bounded_by = True  # Force fallback to boundedBy strategy
                     else:
                         log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (shell building), trying next strategy...")
                         if debug:
@@ -2437,10 +2485,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD2] MultiSurface processing successful, returning shape")
+                        log(f"[LOD2] MultiSurface processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD2] MultiSurface returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD2] MultiSurface shell building failed, trying other strategies...")
@@ -2480,10 +2531,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD2] Geometry processing successful, returning shape")
+                        log(f"[LOD2] Geometry processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD2] Geometry returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD2] Geometry shell building failed, trying other strategies...")
@@ -2611,16 +2665,19 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD2] boundedBy processing successful, returning shape")
+                        log(f"[LOD2] boundedBy processing successful with valid solid, returning shape")
                     if log_file:
                         log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
                         set_log_file(None)
                     return result
                 else:
                     if debug:
-                        log(f"[LOD2] boundedBy shell building failed")
+                        if result is not None:
+                            log(f"[LOD2] boundedBy returned invalid solid/shell, continuing to LOD1 fallback")
+                        else:
+                            log(f"[LOD2] boundedBy shell building failed, continuing to LOD1 fallback")
 
         if debug and not exterior_faces:
             log(f"[LOD2] No LOD2 geometry found, falling back to LOD1 for {elem_id}")
@@ -2652,10 +2709,16 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None:
+                    if result is not None and _is_valid_solid(result):
                         if debug:
-                            log(f"[LOD1] Processing successful, returning shape")
+                            log(f"[LOD1] Processing successful with valid solid, returning shape")
                         return result
+                    elif result is not None:
+                        if debug:
+                            log(f"[LOD1] Returned invalid solid/shell, no more strategies available")
+                    else:
+                        if debug:
+                            log(f"[LOD1] Shell building failed, no more strategies available")
 
             log(f"[CONVERSION DEBUG] ✗ All strategies failed - no geometry extracted")
             return None

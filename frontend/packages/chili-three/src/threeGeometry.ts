@@ -115,6 +115,9 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
             const rotationRadians = (textureData.rotation * Math.PI) / 180;
             texture.center.set(0.5, 0.5);
             texture.rotation = rotationRadians;
+            // Explicitly update texture matrix for initial rotation
+            texture.matrixAutoUpdate = true;
+            texture.updateMatrix();
         }
 
         // テクスチャ付きマテリアルを作成
@@ -185,15 +188,45 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
      * @param rotationDegrees Rotation angle in degrees (0-360)
      */
     updateTextureRotation(faceIndex: number, rotationDegrees: number) {
-        const material = this._texturedMaterials.get(faceIndex);
+        if (!this._faces) {
+            console.warn(`[updateTextureRotation] No faces mesh available`);
+            return;
+        }
+
+        // CRITICAL: Find the material using faceMaterialPair mapping
+        // After addFaceMaterial() rebuilds geometry groups, faceIndex doesn't directly
+        // map to material array index. Must use faceMaterialPair to find correct materialIndex.
+        const facePair = this.geometryNode.faceMaterialPair.find((p) => p.faceIndex === faceIndex);
+
+        let material: Material | undefined;
+
+        if (facePair !== undefined) {
+            // Use faceMaterialPair mapping to get material from array
+            const materials = Array.isArray(this._faces.material)
+                ? this._faces.material
+                : [this._faces.material];
+            material = materials[facePair.materialIndex];
+            console.log(
+                `[updateTextureRotation] Found material via facePair: faceIndex=${faceIndex} → materialIndex=${facePair.materialIndex}`,
+            );
+        } else {
+            // Fallback: Try to get from _texturedMaterials Map
+            material = this._texturedMaterials.get(faceIndex);
+            console.log(
+                `[updateTextureRotation] Fallback to _texturedMaterials Map for faceIndex=${faceIndex}`,
+            );
+        }
+
         if (!material || !(material instanceof MeshLambertMaterial)) {
-            console.warn(`No textured material found for face ${faceIndex}`);
+            console.warn(
+                `[updateTextureRotation] No textured material found for face ${faceIndex}, facePair=${facePair ? "found" : "not found"}`,
+            );
             return;
         }
 
         const texture = material.map;
         if (!texture) {
-            console.warn(`No texture found in material for face ${faceIndex}`);
+            console.warn(`[updateTextureRotation] No texture found in material for face ${faceIndex}`);
             return;
         }
 
@@ -217,10 +250,9 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         // Mark material as needing update (critical for Multi-Material rendering)
         material.needsUpdate = true;
 
-        // Note: No need to call updateMultiMaterial() here because we're only changing
-        // properties of an existing material, not adding/removing materials from the array
-
-        console.log(`Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`);
+        console.log(
+            `[updateTextureRotation] Updated texture rotation for face ${faceIndex}: ${rotationDegrees}°`,
+        );
     }
 
     /**

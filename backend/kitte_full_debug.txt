@@ -1,0 +1,10 @@
+================================================================================
+KITTE Marunouchi LOD2 Debug Test
+================================================================================
+
+Traceback (most recent call last):
+  File "/Users/kodaimiyazaki/devel/Paper-CAD/backend/test_kitte_debug.py", line 47, in <module>
+    from services.plateau_fetcher import search_buildings_by_address
+  File "/Users/kodaimiyazaki/devel/Paper-CAD/backend/services/plateau_fetcher.py", line 35, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'

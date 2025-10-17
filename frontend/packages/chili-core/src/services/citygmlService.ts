@@ -45,6 +45,9 @@ export interface BuildingInfo {
     has_lod2?: boolean;
     has_lod3?: boolean;
     name?: string;
+    relevance_score?: number;
+    name_similarity?: number;
+    match_reason?: string;
 }
 
 export interface GeocodingResult {
@@ -61,12 +64,15 @@ export interface PlateauSearchResponse {
     geocoding?: GeocodingResult;
     buildings: BuildingInfo[];
     found_count: number;
+    search_mode?: string;
     error?: string;
 }
 
 export interface PlateauSearchOptions {
     radius?: number; // Search radius in degrees (default: 0.001 ≈ 100m)
     limit?: number; // Maximum number of buildings to return
+    nameFilter?: string; // Building name to filter/rank by
+    searchMode?: "distance" | "name" | "hybrid"; // Search ranking strategy
 }
 
 export interface PlateauFetchAndConvertOptions extends PlateauSearchOptions {
@@ -216,6 +222,8 @@ export class CityGMLService implements ICityGMLService {
                 radius: options?.radius ?? 0.001,
                 limit: options?.limit ?? 10,
                 auto_select_nearest: true,
+                name_filter: options?.nameFilter,
+                search_mode: options?.searchMode ?? "hybrid",
             };
 
             const response = await fetch(`${this.baseUrl}/plateau/search-by-address`, {

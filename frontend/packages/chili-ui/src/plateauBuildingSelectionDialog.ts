@@ -15,6 +15,9 @@ export interface BuildingCandidate {
     has_lod2: boolean;
     has_lod3: boolean;
     name?: string;
+    relevance_score?: number;
+    name_similarity?: number;
+    match_reason?: string;
 }
 
 export interface PlateauBuildingSelection {
@@ -32,8 +35,10 @@ export class PlateauBuildingSelectionDialog {
         const dialog = document.createElement("dialog");
         document.body.appendChild(dialog);
 
-        // State: selected building IDs
+        // State: selected building IDs and search filter
         const selectedIds = new Set<string>();
+        let searchFilter = "";
+        let filteredBuildings = [...buildings];
 
         // Usage code translations (common PLATEAU codes)
         const usageCodeMap: Record<string, string> = {
@@ -60,7 +65,8 @@ export class PlateauBuildingSelectionDialog {
 
             const checkbox = input({
                 type: "checkbox",
-                id: `building-${index}`,
+                id: `building-${building.gml_id}`,
+                checked: selectedIds.has(building.gml_id),
                 style: {
                     cursor: "pointer",
                     width: "16px",
@@ -160,23 +166,113 @@ export class PlateauBuildingSelectionDialog {
                         },
                         `ID: ${building.gml_id.substring(0, 40)}...`,
                     ),
+                    // Show match reason if available (append to the end)
+                    ...(building.match_reason
+                        ? [
+                              div(
+                                  {
+                                      style: {
+                                          fontSize: "var(--font-size-xs)",
+                                          color: "#3b82f6",
+                                          fontStyle: "italic",
+                                      },
+                                  },
+                                  `Match: ${building.match_reason}`,
+                              ),
+                          ]
+                        : []),
                 ),
             );
         };
 
-        const buildingList = div(
-            {
-                style: {
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    maxHeight: "400px",
-                    overflowY: "auto",
-                    padding: "4px",
-                },
+        // Filter function
+        const filterBuildings = (query: string): BuildingCandidate[] => {
+            if (!query.trim()) {
+                return buildings;
+            }
+
+            const lowerQuery = query.toLowerCase();
+            return buildings.filter((building) => {
+                // Check name
+                if (building.name && building.name.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                // Check gml_id
+                if (building.gml_id.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                // Check usage
+                if (building.usage && building.usage.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                // Check match reason
+                if (building.match_reason && building.match_reason.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                return false;
+            });
+        };
+
+        // Building list container
+        const buildingListContainer = div({
+            style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                maxHeight: "400px",
+                overflowY: "auto",
+                padding: "4px",
             },
-            ...buildings.map((building, index) => createBuildingRow(building, index)),
-        );
+        });
+
+        // Function to update building list
+        const updateBuildingList = () => {
+            filteredBuildings = filterBuildings(searchFilter);
+
+            // Clear container
+            buildingListContainer.innerHTML = "";
+
+            // Add filtered buildings
+            if (filteredBuildings.length === 0) {
+                buildingListContainer.appendChild(
+                    div(
+                        {
+                            style: {
+                                padding: "20px",
+                                textAlign: "center",
+                                color: "var(--neutral-500)",
+                                fontSize: "var(--font-size-sm)",
+                            },
+                        },
+                        `No buildings match "${searchFilter}"`,
+                    ),
+                );
+            } else {
+                filteredBuildings.forEach((building, index) => {
+                    buildingListContainer.appendChild(createBuildingRow(building, index));
+                });
+            }
+        };
+
+        // Search input
+        const searchInput = input({
+            type: "text",
+            placeholder: "Filter by name, ID, usage, or match reason...",
+            style: {
+                width: "100%",
+                padding: "8px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--font-size-sm)",
+            },
+            oninput: (e) => {
+                searchFilter = (e.target as HTMLInputElement).value;
+                updateBuildingList();
+            },
+        });
+
+        // Initial population
+        updateBuildingList();
 
         const content = div(
             {
@@ -200,7 +296,8 @@ export class PlateauBuildingSelectionDialog {
                 },
                 `Found ${buildings.length} building(s). Select one or more buildings to import:`,
             ),
-            buildingList,
+            searchInput,
+            buildingListContainer,
         );
 
         const closeDialog = (result: DialogResult) => {

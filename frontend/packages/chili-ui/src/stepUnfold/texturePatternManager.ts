@@ -12,6 +12,7 @@ export interface TexturePattern {
     image: string | null;
     scale: number;
     category: string;
+    rotation?: number; // Optional rotation angle in degrees (0-360)
     svgPattern: {
         width: number;
         height: number;
@@ -117,9 +118,9 @@ export class TexturePatternManager {
     }
 
     /**
-     * Create and inject SVG pattern definition
+     * Create and inject SVG pattern definition with optional rotation
      */
-    public async injectPattern(patternId: string): Promise<boolean> {
+    public async injectPattern(patternId: string, rotation?: number): Promise<boolean> {
         if (!this.svgDefsElement) {
             console.error("SVG defs element not initialized");
             return false;
@@ -167,6 +168,16 @@ export class TexturePatternManager {
             // Add image to pattern
             patternElement.appendChild(imageElement);
 
+            // Apply rotation if specified (use parameter or pattern default)
+            const rotationAngle = rotation !== undefined ? rotation : pattern.rotation || 0;
+            if (rotationAngle !== 0) {
+                // Rotate around the center of the pattern
+                const centerX = pattern.svgPattern.width / 2;
+                const centerY = pattern.svgPattern.height / 2;
+                const transform = `rotate(${rotationAngle} ${centerX} ${centerY})`;
+                patternElement.setAttribute("patternTransform", transform);
+            }
+
             // Add pattern to defs
             this.svgDefsElement.appendChild(patternElement);
             this.loadedPatterns.add(patternId);
@@ -180,11 +191,15 @@ export class TexturePatternManager {
     }
 
     /**
-     * Apply pattern to SVG element
+     * Apply pattern to SVG element with optional rotation
      */
-    public async applyPatternToElement(element: SVGElement, patternId: string): Promise<boolean> {
-        // Ensure pattern is loaded
-        const success = await this.injectPattern(patternId);
+    public async applyPatternToElement(
+        element: SVGElement,
+        patternId: string,
+        rotation?: number,
+    ): Promise<boolean> {
+        // Ensure pattern is loaded with rotation
+        const success = await this.injectPattern(patternId, rotation);
         if (!success) {
             return false;
         }
@@ -192,6 +207,11 @@ export class TexturePatternManager {
         // Apply pattern fill
         element.setAttribute("fill", `url(#texture-pattern-${patternId})`);
         element.setAttribute("data-texture-id", patternId);
+
+        // Store rotation if specified
+        if (rotation !== undefined) {
+            element.setAttribute("data-texture-rotation", rotation.toString());
+        }
 
         return true;
     }

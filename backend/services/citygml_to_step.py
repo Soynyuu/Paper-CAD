@@ -2321,10 +2321,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD3] Geometry processing successful, returning shape")
+                        log(f"[LOD3] Geometry processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD3] Geometry returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD3] Geometry shell building failed, trying LOD2...")
@@ -2482,10 +2485,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD2] MultiSurface processing successful, returning shape")
+                        log(f"[LOD2] MultiSurface processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD2] MultiSurface returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD2] MultiSurface shell building failed, trying other strategies...")
@@ -2525,10 +2531,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None:
+                if result is not None and _is_valid_solid(result):
                     if debug:
-                        log(f"[LOD2] Geometry processing successful, returning shape")
+                        log(f"[LOD2] Geometry processing successful with valid solid, returning shape")
                     return result
+                elif result is not None:
+                    if debug:
+                        log(f"[LOD2] Geometry returned invalid solid/shell, trying next strategy")
                 else:
                     if debug:
                         log(f"[LOD2] Geometry shell building failed, trying other strategies...")
@@ -2700,10 +2709,16 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None:
+                    if result is not None and _is_valid_solid(result):
                         if debug:
-                            log(f"[LOD1] Processing successful, returning shape")
+                            log(f"[LOD1] Processing successful with valid solid, returning shape")
                         return result
+                    elif result is not None:
+                        if debug:
+                            log(f"[LOD1] Returned invalid solid/shell, no more strategies available")
+                    else:
+                        if debug:
+                            log(f"[LOD1] Shell building failed, no more strategies available")
 
             log(f"[CONVERSION DEBUG] ✗ All strategies failed - no geometry extracted")
             return None

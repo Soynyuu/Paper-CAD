@@ -130,8 +130,9 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
         // マテリアルを保存
         this._texturedMaterials.set(faceIndex, texturedMaterial);
 
-        // Multi-Material配列を更新
-        this.updateMultiMaterial();
+        // Note: updateMultiMaterial() will be called automatically when faceMaterialPair changes
+        // via handleGeometryPropertyChanged() after addFaceMaterial() completes
+        console.log(`[applyTextureToFace] Stored textured material for faceIndex=${faceIndex}`);
     }
 
     /**
@@ -156,30 +157,51 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
 
     /**
      * Multi-Material配列を更新
+     * faceMaterialPairを使用して、テクスチャ付きマテリアルを正しいインデックスに配置
      */
     private updateMultiMaterial() {
-        if (!this._faces || !this._faces.geometry.groups) return;
+        if (!this._faces) return;
+
+        // Determine the number of materials needed
+        const materialCount = Array.isArray(this.geometryNode.materialId)
+            ? this.geometryNode.materialId.length
+            : 1;
+
+        console.log(
+            `[updateMultiMaterial] Building materials array, count=${materialCount}, facePairs=${this.geometryNode.faceMaterialPair.length}`,
+        );
 
         const materials: Material[] = [];
-        const groups = this._faces.geometry.groups;
 
-        // 各グループに対してマテリアルを割り当て
-        groups.forEach((group, index) => {
-            const texturedMaterial = this._texturedMaterials.get(index);
-            if (texturedMaterial) {
-                materials.push(texturedMaterial);
-            } else {
-                // デフォルトマテリアルを使用
-                const defaultMat = Array.isArray(this._faceMaterial)
-                    ? this._faceMaterial[index] || this._faceMaterial[0]
-                    : this._faceMaterial;
-                materials.push(defaultMat);
+        // Build materials array using faceMaterialPair mapping
+        for (let materialIndex = 0; materialIndex < materialCount; materialIndex++) {
+            // Find if any face with this materialIndex has a textured material
+            const facePair = this.geometryNode.faceMaterialPair.find(
+                (p) => p.materialIndex === materialIndex,
+            );
+
+            if (facePair) {
+                const texturedMaterial = this._texturedMaterials.get(facePair.faceIndex);
+                if (texturedMaterial) {
+                    materials.push(texturedMaterial);
+                    console.log(
+                        `[updateMultiMaterial] materialIndex=${materialIndex}: using textured material from faceIndex=${facePair.faceIndex}`,
+                    );
+                    continue;
+                }
             }
-        });
 
-        // Meshのマテリアルを更新
+            // Use default material for this index
+            const defaultMat = Array.isArray(this._faceMaterial)
+                ? this._faceMaterial[materialIndex] || this._faceMaterial[0]
+                : this._faceMaterial;
+            materials.push(defaultMat);
+            console.log(`[updateMultiMaterial] materialIndex=${materialIndex}: using default material`);
+        }
+
+        // Update mesh material array
         this._faces.material = materials;
-        console.log(`Updated multi-material with ${materials.length} materials`);
+        console.log(`[updateMultiMaterial] Updated multi-material with ${materials.length} materials`);
     }
 
     /**
@@ -303,6 +325,10 @@ export class ThreeGeometry extends ThreeVisualObject implements IVisualGeometry 
     private readonly handleGeometryPropertyChanged = (property: keyof GeometryNode) => {
         if (property === "materialId") {
             this.changeFaceMaterial(this.context.getMaterial(this.geometryNode.materialId));
+        } else if (property === "faceMaterialPair") {
+            // faceMaterialPair changed - rebuild multi-material array with correct mapping
+            console.log("[handleGeometryPropertyChanged] faceMaterialPair changed, updating multi-material");
+            this.updateMultiMaterial();
         } else if ((property as keyof ShapeNode) === "shape") {
             this.removeMeshes();
             this.generateShape();

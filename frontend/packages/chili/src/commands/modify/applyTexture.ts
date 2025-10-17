@@ -324,7 +324,7 @@ export class ApplyTextureCommand implements ICommand {
                 geometryNode.addFaceMaterial(pairs);
 
                 // ThreeGeometryのdisplayにもテクスチャを適用（回転編集用）
-                const display = geometryNode.display;
+                const display = document.visual.context.getVisual(geometryNode);
                 if (display && typeof (display as any).applyTextureToFace === "function") {
                     // 全てのテクスチャを非同期で適用
                     Promise.all(

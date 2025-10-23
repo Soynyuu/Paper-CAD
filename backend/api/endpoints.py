@@ -218,37 +218,53 @@ async def unfold_step_to_pdf(
             except json.JSONDecodeError as e:
                 print(f"[TEXTURE] Warning: Failed to parse texture_mappings: {e}")
 
-        # PDF生成
+        # PDF生成 - SVGエンドポイントと同じロジックを使用
         generator = StepUnfoldGenerator()
-        generator.load_from_file(in_path)
+        if not generator.load_from_file(in_path):
+            raise HTTPException(status_code=400, detail="STEPファイルの読み込みに失敗しました。")
+
+        # BrepPapercraftRequestを作成（SVGエンドポイントと同じパラメータを使用）
+        # これによりmax_faces=20（デフォルト値）が使用され、SVGと同じレイアウトになる
+        request = BrepPapercraftRequest(
+            layout_mode=layout_mode,
+            page_format=page_format,
+            page_orientation=page_orientation,
+            scale_factor=scale_factor
+        )
+
+        # テクスチャマッピングを設定
+        if parsed_texture_mappings:
+            generator.set_texture_mappings(parsed_texture_mappings)
+
+        # SVGエンドポイントと同じパイプラインを実行（max_faces=20を使用）
+        # 1. BREPトポロジ解析
         generator.analyze_brep_topology()
 
-        # レイアウトモードとページ設定を更新
-        generator.layout_mode = layout_mode
-        generator.page_format = page_format
-        generator.page_orientation = page_orientation
-        generator.scale_factor = scale_factor
-        generator.texture_mappings = parsed_texture_mappings
+        # 2. パラメータ設定
+        generator.scale_factor = request.scale_factor
+        generator.layout_mode = request.layout_mode
+        generator.page_format = request.page_format
+        generator.page_orientation = request.page_orientation
 
-        # レイアウトマネージャーの設定を更新
-        generator.layout_manager.update_scale_factor(scale_factor)
-        generator.layout_manager.update_page_settings(page_format, page_orientation)
+        # 3. 展開可能面のグルーピング（SVGと同じmax_facesを使用）
+        generator.group_faces_for_unfolding(request.max_faces)
 
-        # 展開グループ化
-        unfold_groups_indices = generator.group_faces_for_unfolding(max_faces=100)
-
-        # 展開実行
+        # 4. 各グループの2D展開
         unfolded_groups = generator.unfold_face_groups()
 
         # レイアウト処理
         if layout_mode == "paged":
-            # ページ分割レイアウト
+            # 5. ページモード: ページ単位でレイアウト
+            generator.layout_manager.update_page_settings(
+                page_format=request.page_format,
+                page_orientation=request.page_orientation
+            )
             paged_groups, warnings = generator.layout_manager.layout_for_pages(unfolded_groups)
 
             # PDFファイルパス
             pdf_path = os.path.join(tmpdir, f"unfold_{uuid.uuid4()}.pdf")
 
-            # PDFエクスポート
+            # 6. PDFエクスポート
             result_path = generator.export_to_pdf_paged(paged_groups, pdf_path)
 
             print(f"[PDF] Generated PDF with {len(paged_groups)} pages: {result_path}")

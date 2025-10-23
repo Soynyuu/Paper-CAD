@@ -224,8 +224,10 @@ export class StepUnfoldPanel extends HTMLElement {
                 },
                 span({
                     textContent:
-                        "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。",
-                    style: { fontSize: "12px", color: "#333" },
+                        "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。\n" +
+                        "📌 Pagedモード: バックエンドで複数ページPDFを高精度生成\n" +
+                        "📌 Canvasモード: クライアントサイドで単一ページPDFを生成",
+                    style: { fontSize: "12px", color: "#333", whiteSpace: "pre-line" },
                 }),
             ),
             // Temporarily hide complex settings until multi-page export is re-implemented
@@ -1372,6 +1374,111 @@ export class StepUnfoldPanel extends HTMLElement {
      * Perform the actual PDF export
      */
     private async _performPDFExport() {
+        // Check layout mode and route to appropriate export method
+        if (this._layoutMode === "paged") {
+            // Use backend PDF generation for multi-page layouts
+            await this._performBackendPDFExport();
+        } else {
+            // Use client-side PDF generation for single-page canvas mode
+            await this._performClientPDFExport();
+        }
+    }
+
+    /**
+     * Perform backend PDF export (for paged mode)
+     */
+    private async _performBackendPDFExport() {
+        const activeDocument = this._getActiveDocument();
+        if (!activeDocument) {
+            alert("ドキュメントが見つかりません。\nNo document available.");
+            return;
+        }
+
+        // Get all visual nodes
+        const allNodes = this._getAllVisualNodes(activeDocument);
+        if (allNodes.length === 0) {
+            alert("展開する3Dモデルがありません。\nNo 3D model to unfold.");
+            return;
+        }
+
+        // Show loading indicator
+        const originalText = this._pdfExportButton.textContent;
+        this._pdfExportButton.textContent = "📄 生成中... (Backend)";
+        this._pdfExportButton.disabled = true;
+
+        try {
+            console.log("[BackendPDF] Exporting model to STEP format...");
+
+            // Export current model to STEP format
+            const stepData = await this._app.dataExchange.export(".step", allNodes);
+            if (!stepData || stepData.length === 0) {
+                throw new Error("Failed to export to STEP format");
+            }
+
+            // Get current unfold options
+            const options: UnfoldOptions = {
+                scale: this._currentScale,
+                layoutMode: this._layoutMode,
+                pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
+                pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+            };
+
+            // Add texture mappings if available
+            if (this._textureService) {
+                const textureMappings = this._textureService.getBackendFormat();
+                if (textureMappings.length > 0) {
+                    options.textureMappings = textureMappings;
+                    console.log("[BackendPDF] Including texture mappings:", textureMappings);
+                }
+            }
+
+            console.log("[BackendPDF] Sending to backend with options:", options);
+
+            // Call backend PDF API
+            const result = await this._service.unfoldStepToPDF(stepData[0], options);
+
+            if (result.isOk) {
+                const pdfBlob = result.value;
+
+                // Download PDF
+                const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
+                const filename = `paper-cad-unfold-${timestamp}.pdf`;
+
+                const url = URL.createObjectURL(pdfBlob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                console.log("[BackendPDF] PDF downloaded successfully:", filename);
+
+                // Show success message
+                this._pdfExportButton.textContent = "✓ 完了!";
+                setTimeout(() => {
+                    this._pdfExportButton.textContent = originalText;
+                }, 2000);
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error) {
+            console.error("[BackendPDF] Export failed:", error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            alert(
+                `バックエンドPDF生成に失敗しました:\n${errorMessage}\n\nBackend PDF generation failed:\n${errorMessage}`,
+            );
+            this._pdfExportButton.textContent = originalText;
+        } finally {
+            this._pdfExportButton.disabled = false;
+        }
+    }
+
+    /**
+     * Perform client-side PDF export (for canvas mode)
+     */
+    private async _performClientPDFExport() {
         if (!this._svgEditor) {
             console.error("SVG Editor not initialized");
             return;

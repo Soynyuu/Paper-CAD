@@ -439,18 +439,20 @@ class LayoutManager:
             bbox = self._calculate_group_bbox(group["polygons"])
             group["bbox"] = bbox
             
-            # グループがページサイズを超える場合は警告
-            if bbox["width"] > self.printable_width_mm or bbox["height"] > self.printable_height_mm:
+            # グループの横幅チェックとスケール調整
+            # 縦幅は複数ページに分割するため、スケール調整不要
+            scale_applied = False
+            if bbox["width"] > self.printable_width_mm:
                 original_width = bbox["width"]
                 original_height = bbox["height"]
 
-                print(f"警告: グループサイズ({bbox['width']:.1f}x{bbox['height']:.1f}mm)が" +
-                      f"印刷可能エリア({self.printable_width_mm}x{self.printable_height_mm}mm)を超えています")
+                print(f"警告: グループ横幅({bbox['width']:.1f}mm)が" +
+                      f"印刷可能エリア({self.printable_width_mm}mm)を超えています")
 
-                # スケールダウンが必要
-                scale_x = self.printable_width_mm / bbox["width"] if bbox["width"] > self.printable_width_mm else 1.0
-                scale_y = self.printable_height_mm / bbox["height"] if bbox["height"] > self.printable_height_mm else 1.0
-                scale = min(scale_x, scale_y) * 0.9  # 90%のサイズに縮小してマージンを確保
+                # 横幅のみスケール調整（縦幅はページ分割で対応）
+                scale = self.printable_width_mm / bbox["width"]
+                print(f"横幅スケール調整: {scale:.3f}")
+                scale_applied = True
 
                 # グループをスケールダウン
                 scaled_polygons = []
@@ -470,7 +472,8 @@ class LayoutManager:
                 group["bbox"] = bbox
                 print(f"  -> スケール調整後: {bbox['width']:.1f}x{bbox['height']:.1f}mm")
 
-                # 警告情報を追加
+            # 警告情報を追加（スケール調整が行われた場合）
+            if scale_applied:
                 warnings.append({
                     "type": "size_exceeded",
                     "message": f"図形が用紙サイズを超えたため、自動的にスケール調整しました / Shape exceeded page size and was automatically scaled",
@@ -492,7 +495,12 @@ class LayoutManager:
                         }
                     }
                 })
-        
+
+            # 縦幅が印刷可能エリアを超える場合は情報メッセージ
+            if bbox["height"] > self.printable_height_mm:
+                print(f"情報: グループ縦幅({bbox['height']:.1f}mm)が印刷可能エリア({self.printable_height_mm}mm)を超えています")
+                print(f"  -> 複数ページに分割されます")
+
         # 面積の大きい順にソート
         unfolded_groups.sort(key=lambda g: g["bbox"]["width"] * g["bbox"]["height"], reverse=True)
         

@@ -54,6 +54,8 @@ export class StepUnfoldPanel extends HTMLElement {
     private _currentScale: number = 1; // Default to 1:1 scale
     private _modelBoundingSize: number = 0; // Model's bounding box max dimension in mm
     private _textureService: FaceTextureService | null = null;
+    private _lastStepData: BlobPart | null = null; // Cache last STEP data for PDF export
+    private _lastUnfoldOptions: UnfoldOptions | null = null; // Cache last unfold options
 
     constructor(app: IApplication) {
         super();
@@ -517,6 +519,11 @@ export class StepUnfoldPanel extends HTMLElement {
                 pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
                 textureMappings: textureMappings.length > 0 ? textureMappings : undefined,
             };
+
+            // Cache STEP data and options for later PDF export
+            this._lastStepData = stepData[0];
+            this._lastUnfoldOptions = options;
+
             const result = await this._service.unfoldStepFromData(stepData[0], options);
 
             if (result.isOk) {
@@ -1388,16 +1395,12 @@ export class StepUnfoldPanel extends HTMLElement {
      * Perform backend PDF export (for paged mode)
      */
     private async _performBackendPDFExport() {
-        const activeDocument = this._getActiveDocument();
-        if (!activeDocument) {
-            alert("ドキュメントが見つかりません。\nNo document available.");
-            return;
-        }
-
-        // Get all visual nodes
-        const allNodes = this._getAllVisualNodes(activeDocument);
-        if (allNodes.length === 0) {
-            alert("展開する3Dモデルがありません。\nNo 3D model to unfold.");
+        // Check if we have cached STEP data from previous unfold operation
+        if (!this._lastStepData) {
+            alert(
+                "まず展開図を生成してください。リボンの「展開図」ボタンをクリックしてください。\n" +
+                    "Please generate the unfold diagram first by clicking the 'Unfold' button in the ribbon.",
+            );
             return;
         }
 
@@ -1407,35 +1410,24 @@ export class StepUnfoldPanel extends HTMLElement {
         this._pdfExportButton.disabled = true;
 
         try {
-            console.log("[BackendPDF] Exporting model to STEP format...");
+            console.log("[BackendPDF] Using cached STEP data for PDF generation...");
 
-            // Export current model to STEP format
-            const stepData = await this._app.dataExchange.export(".step", allNodes);
-            if (!stepData || stepData.length === 0) {
-                throw new Error("Failed to export to STEP format");
-            }
-
-            // Get current unfold options
-            const options: UnfoldOptions = {
+            // Use cached unfold options or current settings
+            const options: UnfoldOptions = this._lastUnfoldOptions || {
                 scale: this._currentScale,
                 layoutMode: this._layoutMode,
                 pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
                 pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
             };
 
-            // Add texture mappings if available
-            if (this._textureService) {
-                const textureMappings = this._textureService.getBackendFormat();
-                if (textureMappings.length > 0) {
-                    options.textureMappings = textureMappings;
-                    console.log("[BackendPDF] Including texture mappings:", textureMappings);
-                }
-            }
+            // Update with current page settings (user may have changed them)
+            options.pageFormat = this._pageFormatSelect.value as "A4" | "A3" | "Letter";
+            options.pageOrientation = this._pageOrientationSelect.value as "portrait" | "landscape";
 
             console.log("[BackendPDF] Sending to backend with options:", options);
 
-            // Call backend PDF API
-            const result = await this._service.unfoldStepToPDF(stepData[0], options);
+            // Call backend PDF API with cached STEP data
+            const result = await this._service.unfoldStepToPDF(this._lastStepData, options);
 
             if (result.isOk) {
                 const pdfBlob = result.value;

@@ -17,6 +17,7 @@ from core.geometry_analyzer import GeometryAnalyzer
 from core.unfold_engine import UnfoldEngine
 from core.layout_manager import LayoutManager
 from core.svg_exporter import SVGExporter
+from core.pdf_exporter import PDFExporter
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder, BRep_Tool
@@ -281,6 +282,69 @@ class StepUnfoldGenerator:
 
         # SVGエクスポーターに処理を委譲
         return self.svg_exporter.export_to_svg_paged_single_file(paged_groups, output_path)
+
+    def export_to_pdf_paged(self, paged_groups: List[List[Dict]], output_path: str) -> str:
+        """
+        ページ分割された展開図をPDF形式で出力。
+
+        各ページを個別のSVGファイルとして一時保存し、PDFExporterを使用して
+        1つのマルチページPDFファイルに変換する。
+
+        Args:
+            paged_groups: ページごとに分割された展開図グループのリスト
+            output_path: 出力PDFファイルのパス
+
+        Returns:
+            str: 出力されたPDFファイルのパス
+        """
+        print(f"PDFエクスポート開始: {len(paged_groups)}ページ")
+
+        # 一時ディレクトリを作成
+        temp_dir = tempfile.mkdtemp()
+        svg_paths = []
+
+        try:
+            # SVGエクスポーターの設定を更新
+            self.svg_exporter.update_settings(
+                scale_factor=self.scale_factor,
+                units=self.units,
+                tab_width=self.tab_width,
+                show_scale=self.show_scale,
+                show_fold_lines=self.show_fold_lines,
+                show_cut_lines=self.show_cut_lines,
+                layout_mode=self.layout_mode,
+                page_format=self.page_format,
+                page_orientation=self.page_orientation
+            )
+
+            # テクスチャマッピングを設定
+            if self.texture_mappings:
+                self.svg_exporter.set_texture_mappings(self.texture_mappings)
+
+            # 各ページを個別のSVGファイルとして保存
+            svg_paths = self.svg_exporter.export_to_svg_paged(paged_groups, temp_dir)
+
+            print(f"SVG生成完了: {len(svg_paths)}ファイル")
+
+            # PDFExporterを初期化
+            pdf_exporter = PDFExporter(
+                page_format=self.page_format,
+                page_orientation=self.page_orientation
+            )
+
+            # SVGファイルリストからPDFを生成
+            result_path = pdf_exporter.export_svg_list_to_pdf(svg_paths, output_path)
+
+            print(f"PDFエクスポート完了: {result_path}")
+
+            return result_path
+
+        finally:
+            # 一時ファイルをクリーンアップ
+            import shutil
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                print(f"一時ディレクトリを削除: {temp_dir}")
 
 
 

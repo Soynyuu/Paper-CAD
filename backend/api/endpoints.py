@@ -246,6 +246,13 @@ async def unfold_step_to_pdf(
         generator.page_format = request.page_format
         generator.page_orientation = request.page_orientation
 
+        # SVGエクスポーターとレイアウトマネージャーにも設定を反映（重要！）
+        generator.svg_exporter.scale_factor = request.scale_factor
+        generator.svg_exporter.layout_mode = request.layout_mode
+        generator.svg_exporter.page_format = request.page_format
+        generator.svg_exporter.page_orientation = request.page_orientation
+        generator.layout_manager.scale_factor = request.scale_factor
+
         # 3. 展開可能面のグルーピング（SVGと同じmax_facesを使用）
         generator.group_faces_for_unfolding(request.max_faces)
 

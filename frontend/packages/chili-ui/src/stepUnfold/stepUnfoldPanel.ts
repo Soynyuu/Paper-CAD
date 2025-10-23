@@ -226,9 +226,9 @@ export class StepUnfoldPanel extends HTMLElement {
                 },
                 span({
                     textContent:
-                        "📄 PDFエクスポートは表示中のSVG展開図をそのままPDF化します。\n" +
-                        "📌 Pagedモード: 複数ページのSVGを複数ページPDFに変換\n" +
-                        "📌 Canvasモード: 単一キャンバスのSVGを1ページPDFに変換",
+                        "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。\n" +
+                        "📌 Pagedモード: バックエンドで複数ページPDFを高精度生成（正しいレイアウト保証）\n" +
+                        "📌 Canvasモード: クライアントサイドで表示中のSVGをPDF化",
                     style: { fontSize: "12px", color: "#333", whiteSpace: "pre-line" },
                 }),
             ),
@@ -1381,8 +1381,14 @@ export class StepUnfoldPanel extends HTMLElement {
      * Perform the actual PDF export
      */
     private async _performPDFExport() {
-        // Always use client-side PDF export to preserve SVG appearance
-        await this._performClientPDFExport();
+        // Check layout mode and route to appropriate export method
+        if (this._layoutMode === "paged") {
+            // Use backend PDF generation for multi-page layouts with correct scaling
+            await this._performBackendPDFExport();
+        } else {
+            // Use client-side PDF generation for single-page canvas mode
+            await this._performClientPDFExport();
+        }
     }
 
     /**

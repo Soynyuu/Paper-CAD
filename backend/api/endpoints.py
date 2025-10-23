@@ -220,8 +220,8 @@ async def unfold_step_to_pdf(
 
         # PDF生成
         generator = StepUnfoldGenerator()
-        generator.load_step(in_path)
-        generator.analyze_geometry()
+        generator.load_from_file(in_path)
+        generator.analyze_brep_topology()
 
         # レイアウトモードとページ設定を更新
         generator.layout_mode = layout_mode

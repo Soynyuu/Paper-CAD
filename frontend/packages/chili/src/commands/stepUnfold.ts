@@ -138,8 +138,12 @@ export class StepUnfold extends CancelableCommand {
 
                     const result = await stepUnfoldService.unfoldStepFromData(stepBlob, unfoldOptions);
                     if (result.isOk) {
-                        // SVGデータを表示パネルに送信
-                        (PubSub.default as any).pub("stepUnfold.showResult", result.value);
+                        // SVGデータを表示パネルに送信（STEPデータとオプションも含める）
+                        (PubSub.default as any).pub("stepUnfold.showResult", {
+                            ...result.value,
+                            stepData: stepBlob, // STEPデータを追加
+                            unfoldOptions: unfoldOptions, // オプションを追加
+                        });
                         PubSub.default.pub("showToast", "toast.stepUnfold.success");
                     } else {
                         PubSub.default.pub("showToast", "toast.stepUnfold.error");

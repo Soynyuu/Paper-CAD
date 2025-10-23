@@ -642,6 +642,18 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _handleUnfoldResult = (data: any) => {
         console.log("🚀 _handleUnfoldResult called with:", data);
 
+        // Cache STEP data if provided (from ribbon button command)
+        if (typeof data === "object") {
+            if (data.stepData) {
+                console.log("🚀 Caching STEP data from ribbon command");
+                this._lastStepData = data.stepData;
+            }
+            if (data.unfoldOptions) {
+                console.log("🚀 Caching unfold options from ribbon command");
+                this._lastUnfoldOptions = data.unfoldOptions;
+            }
+        }
+
         // SVGコンテンツを表示（後方互換性のため複数のフィールド名に対応）
         let svgContent: string;
         if (typeof data === "string") {

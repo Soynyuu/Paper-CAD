@@ -43,6 +43,7 @@ export interface UnfoldResponse {
 export interface IStepUnfoldService extends IService {
     unfoldStep(stepFile: File, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
     unfoldStepFromData(stepData: BlobPart, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
+    unfoldStepToPDF(stepData: BlobPart, options?: UnfoldOptions): Promise<Result<Blob>>;
     checkBackendHealth(): Promise<Result<HealthResponse>>;
 }
 
@@ -183,6 +184,50 @@ export class StepUnfoldService implements IStepUnfoldService {
             return Result.err(
                 `Backend connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
             );
+        }
+    }
+
+    async unfoldStepToPDF(stepData: BlobPart, options: UnfoldOptions = {}): Promise<Result<Blob>> {
+        try {
+            const formData = new FormData();
+            const stepBlob = new Blob([stepData], { type: "application/octet-stream" });
+            formData.append("file", stepBlob, "model.step");
+            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("layout_mode", options.layoutMode || "paged");
+            formData.append("page_format", options.pageFormat || "A4");
+            formData.append("page_orientation", options.pageOrientation || "portrait");
+
+            // テクスチャマッピングを追加
+            if (options.textureMappings && options.textureMappings.length > 0) {
+                formData.append("texture_mappings", JSON.stringify(options.textureMappings));
+                console.log(
+                    "[StepUnfoldService] Sending texture mappings to PDF endpoint:",
+                    options.textureMappings,
+                );
+            }
+
+            const response = await fetch(`${this.baseUrl}/step/unfold-pdf`, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 400) {
+                    errorMessage = "STEPデータの処理に失敗しました。";
+                } else if (response.status === 503) {
+                    errorMessage = "OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            // Get PDF as Blob
+            const pdfBlob = await response.blob();
+            return Result.ok(pdfBlob);
+        } catch (error) {
+            return Result.err(error instanceof Error ? error.message : "Unknown error");
         }
     }
 

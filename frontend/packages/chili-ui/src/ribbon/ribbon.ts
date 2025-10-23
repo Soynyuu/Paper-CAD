@@ -123,7 +123,7 @@ export class Ribbon extends HTMLElement {
             { className: style.left },
             div(
                 { className: style.appIcon, onclick: () => PubSub.default.pub("displayHome", true) },
-                span({ id: "appName", textContent: `Paper-CAD - v${__APP_VERSION__}` }),
+                span({ id: "appName", textContent: `Paper-CAD` }),
             ),
             div(
                 { className: style.ribbonTitlePanel },

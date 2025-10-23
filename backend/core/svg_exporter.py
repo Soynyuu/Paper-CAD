@@ -816,8 +816,10 @@ class SVGExporter:
             ))
             
             # scale_factorから実際の描画倍率を計算
+            # ページ固定サイズSVGの場合、mm→px変換も含める必要がある
             base_scale = 10.0  # 基準描画倍率
-            actual_scale = base_scale / self.scale_factor if self.scale_factor > 0 else base_scale
+            actual_scale = (base_scale / self.scale_factor * self.mm_to_px) if self.scale_factor > 0 else (base_scale * self.mm_to_px)
+            print(f"[PDF Export] Scale calculation: base={base_scale}, scale_factor={self.scale_factor}, mm_to_px={self.mm_to_px}, actual_scale={actual_scale:.4f}")
             
             # カットマークを追加（四隅）
             mark_length = 10

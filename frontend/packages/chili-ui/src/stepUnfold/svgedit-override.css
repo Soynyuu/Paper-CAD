@@ -45,6 +45,14 @@
     border: none !important;
 }
 
+/* History Panel - Unified with Ribbon UI */
+#history_panel {
+    background-color: var(--panel-background-color) !important;
+    color: var(--foreground-color) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+    border: none !important;
+}
+
 #main_icon {
     background-color: var(--panel-background-color) !important;
     border-radius: var(--radius-md) !important;

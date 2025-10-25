@@ -42,6 +42,7 @@
     background-color: var(--panel-background-color) !important;
     color: var(--foreground-color) !important;
     padding: var(--spacing-xs) var(--spacing-sm) !important;
+    border: none !important;
 }
 
 #main_icon {

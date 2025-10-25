@@ -877,9 +877,9 @@ export class StepUnfoldPanel extends HTMLElement {
             // Configure SVG-Edit with proper resource paths
             const config: any = {
                 // Resource paths - relative to the web root
-                imgPath: "/node_modules/svgedit/dist/editor/images/",
-                extPath: "/node_modules/svgedit/dist/editor/extensions/",
-                langPath: "/node_modules/svgedit/dist/editor/locale/",
+                imgPath: "/assets/svgedit/images/",
+                extPath: "/assets/svgedit/extensions/",
+                langPath: "/assets/svgedit/locale/",
 
                 // Editor configuration
                 allowInitialUserOverride: false,

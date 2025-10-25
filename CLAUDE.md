@@ -43,15 +43,19 @@ npm run deploy:production    # Deploy to production
 conda activate paper-cad
 python main.py        # Starts server on http://localhost:8001
 
-# Tests
-python test_polygon_overlap.py
-bash test_layout_modes.sh
-python test_brep_export.py
-python test_adjacency_fix.py
-python test_improved_unfold.py
-python test_citygml_to_step.py
-python test_plateau_api.py
-python test_nominatim.py
+# Tests (26+ test files available)
+# Run specific tests:
+python test_polygon_overlap.py      # Polygon overlap detection
+python test_improved_unfold.py       # Core unfolding algorithm
+python test_adjacency_fix.py         # Edge adjacency detection
+python test_brep_export.py           # BREP export functionality
+python test_citygml_to_step.py       # CityGML → STEP conversion
+python test_plateau_api.py           # PLATEAU API integration
+python test_nominatim.py             # Geocoding service
+bash test_layout_modes.sh            # Layout mode comparison
+bash test_face_numbers.sh            # Face numbering verification
+
+# Pattern: test_*.py for unit/integration tests, test_*.sh for multi-step workflows
 
 # Docker/Podman
 docker compose up -d
@@ -112,12 +116,14 @@ npm run dev
   - `unfold_engine.py`: Main unfolding algorithm (展開エンジン) - converts 3D faces to 2D polygons
   - `layout_manager.py`: Arranges unfolded pieces on canvas or pages (A4/A3/Letter)
   - `svg_exporter.py`: Exports to SVG with fold/cut lines and assembly tabs
+  - `pdf_exporter.py`: PDF export functionality (uses CairoSVG for SVG→PDF conversion)
   - `step_exporter.py`: Exports back to STEP format
   - `brep_exporter.py`: Exports to BREP format
 
 - **`api/`**: FastAPI routes
   - `endpoints.py`: REST API endpoints
-    - `POST /api/step/unfold`: STEP → SVG unfolding
+    - `POST /api/step/unfold`: STEP → SVG unfolding (single-page or multi-page layout)
+    - `POST /api/step/unfold-pdf`: STEP → PDF export (multi-page papercraft templates)
     - `POST /api/citygml/to-step`: CityGML → STEP conversion
     - `POST /api/citygml/validate`: CityGML validation
     - `POST /api/plateau/search-by-address`: PLATEAU building search by address
@@ -142,8 +148,8 @@ npm run dev
    - `geometry_analyzer.py`: Analyze faces, edges, adjacency
    - `unfold_engine.py`: Unfold 3D → 2D with tabs
    - `layout_manager.py`: Arrange on canvas/pages
-   - `svg_exporter.py`: Generate SVG output
-3. Return SVG or JSON response
+   - `svg_exporter.py`: Generate SVG output (or `pdf_exporter.py` for PDF)
+3. Return SVG/PDF file or JSON response
 
 ### Key Architectural Patterns
 
@@ -185,8 +191,13 @@ The backend includes comprehensive support for Japan's PLATEAU 3D city data:
 - **OpenCASCADE dependency**: Backend requires OpenCASCADE (installed via conda). If OCCT is unavailable, API returns 503 for STEP operations.
 - **Workspace structure**: Frontend uses npm workspaces. Always run `npm install` from the root `/frontend` directory.
 - **API URL configuration**: Update `STEP_UNFOLD_API_URL` in frontend/.env files or rspack.config.js to point to your backend instance.
+- **Environment variables**:
+  - Frontend: Uses `.env.development` and `.env.production` (loaded by rspack.config.js)
+  - Backend: No `.env` files in repo (configuration via `config.py` or environment variables)
+  - Key variables: `STEP_UNFOLD_API_URL` (frontend), `CORS_ALLOW_ALL` (backend development)
 - **CORS configuration**: Backend allows configured origins (see `config.py`). Set `CORS_ALLOW_ALL=true` for development.
 - **Git branch**: Main branch is `main`. Use `git branch` or `git log` to see the current branch.
+- **PDF export dependencies**: Backend uses `cairosvg` (primary) and `reportlab`/`pypdf` (fallback) for PDF generation.
 
 ## Testing
 
@@ -208,6 +219,7 @@ When modifying the unfolding algorithm:
 1. Update logic in `backend/core/unfold_engine.py`
 2. Test with `python test_improved_unfold.py` or `bash test_layout_modes.sh`
 3. If changing adjacency detection, run `python test_adjacency_fix.py`
+4. For PDF/SVG export changes: Verify scale_factor propagation through the pipeline (unfold_engine.py → layout_manager.py → svg_exporter.py/pdf_exporter.py)
 
 When adding UI features:
 1. Create component in `frontend/packages/chili-ui/src/`

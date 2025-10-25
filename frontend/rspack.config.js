@@ -92,7 +92,7 @@ const config = defineConfig({
                 },
                 {
                     from: "./node_modules/svgedit/dist/editor",
-                    to: "node_modules/svgedit/dist/editor",
+                    to: "assets/svgedit",
                     globOptions: {
                         ignore: ["**/*.html", "**/*.js", "**/*.map"],
                     },

@@ -1,8 +1,5 @@
 {
     "name": "Paper-CAD",
-    "version": "",
-    "description": "",
-    "documentVersion": "0.6",
     "scripts": {
         "dev": "npx rspack dev",
         "build": "npx rspack build",

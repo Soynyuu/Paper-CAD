@@ -10,8 +10,10 @@
 }
 
 /* Main Button - Unified with Ribbon UI */
+.svg_editor #main_button,
 #main_button {
     background-color: var(--panel-background-color) !important;
+    background: var(--panel-background-color) !important;
     color: var(--foreground-color) !important;
     border: none !important;
     padding: var(--spacing-xs) var(--spacing-sm) !important;
@@ -53,8 +55,11 @@
     border: none !important;
 }
 
+.svg_editor #main_button #main_icon,
+#main_button #main_icon,
 #main_icon {
     background-color: var(--panel-background-color) !important;
+    background: var(--panel-background-color) !important;
     border-radius: var(--radius-md) !important;
     padding: var(--spacing-xs) var(--spacing-sm) !important;
     margin: 0 !important;
@@ -67,13 +72,25 @@
     left: 0 !important;
 }
 
+.svg_editor #main_button #main_icon:hover,
+#main_button #main_icon:hover,
 #main_icon:hover {
     background-color: var(--hover-background-color) !important;
+    background: var(--hover-background-color) !important;
 }
 
+.svg_editor #main_button #main_icon.buttondown,
+#main_button #main_icon.buttondown,
 #main_icon.buttondown {
     background-color: var(--hover-background-color) !important;
+    background: var(--hover-background-color) !important;
     border-radius: var(--radius-md) var(--radius-md) 0 0 !important;
+}
+
+#main_icon > div,
+#main_icon #logo {
+    background-color: transparent !important;
+    background: transparent !important;
 }
 
 #main_icon span {
@@ -82,6 +99,7 @@
     padding-left: 34px !important;
     line-height: 1.5 !important;
     font-family: "Noto Sans JP", "Segoe UI", sans-serif !important;
+    background: transparent !important;
 }
 
 #main_menu {

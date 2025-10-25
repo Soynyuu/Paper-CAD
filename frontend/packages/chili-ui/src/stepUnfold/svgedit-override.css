@@ -20,6 +20,30 @@
     border-radius: 0 !important;
 }
 
+/* Title Panel - Unified with Ribbon UI */
+#title_panel {
+    background-color: var(--panel-background-color) !important;
+    color: var(--foreground-color) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+#title_panel > p {
+    color: var(--foreground-color) !important;
+    font-weight: 600 !important;
+    padding-left: var(--spacing-sm) !important;
+    padding-right: var(--spacing-sm) !important;
+    margin: 0 !important;
+    font-family: "Noto Sans JP", "Segoe UI", sans-serif !important;
+}
+
+/* Editor Panel - Unified with Ribbon UI */
+#editor_panel {
+    background-color: var(--panel-background-color) !important;
+    color: var(--foreground-color) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
 #main_icon {
     background-color: var(--panel-background-color) !important;
     border-radius: var(--radius-md) !important;

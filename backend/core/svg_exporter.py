@@ -815,9 +815,10 @@ class SVGExporter:
                 class_="page-border"
             ))
             
-            # scale_factorから実際の描画倍率を計算
-            base_scale = 10.0  # 基準描画倍率
-            actual_scale = base_scale / self.scale_factor if self.scale_factor > 0 else base_scale
+            # ポリゴン座標はlayout_managerで既にmm単位でスケール調整済み
+            # mm → px 変換のみを行う (export_to_svg_paged_single_fileと同じ方式)
+            actual_scale = self.mm_to_px
+            print(f"[PDF Export] Scale calculation: mm_to_px={self.mm_to_px}, actual_scale={actual_scale:.4f}")
             
             # カットマークを追加（四隅）
             mark_length = 10

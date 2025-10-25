@@ -156,6 +156,153 @@ async def unfold_step_to_svg(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
 
+# --- STEP → PDF 展開図エンドポイント ---
+@router.post("/api/step/unfold-pdf")
+async def unfold_step_to_pdf(
+    file: UploadFile = File(...),
+    layout_mode: str = Form("paged"),
+    page_format: str = Form("A4"),
+    page_orientation: str = Form("portrait"),
+    scale_factor: float = Form(150.0),
+    texture_mappings: Optional[str] = Form(None)
+):
+    """
+    STEPファイル（.step/.stp）を受け取り、展開図をPDF形式で生成するAPI。
+
+    Args:
+        file: STEPファイル (.step/.stp)
+        layout_mode: レイアウトモード - "canvas"=フリーキャンバス、"paged"=ページ分割 (default: "paged")
+        page_format: ページフォーマット - "A4", "A3", "Letter" (default: "A4")
+        page_orientation: ページ方向 - "portrait"=縦、"landscape"=横 (default: "portrait")
+        scale_factor: 図の縮尺倍率 (default: 150.0) - 例: 150なら1/150スケール
+        texture_mappings: JSON形式のテクスチャマッピング情報 - [{faceNumber, patternId, tileCount}]
+
+    Returns:
+        PDFファイル（application/pdf）
+    """
+    if not OCCT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
+
+    try:
+        # ファイル拡張子チェック
+        if not (file.filename.lower().endswith('.step') or file.filename.lower().endswith('.stp')):
+            raise HTTPException(status_code=400, detail="STEPファイル（.step/.stp）のみ対応です。")
+
+        # 一時ディレクトリ作成
+        tmpdir = tempfile.mkdtemp()
+        file_ext = "step" if file.filename.lower().endswith('.step') else "stp"
+        in_path = os.path.join(tmpdir, f"{uuid.uuid4()}.{file_ext}")
+
+        # ファイル保存
+        total = 0
+        with open(in_path, "wb") as dst:
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1MB
+                if not chunk:
+                    break
+                total += len(chunk)
+                dst.write(chunk)
+
+        if total == 0:
+            raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
+
+        print(f"[UPLOAD] /api/step/unfold-pdf: received {total} bytes -> {in_path}")
+
+        # テクスチャマッピングのパース
+        parsed_texture_mappings = []
+        if texture_mappings:
+            try:
+                import json
+                parsed_texture_mappings = json.loads(texture_mappings)
+                print(f"[TEXTURE] Parsed {len(parsed_texture_mappings)} texture mappings")
+            except json.JSONDecodeError as e:
+                print(f"[TEXTURE] Warning: Failed to parse texture_mappings: {e}")
+
+        # PDF生成 - SVGエンドポイントと同じロジックを使用
+        generator = StepUnfoldGenerator()
+        if not generator.load_from_file(in_path):
+            raise HTTPException(status_code=400, detail="STEPファイルの読み込みに失敗しました。")
+
+        # BrepPapercraftRequestを作成（SVGエンドポイントと同じパラメータを使用）
+        # これによりmax_faces=20（デフォルト値）が使用され、SVGと同じレイアウトになる
+        request = BrepPapercraftRequest(
+            layout_mode=layout_mode,
+            page_format=page_format,
+            page_orientation=page_orientation,
+            scale_factor=scale_factor
+        )
+
+        # テクスチャマッピングを設定
+        if parsed_texture_mappings:
+            generator.set_texture_mappings(parsed_texture_mappings)
+
+        # SVGエンドポイントと同じパイプラインを実行（max_faces=20を使用）
+        # 1. BREPトポロジ解析
+        generator.analyze_brep_topology()
+
+        # 2. パラメータ設定
+        generator.scale_factor = request.scale_factor
+        generator.layout_mode = request.layout_mode
+        generator.page_format = request.page_format
+        generator.page_orientation = request.page_orientation
+
+        # SVGエクスポーターとレイアウトマネージャーにも設定を反映（重要！）
+        generator.svg_exporter.scale_factor = request.scale_factor
+        generator.svg_exporter.layout_mode = request.layout_mode
+        generator.svg_exporter.page_format = request.page_format
+        generator.svg_exporter.page_orientation = request.page_orientation
+        generator.layout_manager.scale_factor = request.scale_factor
+
+        # 3. 展開可能面のグルーピング（SVGと同じmax_facesを使用）
+        generator.group_faces_for_unfolding(request.max_faces)
+
+        # 4. 各グループの2D展開
+        unfolded_groups = generator.unfold_face_groups()
+
+        # レイアウト処理
+        if layout_mode == "paged":
+            # 5. ページモード: ページ単位でレイアウト
+            generator.layout_manager.update_page_settings(
+                page_format=request.page_format,
+                page_orientation=request.page_orientation
+            )
+            paged_groups, warnings = generator.layout_manager.layout_for_pages(unfolded_groups)
+
+            # PDFファイルパス
+            pdf_path = os.path.join(tmpdir, f"unfold_{uuid.uuid4()}.pdf")
+
+            # 6. PDFエクスポート
+            result_path = generator.export_to_pdf_paged(paged_groups, pdf_path)
+
+            print(f"[PDF] Generated PDF with {len(paged_groups)} pages: {result_path}")
+
+            # PDFファイルを返す
+            return FileResponse(
+                path=result_path,
+                media_type="application/pdf",
+                filename=f"step_unfold_{page_format}_{page_orientation}_{uuid.uuid4()}.pdf",
+                headers={
+                    "X-Layout-Mode": layout_mode,
+                    "X-Page-Format": page_format,
+                    "X-Page-Orientation": page_orientation,
+                    "X-Page-Count": str(len(paged_groups)),
+                    "X-Scale-Factor": str(scale_factor)
+                }
+            )
+        else:
+            # canvasモードは現時点ではサポートしない（単一ページSVG→PDFは将来実装可能）
+            raise HTTPException(
+                status_code=400,
+                detail="PDF出力は現在 layout_mode='paged' のみサポートしています。"
+            )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDFエクスポートエラー: {str(e)}")
+
 # --- CityGML → STEP 変換エンドポイント ---
 @router.post(
     "/api/citygml/to-step",

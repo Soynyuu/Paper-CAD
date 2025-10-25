@@ -21,7 +21,7 @@
 }
 
 #main_icon {
-    background: transparent !important;
+    background-color: var(--panel-background-color) !important;
     border-radius: var(--radius-md) !important;
     padding: var(--spacing-xs) var(--spacing-sm) !important;
     margin: 0 !important;

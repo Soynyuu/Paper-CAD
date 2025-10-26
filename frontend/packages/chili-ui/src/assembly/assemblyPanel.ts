@@ -14,7 +14,20 @@ import {
 } from "chili-core";
 import { config } from "chili-core/src/config/config";
 import { FaceNumberDisplay } from "chili-three/src/faceNumberDisplay";
-import { Raycaster, Vector2 } from "three";
+import { ThreeGeometryFactory } from "chili-three/src/threeGeometryFactory";
+import {
+    AmbientLight,
+    Box3,
+    DirectionalLight,
+    Mesh,
+    PerspectiveCamera,
+    Raycaster,
+    Scene,
+    Vector2,
+    Vector3,
+    WebGLRenderer,
+} from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import style from "./assemblyPanel.module.css";
 
 export class AssemblyPanel extends HTMLElement {
@@ -25,7 +38,6 @@ export class AssemblyPanel extends HTMLElement {
     private _view2D: HTMLDivElement;
     private _svgContainer: HTMLDivElement;
     private _statusBar: HTMLDivElement;
-    private _threeView: IView | null = null;
     private _selectedFaceIndex: number | null = null;
     private _faceMapping: Map<number, string> = new Map(); // 3D face index to 2D element ID
     private _nodes: ShapeNode[] = [];
@@ -34,6 +46,13 @@ export class AssemblyPanel extends HTMLElement {
     private _faceNumberInput: HTMLInputElement | null = null;
     private _raycaster: Raycaster = new Raycaster();
     private _mouse: Vector2 = new Vector2();
+
+    // Three.js environment
+    private _scene: Scene | null = null;
+    private _camera: PerspectiveCamera | null = null;
+    private _renderer: WebGLRenderer | null = null;
+    private _controls: OrbitControls | null = null;
+    private _animationFrameId: number | null = null;
 
     constructor(app: IApplication) {
         super();
@@ -200,60 +219,106 @@ export class AssemblyPanel extends HTMLElement {
     }
 
     private async _setup3DView() {
-        // Use the existing active view instead of creating a new one
-        const activeView = this._app.activeView;
-        if (!activeView) {
-            console.error("No active view");
-            return;
-        }
-
         try {
-            // Store reference to the existing view
-            this._threeView = activeView;
+            // Create new Three.js scene
+            this._scene = new Scene();
+            this._scene.background = null; // Transparent background
 
-            // Get FaceNumberDisplay from the active view
-            const visual = activeView.document?.visual as any;
-            if (visual && visual.context) {
-                // Find FaceNumberDisplay in the scene
-                const context = visual.context;
-                const scene = (context as any)._scene;
-                if (scene) {
-                    // Search for FaceNumberDisplay in scene children
-                    scene.traverse((child: any) => {
-                        if (child instanceof FaceNumberDisplay) {
-                            this._faceNumberDisplay = child;
-                            console.log("Found FaceNumberDisplay in scene");
-                        }
-                    });
-                }
+            // Create camera
+            const aspect = this._view3D.clientWidth / this._view3D.clientHeight;
+            this._camera = new PerspectiveCamera(50, aspect, 0.1, 10000);
+            this._camera.position.set(5, 5, 5);
 
-                // If not found, try to create it from the selected nodes
-                if (!this._faceNumberDisplay && this._nodes.length > 0) {
-                    const shapeNode = this._nodes[0] as ShapeNode;
-                    const shapeResult = shapeNode.shape;
+            // Create renderer
+            this._renderer = new WebGLRenderer({ antialias: true, alpha: true });
+            this._renderer.setSize(this._view3D.clientWidth, this._view3D.clientHeight);
+            this._renderer.setPixelRatio(window.devicePixelRatio);
+            this._view3D.appendChild(this._renderer.domElement);
+
+            // Create orbit controls
+            this._controls = new OrbitControls(this._camera, this._renderer.domElement);
+            this._controls.enableDamping = true;
+            this._controls.dampingFactor = 0.05;
+
+            // Add lights
+            const ambientLight = new AmbientLight(0xffffff, 0.5);
+            this._scene.add(ambientLight);
+
+            const directionalLight = new DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            this._scene.add(directionalLight);
+
+            // Add shape meshes from selected nodes
+            const boundingBox = new Box3();
+            for (const node of this._nodes) {
+                if (node instanceof ShapeNode) {
+                    const shapeResult = node.shape;
                     if (shapeResult && shapeResult.isOk) {
+                        const shape = shapeResult.value;
+
+                        // Get mesh data and create Three.js geometries
+                        const meshData = shape.mesh;
+
+                        // Create face geometry
+                        if (meshData.faces) {
+                            const faceMesh = ThreeGeometryFactory.createFaceGeometry(meshData.faces);
+                            this._scene.add(faceMesh);
+                            faceMesh.geometry.computeBoundingBox();
+                            if (faceMesh.geometry.boundingBox) {
+                                boundingBox.union(faceMesh.geometry.boundingBox);
+                            }
+                        }
+
+                        // Create edge geometry
+                        if (meshData.edges) {
+                            const edgeMesh = ThreeGeometryFactory.createEdgeGeometry(meshData.edges);
+                            this._scene.add(edgeMesh);
+                        }
+
+                        // Create FaceNumberDisplay
                         this._faceNumberDisplay = new FaceNumberDisplay();
-                        this._faceNumberDisplay.generateFromShape(shapeResult.value);
+                        this._faceNumberDisplay.generateFromShape(shape);
                         this._faceNumberDisplay.setVisible(true);
-                        scene?.add(this._faceNumberDisplay);
-                        console.log("Created new FaceNumberDisplay");
+                        this._scene.add(this._faceNumberDisplay);
                     }
                 }
             }
 
-            // Display the 3D view in the panel
-            const viewportElement = (activeView as any).renderer?.domElement;
-            if (viewportElement) {
-                // Append the actual renderer canvas to show live 3D view
-                this._view3D.appendChild(viewportElement.cloneNode(true));
-                console.log("3D view canvas added to panel");
+            // Fit camera to view all objects
+            if (!boundingBox.isEmpty()) {
+                const center = boundingBox.getCenter(new Vector3());
+                const size = boundingBox.getSize(new Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = this._camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5; // Add some padding
+
+                this._camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+                this._camera.lookAt(center);
+                this._controls.target.copy(center);
+                this._controls.update();
             }
 
-            console.log("3D view setup complete");
+            // Start animation loop
+            this._animate();
+
+            console.log("3D view setup complete with", this._nodes.length, "nodes");
         } catch (error) {
             console.error("Failed to setup 3D view:", error);
         }
     }
+
+    private _animate = () => {
+        this._animationFrameId = requestAnimationFrame(this._animate);
+
+        if (this._controls) {
+            this._controls.update();
+        }
+
+        if (this._renderer && this._scene && this._camera) {
+            this._renderer.render(this._scene, this._camera);
+        }
+    };
 
     private async _generateUnfold(stepData: Blob) {
         try {
@@ -361,25 +426,15 @@ export class AssemblyPanel extends HTMLElement {
 
     private _handle3DClick(event: MouseEvent) {
         // Use raycasting to detect which face was clicked
-        if (!this._threeView) return;
+        if (!this._scene || !this._camera) return;
 
         const rect = this._view3D.getBoundingClientRect();
         this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Get the camera and scene from the view
-        const threeView = this._threeView as any;
-        const camera = threeView.camera;
-        const scene = threeView.document?.visual?.context?._scene;
-
-        if (!camera || !scene) {
-            console.warn("Camera or scene not available for raycasting");
-            return;
-        }
-
         // Perform raycasting
-        this._raycaster.setFromCamera(this._mouse, camera);
-        const intersects = this._raycaster.intersectObjects(scene.children, true);
+        this._raycaster.setFromCamera(this._mouse, this._camera);
+        const intersects = this._raycaster.intersectObjects(this._scene.children, true);
 
         if (intersects.length > 0) {
             const intersect = intersects[0];
@@ -501,11 +556,40 @@ export class AssemblyPanel extends HTMLElement {
         // Clean up and close the panel
         this._clearHighlights();
 
-        if (this._threeView) {
-            // Dispose Three.js view
-            (this._threeView as any).dispose?.();
-            this._threeView = null;
+        // Stop animation loop
+        if (this._animationFrameId !== null) {
+            cancelAnimationFrame(this._animationFrameId);
+            this._animationFrameId = null;
         }
+
+        // Dispose Three.js resources
+        if (this._controls) {
+            this._controls.dispose();
+            this._controls = null;
+        }
+
+        if (this._renderer) {
+            this._renderer.dispose();
+            this._renderer = null;
+        }
+
+        if (this._scene) {
+            this._scene.traverse((object) => {
+                if (object instanceof Mesh) {
+                    object.geometry.dispose();
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach((material) => material.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+            this._scene.clear();
+            this._scene = null;
+        }
+
+        this._camera = null;
+        this._faceNumberDisplay = null;
 
         // Remove from DOM
         this.remove();

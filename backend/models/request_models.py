@@ -17,7 +17,7 @@ class BrepPapercraftRequest(BaseModel):
     show_fold_lines: bool = True
     show_cut_lines: bool = True
     # ═══ レイアウトオプション：出力形式の制御 ═══
-    layout_mode: str = "canvas"  # "canvas" (フリーキャンバス) or "paged" (ページ分割)
+    layout_mode: str = "paged"  # "canvas" (フリーキャンバス) or "paged" (ページ分割)
     page_format: str = "A4"  # ページフォーマット: A4, A3, Letter
     page_orientation: str = "portrait"  # ページ向き: portrait (縦) or landscape (横)
 

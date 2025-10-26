@@ -29,7 +29,7 @@ async def unfold_step_to_svg(
     file: UploadFile = File(...),
     return_face_numbers: bool = Form(True),
     output_format: str = Form("svg"),
-    layout_mode: str = Form("canvas"),
+    layout_mode: str = Form("paged"),
     page_format: str = Form("A4"),
     page_orientation: str = Form("portrait"),
     scale_factor: float = Form(10.0),

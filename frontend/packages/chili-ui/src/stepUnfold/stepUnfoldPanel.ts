@@ -39,7 +39,7 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _pageSettingsContainer: HTMLDivElement;
     private readonly _pageFormatSelect: HTMLSelectElement;
     private readonly _pageOrientationSelect: HTMLSelectElement;
-    private _layoutMode: "canvas" | "paged" = "canvas";
+    private _layoutMode: "canvas" | "paged" = "paged";
     private readonly _pdfExportButton: HTMLButtonElement;
     private readonly _pdfSplitPagesCheckbox: HTMLInputElement;
     private readonly _pdfScaleInput: HTMLInputElement;
@@ -124,10 +124,10 @@ export class StepUnfoldPanel extends HTMLElement {
             this._highlightedFacesList,
         );
 
-        // Create layout mode button
+        // Create layout mode button (initial state: paged mode)
         this._layoutModeButton = button({
-            textContent: "📄 " + I18n.translate("stepUnfold.layoutMode.canvas"),
-            className: style.layoutModeButton,
+            textContent: "📄 " + I18n.translate("stepUnfold.layoutMode.paged"),
+            className: `${style.layoutModeButton} ${style.active}`,
         });
 
         // Create page settings controls
@@ -157,7 +157,7 @@ export class StepUnfoldPanel extends HTMLElement {
         this._pageSettingsContainer = div(
             {
                 className: style.compactPageSettings,
-                style: { display: "none" }, // Hidden by default
+                style: { display: "flex" }, // Visible by default (paged mode)
             },
             this._pageFormatSelect,
             this._pageOrientationSelect,
@@ -317,11 +317,11 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     private _render() {
-        // Create secondary controls container
+        // Create secondary controls container (visible by default in paged mode)
         this._secondaryControlsContainer = div(
             {
                 className: style.secondaryControls,
-                style: { display: "none" }, // Hidden by default
+                style: { display: "flex" }, // Visible by default (paged mode)
             },
             this._faceHighlightContainer,
             this._pdfSettingsContainer,

@@ -344,6 +344,7 @@ export default {
         "toast.assemblyMode.error": "Failed to start assembly mode",
         "toast.assemblyMode.unfoldError": "Failed to generate unfold",
         "toast.assemblyMode.closed": "Assembly mode closed",
+        "toast.assemblyMode.invalidFaceNumber": "Please enter a valid face number (1 or greater)",
         "toast.texture.rotationSet:{0}": "Texture rotation set to {0}°",
         "transform.rotation": "Rotation",
         "transform.scale": "Scale",

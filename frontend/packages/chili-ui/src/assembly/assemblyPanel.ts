@@ -212,9 +212,10 @@ export class AssemblyPanel extends HTMLElement {
                 // If not found, try to create it from the selected nodes
                 if (!this._faceNumberDisplay && this._nodes.length > 0) {
                     const shapeNode = this._nodes[0] as ShapeNode;
-                    if (shapeNode.shape) {
+                    const shapeResult = shapeNode.shape;
+                    if (shapeResult && shapeResult.isOk) {
                         this._faceNumberDisplay = new FaceNumberDisplay();
-                        this._faceNumberDisplay.generateFromShape(shapeNode.shape);
+                        this._faceNumberDisplay.generateFromShape(shapeResult.value);
                         this._faceNumberDisplay.setVisible(true);
                         scene?.add(this._faceNumberDisplay);
                         console.log("Created new FaceNumberDisplay");
@@ -392,7 +393,7 @@ export class AssemblyPanel extends HTMLElement {
 
         const faceNumber = parseInt(this._faceNumberInput.value);
         if (isNaN(faceNumber) || faceNumber < 1) {
-            PubSub.default.pub("showToast", "Please enter a valid face number (1 or greater)");
+            PubSub.default.pub("showToast", "toast.assemblyMode.invalidFaceNumber");
             return;
         }
 

@@ -343,6 +343,7 @@ export default {
         "toast.assemblyMode.error": "組み立てモードの開始に失敗しました",
         "toast.assemblyMode.unfoldError": "展開図の生成に失敗しました",
         "toast.assemblyMode.closed": "組み立てモードを終了しました",
+        "toast.assemblyMode.invalidFaceNumber": "有効な面番号を入力してください（1以上）",
         "toast.texture.rotationSet:{0}": "テクスチャの回転を {0}° に設定しました",
         "transform.rotation": "回転",
         "transform.scale": "スケール",

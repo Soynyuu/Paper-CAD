@@ -403,7 +403,7 @@ class LayoutManager:
         ページ方向を考慮してページ寸法を計算
         """
         base_size = self.page_sizes_mm[self.page_format]
-        
+
         if self.page_orientation == "landscape":
             # 横向きの場合、幅と高さを入れ替え
             self.page_width_mm = base_size["height"]
@@ -412,10 +412,62 @@ class LayoutManager:
             # 縦向きの場合、そのまま使用
             self.page_width_mm = base_size["width"]
             self.page_height_mm = base_size["height"]
-        
+
         # 印刷可能エリア計算
         self.printable_width_mm = self.page_width_mm - 2 * self.print_margin_mm
         self.printable_height_mm = self.page_height_mm - 2 * self.print_margin_mm
+
+    def _format_scale_as_fraction(self, scale: float) -> str:
+        """
+        スケール比率を分数形式の文字列に変換（ユーザーフレンドリーな表示用）
+
+        例:
+            0.5 → "1/2"
+            0.333 → "約1/3"
+            0.25 → "1/4"
+            0.2 → "1/5"
+            0.633 → "約2/3"
+            0.75 → "3/4"
+
+        Args:
+            scale: スケール比率（0.0-1.0）
+
+        Returns:
+            分数形式の文字列
+        """
+        from fractions import Fraction
+
+        # 一般的な分数との近似を判定
+        common_fractions = {
+            1.0: "1/1",
+            0.75: "3/4",
+            0.667: "2/3",
+            0.5: "1/2",
+            0.333: "1/3",
+            0.25: "1/4",
+            0.2: "1/5",
+            0.167: "1/6",
+            0.125: "1/8",
+            0.1: "1/10"
+        }
+
+        # 最も近い一般的な分数を探す
+        tolerance = 0.05  # 5%の誤差を許容
+        for common_scale, fraction_text in common_fractions.items():
+            if abs(scale - common_scale) < tolerance:
+                if abs(scale - common_scale) < 0.01:
+                    return fraction_text
+                else:
+                    return f"約{fraction_text}"
+
+        # 一般的な分数にマッチしない場合、Fractionで近似値を計算
+        # 分母を20以下に制限して読みやすい分数にする
+        fraction = Fraction(scale).limit_denominator(20)
+
+        if fraction.numerator == 1:
+            return f"約1/{fraction.denominator}"
+        else:
+            return f"約{fraction.numerator}/{fraction.denominator}"
 
     def layout_for_pages(self, unfolded_groups: List[Dict]) -> Tuple[List[List[Dict]], List[Dict]]:
         """
@@ -485,21 +537,32 @@ class LayoutManager:
 
             print(f"  -> 全グループをスケール調整完了")
 
+            # スケール比率を分数形式に変換（例: 0.633 → "約1/2" or "1/1.6"）
+            # ユーザーフレンドリーな表記のため、一般的な分数に近い値を選択
+            scale_ratio_text = self._format_scale_as_fraction(unified_scale)
+            scale_percentage = int(unified_scale * 100)
+
             # 警告情報を追加
             warnings.append({
                 "type": "unified_scale_applied",
-                "message": f"複数の図形を統一スケールで調整しました（組み立て可能） / Multiple shapes scaled uniformly for assembly compatibility",
+                "message": (
+                    f"📐 用紙サイズに合わせて、すべての建物を{scale_ratio_text}（{scale_percentage}%）に縮小しました。\n"
+                    f"   すべてのパーツが同じ縮尺なので、組み立てが可能です。\n\n"
+                    f"📐 All buildings scaled to {scale_ratio_text} ({scale_percentage}%) to fit the page.\n"
+                    f"   All parts share the same scale for assembly compatibility."
+                ),
                 "details": {
                     "original_max_width_mm": round(original_total_width, 1),
                     "original_max_height_mm": round(original_total_height, 1),
                     "unified_scale_factor": round(unified_scale, 3),
+                    "scale_ratio_text": scale_ratio_text,
+                    "scale_percentage": scale_percentage,
                     "page_format": self.page_format,
                     "page_orientation": self.page_orientation,
                     "printable_area_mm": {
                         "width": self.printable_width_mm,
                         "height": self.printable_height_mm
-                    },
-                    "reason": "All building parts scaled uniformly to ensure consistent scale for assembly"
+                    }
                 }
             })
 

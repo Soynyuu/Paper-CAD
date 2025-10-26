@@ -32,6 +32,12 @@ const config = defineConfig({
     entry: {
         main: "./packages/chili-web/src/index.ts",
     },
+    devServer: {
+        hot: true,
+        devMiddleware: {
+            writeToDisk: true, // Write CopyRspackPlugin output to disk for SVG-Edit assets
+        },
+    },
     experiments: {
         css: true,
     },

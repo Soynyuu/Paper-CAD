@@ -1,6 +1,15 @@
 /* SVG-Edit Design System Override Styles */
 /* This file overrides SVG-Edit default styles to match our design system */
 
+/* Override SVG-Edit CSS variables to match our design system */
+.svg_editor {
+    --main-bg-color: var(--panel-background-color) !important;
+    --text-color: var(--foreground-color) !important;
+    --border-color: var(--border-color) !important;
+    --icon-bg-color: var(--panel-background-color) !important;
+    --icon-bg-color-hover: var(--hover-background-color) !important;
+}
+
 /* Main SVG-Edit container */
 #svg-edit-container,
 .svg-edit-container,

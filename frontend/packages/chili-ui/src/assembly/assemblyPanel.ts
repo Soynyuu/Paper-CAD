@@ -357,7 +357,25 @@ export class AssemblyPanel extends HTMLElement {
 
             if (result.isOk) {
                 const responseData = result.value as any;
+                console.log("🔍 API Response structure:", {
+                    hasResponse: !!responseData,
+                    keys: Object.keys(responseData || {}),
+                    hasSvgContent: "svg_content" in (responseData || {}),
+                    hasSvgContentCamel: "svgContent" in (responseData || {}),
+                    hasFaceNumbers: "face_numbers" in (responseData || {}),
+                    hasFaceNumbersCamel: "faceNumbers" in (responseData || {}),
+                });
+
                 this._svgContent = responseData.svg_content || responseData.svgContent || "";
+                console.log("🔍 SVG Content length:", this._svgContent.length);
+                if (this._svgContent.length > 0) {
+                    console.log(
+                        "🔍 SVG Content preview (first 200 chars):",
+                        this._svgContent.substring(0, 200),
+                    );
+                } else {
+                    console.error("❌ SVG content is empty!");
+                }
 
                 // Display SVG
                 this._displaySVG(this._svgContent);
@@ -385,22 +403,50 @@ export class AssemblyPanel extends HTMLElement {
     }
 
     private _displaySVG(svgContent: string) {
+        console.log("🔍 _displaySVG called");
+        console.log("🔍 SVG container dimensions:", {
+            width: this._svgContainer.clientWidth,
+            height: this._svgContainer.clientHeight,
+            offsetWidth: this._svgContainer.offsetWidth,
+            offsetHeight: this._svgContainer.offsetHeight,
+        });
+        console.log("🔍 SVG content length:", svgContent.length);
+
+        if (!svgContent || svgContent.length === 0) {
+            console.error("❌ Cannot display SVG: content is empty");
+            this._svgContainer.innerHTML =
+                '<div style="padding: 20px; color: red;">Error: SVG content is empty</div>';
+            return;
+        }
+
         // Clear existing content
         this._svgContainer.innerHTML = "";
 
         // Create a wrapper for the SVG
         const wrapper = document.createElement("div");
         wrapper.innerHTML = svgContent;
+        console.log("🔍 Wrapper created, children count:", wrapper.children.length);
 
         // Make SVG responsive
         const svg = wrapper.querySelector("svg");
         if (svg) {
+            console.log("🔍 SVG element found");
+            console.log("🔍 SVG original attributes:", {
+                width: svg.getAttribute("width"),
+                height: svg.getAttribute("height"),
+                viewBox: svg.getAttribute("viewBox"),
+            });
             svg.setAttribute("width", "100%");
             svg.setAttribute("height", "100%");
             svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            console.log("🔍 SVG attributes updated");
+        } else {
+            console.error("❌ No SVG element found in content");
+            console.log("🔍 Wrapper HTML preview:", wrapper.innerHTML.substring(0, 500));
         }
 
         this._svgContainer.appendChild(wrapper);
+        console.log("🔍 SVG wrapper appended to container");
 
         // Add click handlers to SVG elements
         this._setupSVGInteraction();

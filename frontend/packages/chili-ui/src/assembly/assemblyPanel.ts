@@ -28,6 +28,7 @@ import {
     WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import panzoom, { PanZoom } from "panzoom";
 import style from "./assemblyPanel.module.css";
 
 export class AssemblyPanel extends HTMLElement {
@@ -46,6 +47,7 @@ export class AssemblyPanel extends HTMLElement {
     private _faceNumberInput: HTMLInputElement | null = null;
     private _raycaster: Raycaster = new Raycaster();
     private _mouse: Vector2 = new Vector2();
+    private _panzoomInstance: PanZoom | null = null;
 
     // Three.js environment
     private _scene: Scene | null = null;
@@ -448,6 +450,28 @@ export class AssemblyPanel extends HTMLElement {
         this._svgContainer.appendChild(wrapper);
         console.log("🔍 SVG wrapper appended to container");
 
+        // Initialize panzoom for interactive zoom/pan
+        if (svg) {
+            // Dispose existing panzoom instance if any
+            if (this._panzoomInstance) {
+                this._panzoomInstance.dispose();
+                this._panzoomInstance = null;
+            }
+
+            // Create new panzoom instance
+            this._panzoomInstance = panzoom(svg, {
+                maxZoom: 10,
+                minZoom: 0.1,
+                initialZoom: 1,
+                zoomSpeed: 0.1,
+                smoothScroll: false,
+                bounds: true,
+                boundsPadding: 0.1,
+            });
+
+            console.log("🔍 Panzoom initialized for SVG");
+        }
+
         // Add click handlers to SVG elements
         this._setupSVGInteraction();
     }
@@ -636,6 +660,12 @@ export class AssemblyPanel extends HTMLElement {
     private _close() {
         // Clean up and close the panel
         this._clearHighlights();
+
+        // Dispose panzoom instance
+        if (this._panzoomInstance) {
+            this._panzoomInstance.dispose();
+            this._panzoomInstance = null;
+        }
 
         // Remove resize handler
         if (this._resizeHandler) {

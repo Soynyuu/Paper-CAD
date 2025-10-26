@@ -464,14 +464,27 @@ export class AssemblyPanel extends HTMLElement {
 
     private _setupSVGInteraction() {
         // Add hover and click effects to SVG faces
-        const svgFaces = this._svgContainer.querySelectorAll("path, polygon, rect, circle");
+        // Only select face polygons, not tabs or other elements
+        const svgFaces = this._svgContainer.querySelectorAll(
+            "path.face-polygon, path.face-polygon-textured, polygon.face-polygon, polygon.face-polygon-textured",
+        );
 
         svgFaces.forEach((element, index) => {
             // Add data attributes for identification
             element.setAttribute("data-face-index", index.toString());
-            // Face number is 1-indexed (index + 1)
-            const faceNumber = index + 1;
-            element.setAttribute("data-face-number", faceNumber.toString());
+
+            // Use backend's data-face-number if available, otherwise fallback to index + 1
+            let faceNumber: number;
+            const existingFaceNumber = element.getAttribute("data-face-number");
+            if (existingFaceNumber) {
+                faceNumber = parseInt(existingFaceNumber, 10);
+                console.log(`SVG element ${index}: Using backend face number ${faceNumber}`);
+            } else {
+                // Fallback: Use index + 1 for backward compatibility
+                faceNumber = index + 1;
+                element.setAttribute("data-face-number", faceNumber.toString());
+                console.log(`SVG element ${index}: Fallback to index-based face number ${faceNumber}`);
+            }
 
             // Add hover effect
             element.addEventListener("mouseenter", () => {

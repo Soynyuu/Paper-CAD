@@ -29,6 +29,17 @@
     border-radius: 0 !important;
 }
 
+/* Menu Button - Remove border */
+#MenuButton,
+elix-menu-button {
+    border: none !important;
+}
+
+#MenuButton::part(button),
+elix-menu-button::part(button) {
+    border: none !important;
+}
+
 /* Title Panel - Unified with Ribbon UI */
 #title_panel {
     background-color: var(--panel-background-color) !important;

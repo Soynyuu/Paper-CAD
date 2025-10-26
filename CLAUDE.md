@@ -14,7 +14,7 @@ Paper-CAD is a web-based CAD tool for creating 3D building models and automatica
 ### Frontend (from `/frontend`)
 
 ```bash
-# Development server (port 3001)
+# Development server (port 8080)
 npm run dev
 
 # Production build
@@ -73,15 +73,21 @@ bash podman-deploy.sh build-run
 cd backend
 conda env create -f environment.yml
 conda activate paper-cad
-python main.py
+python main.py  # Starts on http://localhost:8001
 ```
 
 **Frontend (Node.js 18+):**
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev  # Starts on http://localhost:8080
 ```
+
+**Development Workflow:**
+- Frontend (port 8080) communicates with backend (port 8001) via REST API
+- Backend API base URL is configured in `rspack.config.js` via `STEP_UNFOLD_API_URL` environment variable
+- For local development, backend must be running before testing unfold functionality in frontend
+- Frontend has git pre-commit hooks (via `simple-git-hooks` + `lint-staged`) that automatically format code on commit
 
 ## Architecture
 
@@ -198,6 +204,20 @@ The backend includes comprehensive support for Japan's PLATEAU 3D city data:
 - **CORS configuration**: Backend allows configured origins (see `config.py`). Set `CORS_ALLOW_ALL=true` for development.
 - **Git branch**: Main branch is `main`. Use `git branch` or `git log` to see the current branch.
 - **PDF export dependencies**: Backend uses `cairosvg` (primary) and `reportlab`/`pypdf` (fallback) for PDF generation.
+
+## Troubleshooting
+
+**Frontend issues:**
+- **"Cannot connect to backend"**: Ensure backend is running on port 8001. Check `STEP_UNFOLD_API_URL` in `rspack.config.js` or `.env.development` (defaults to `http://localhost:8001/api`)
+- **"Module not found" errors**: Run `npm install` from the `/frontend` directory (workspace root), not from individual package directories
+- **WebAssembly build fails**: Ensure CMake and Emscripten are installed. Run `npm run setup:wasm` first, then `npm run build:wasm`
+- **SVG-Edit icons not displaying**: Check that `node_modules/svgedit/dist/editor` assets are copied to `dist/assets/svgedit` by CopyRspackPlugin
+
+**Backend issues:**
+- **"OpenCASCADE not available" / 503 errors**: Activate conda environment with `conda activate paper-cad`. Verify OCCT installation with `python -c "from OCC.Core.BRep import BRep_Builder; print('OK')"`
+- **CORS errors in browser console**: Set `CORS_ALLOW_ALL=true` environment variable or add your frontend URL to `config.py` origins list
+- **CityGML conversion fails**: Check that `geopy`, `pyproj`, and `shapely` are installed (via conda environment.yml). For specific buildings, verify building IDs using `/api/citygml/validate` endpoint first
+- **Test failures**: Ensure conda environment is activated and all dependencies are installed. Some tests (e.g., `test_plateau_api.py`) require internet connectivity
 
 ## Testing
 

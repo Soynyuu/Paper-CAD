@@ -6,9 +6,9 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: var(--background-color-primary);
+    background: #f5f5f5;
     overflow: hidden;
-    z-index: 1000;
+    z-index: 9999;
 }
 
 .header {
@@ -235,6 +235,10 @@
 }
 
 /* Dark theme adjustments */
+[theme="dark"] .root {
+    background: #2a2a2a;
+}
+
 [theme="dark"] .view2D {
     background: #2a2a2a;
 }

@@ -53,6 +53,7 @@ export class AssemblyPanel extends HTMLElement {
     private _renderer: WebGLRenderer | null = null;
     private _controls: OrbitControls | null = null;
     private _animationFrameId: number | null = null;
+    private _resizeHandler: (() => void) | null = null;
 
     constructor(app: IApplication) {
         super();
@@ -201,7 +202,7 @@ export class AssemblyPanel extends HTMLElement {
         this.style.left = "0";
         this.style.width = "100vw";
         this.style.height = "100vh";
-        this.style.zIndex = "1000";
+        this.style.zIndex = "9999";
 
         // Add to DOM if not already connected
         if (!this.isConnected) {
@@ -220,18 +221,27 @@ export class AssemblyPanel extends HTMLElement {
 
     private async _setup3DView() {
         try {
+            // Wait for DOM to be fully rendered
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            // Get actual dimensions
+            const width = this._view3D.clientWidth || 800;
+            const height = this._view3D.clientHeight || 600;
+
+            console.log(`3D view dimensions: ${width}x${height}`);
+
             // Create new Three.js scene
             this._scene = new Scene();
             this._scene.background = null; // Transparent background
 
             // Create camera
-            const aspect = this._view3D.clientWidth / this._view3D.clientHeight;
+            const aspect = width / height;
             this._camera = new PerspectiveCamera(50, aspect, 0.1, 10000);
             this._camera.position.set(5, 5, 5);
 
             // Create renderer
             this._renderer = new WebGLRenderer({ antialias: true, alpha: true });
-            this._renderer.setSize(this._view3D.clientWidth, this._view3D.clientHeight);
+            this._renderer.setSize(width, height);
             this._renderer.setPixelRatio(window.devicePixelRatio);
             this._view3D.appendChild(this._renderer.domElement);
 
@@ -298,6 +308,18 @@ export class AssemblyPanel extends HTMLElement {
                 this._controls.target.copy(center);
                 this._controls.update();
             }
+
+            // Setup resize handler
+            this._resizeHandler = () => {
+                if (this._camera && this._renderer) {
+                    const width = this._view3D.clientWidth || 800;
+                    const height = this._view3D.clientHeight || 600;
+                    this._camera.aspect = width / height;
+                    this._camera.updateProjectionMatrix();
+                    this._renderer.setSize(width, height);
+                }
+            };
+            window.addEventListener("resize", this._resizeHandler);
 
             // Start animation loop
             this._animate();
@@ -555,6 +577,12 @@ export class AssemblyPanel extends HTMLElement {
     private _close() {
         // Clean up and close the panel
         this._clearHighlights();
+
+        // Remove resize handler
+        if (this._resizeHandler) {
+            window.removeEventListener("resize", this._resizeHandler);
+            this._resizeHandler = null;
+        }
 
         // Stop animation loop
         if (this._animationFrameId !== null) {

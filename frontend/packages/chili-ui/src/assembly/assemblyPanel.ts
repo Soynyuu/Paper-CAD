@@ -168,9 +168,27 @@ export class AssemblyPanel extends HTMLElement {
     private async _initialize(data: { nodes: ShapeNode[]; stepData: Blob }) {
         this._nodes = data.nodes;
 
-        // Show the panel
+        // Remove existing panel if any
+        const existingPanel = document.querySelector("chili-assembly-panel");
+        if (existingPanel && existingPanel !== this) {
+            console.log("Removing existing assembly panel");
+            existingPanel.remove();
+        }
+
+        // Show the panel with explicit styles
         this.style.display = "block";
-        document.body.appendChild(this);
+        this.style.position = "fixed";
+        this.style.top = "0";
+        this.style.left = "0";
+        this.style.width = "100vw";
+        this.style.height = "100vh";
+        this.style.zIndex = "1000";
+
+        // Add to DOM if not already connected
+        if (!this.isConnected) {
+            document.body.appendChild(this);
+        }
+        console.log("Assembly panel added to DOM:", this.isConnected);
 
         // Initialize 3D view with the current document's view
         await this._setup3DView();

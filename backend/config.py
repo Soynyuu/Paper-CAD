@@ -77,6 +77,7 @@ def setup_cors(app: FastAPI) -> None:
             "http://127.0.0.1:8080",
             "http://localhost:8081",
             "https://paper-cad.soynyuu.com",
+            "https://app.paper-cad.soynyuu.com",
             "https://backend-diorama.soynyuu.com"
         ])
         

@@ -546,13 +546,12 @@ async def citygml_to_step(
         background_tasks.add_task(cleanup_temp_files)
 
         # FileResponseを使用して大容量ファイルを効率的にストリーミング
+        # Note: CORS headers are automatically handled by CORSMiddleware
         return FileResponse(
             path=out_path,
             media_type="application/octet-stream",
             filename=output_filename,
             headers={
-                "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
-                "Access-Control-Allow-Credentials": "true",
                 "Cache-Control": "no-cache"
             }
         )

@@ -32,8 +32,9 @@ export class SimplePDFExporter {
     /**
      * Export SVG to PDF with proper scaling
      * Automatically detects multi-page SVGs and creates separate PDF pages
+     * Returns the PDF as a Blob for further processing (e.g., printing)
      */
-    static async exportToPDF(svgElement: SVGElement, options: SimplePDFExportOptions): Promise<void> {
+    static async exportToPDF(svgElement: SVGElement, options: SimplePDFExportOptions): Promise<Blob> {
         console.log("=== SimplePDFExporter Start ===");
 
         // Detect if this is a multi-page SVG
@@ -41,10 +42,10 @@ export class SimplePDFExporter {
 
         if (pages.length > 1) {
             console.log(`Multi-page SVG detected: ${pages.length} pages`);
-            await this.exportMultiPagePDF(svgElement, pages, options);
+            return await this.exportMultiPagePDF(svgElement, pages, options);
         } else {
             console.log("Single-page SVG detected");
-            await this.exportSinglePagePDF(svgElement, options);
+            return await this.exportSinglePagePDF(svgElement, options);
         }
     }
 
@@ -84,12 +85,13 @@ export class SimplePDFExporter {
 
     /**
      * Export multi-page SVG to multi-page PDF
+     * Returns the PDF as a Blob
      */
     private static async exportMultiPagePDF(
         svgElement: SVGElement,
         pages: PageInfo[],
         options: SimplePDFExportOptions,
-    ): Promise<void> {
+    ): Promise<Blob> {
         console.log("=== Exporting Multi-Page PDF ===");
 
         // Get page dimensions in mm
@@ -197,20 +199,25 @@ export class SimplePDFExporter {
             }
         }
 
-        // Save PDF
+        // Save PDF and return Blob
         const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
         pdf.save(`paper-cad-unfold-${timestamp}.pdf`);
 
+        // Get PDF as Blob for printing
+        const pdfBlob = pdf.output("blob");
+
         console.log(`=== Multi-Page PDF Export Success: ${pages.length} pages ===`);
+        return pdfBlob;
     }
 
     /**
      * Export single-page SVG to PDF (original behavior)
+     * Returns the PDF as a Blob
      */
     private static async exportSinglePagePDF(
         svgElement: SVGElement,
         options: SimplePDFExportOptions,
-    ): Promise<void> {
+    ): Promise<Blob> {
         // Get page dimensions in mm
         const format = this.pageFormats[options.pageFormat];
         const pageWidth = options.orientation === "portrait" ? format.width : format.height;
@@ -279,11 +286,15 @@ export class SimplePDFExporter {
                 pageHeight - 5,
             );
 
-            // Save PDF
+            // Save PDF and return Blob
             const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
             pdf.save(`paper-cad-unfold-${timestamp}.pdf`);
 
+            // Get PDF as Blob for printing
+            const pdfBlob = pdf.output("blob");
+
             console.log("=== PDF Export Success ===");
+            return pdfBlob;
         } catch (error) {
             console.error("PDF export error:", error);
             throw error;

@@ -1310,6 +1310,46 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     /**
+     * Print a PDF blob by opening it in a new window
+     */
+    private _printPDF(pdfBlob: Blob) {
+        console.log("Opening PDF for printing...");
+
+        try {
+            // Create object URL for the PDF
+            const url = URL.createObjectURL(pdfBlob);
+
+            // Open in new window
+            const printWindow = window.open(url, "_blank");
+
+            if (printWindow) {
+                console.log("PDF window opened, waiting for load...");
+
+                // Wait for PDF to load, then trigger print dialog
+                printWindow.addEventListener("load", () => {
+                    console.log("PDF loaded, triggering print dialog");
+                    setTimeout(() => {
+                        printWindow.print();
+                    }, 500); // Small delay to ensure PDF is fully rendered
+                });
+
+                // Note: We don't automatically close the window or revoke the URL
+                // because the user might want to keep the PDF open or print again
+            } else {
+                console.warn("Failed to open print window - popup may be blocked");
+                alert(
+                    "ポップアップがブロックされました。\nブラウザの設定でポップアップを許可してください。\n\nPopup was blocked. Please allow popups in your browser settings.",
+                );
+            }
+        } catch (error) {
+            console.error("Error opening PDF for printing:", error);
+            alert(
+                `印刷ウィンドウを開けませんでした: ${error instanceof Error ? error.message : "Unknown error"}\n\nFailed to open print window: ${error instanceof Error ? error.message : "Unknown error"}`,
+            );
+        }
+    }
+
+    /**
      * Handle PDF export button click
      */
     private async _handlePDFExport() {
@@ -1459,6 +1499,9 @@ export class StepUnfoldPanel extends HTMLElement {
 
                 console.log("[BackendPDF] PDF downloaded successfully:", filename);
 
+                // Open PDF for printing
+                this._printPDF(pdfBlob);
+
                 // Show success message
                 this._pdfExportButton.textContent = "✓ 完了!";
                 setTimeout(() => {
@@ -1584,8 +1627,11 @@ export class StepUnfoldPanel extends HTMLElement {
             this._pdfExportButton.disabled = true;
 
             try {
-                await SimplePDFExporter.exportToPDF(svgElement, options);
+                const pdfBlob = await SimplePDFExporter.exportToPDF(svgElement, options);
                 console.log("PDF exported successfully");
+
+                // Open PDF for printing
+                this._printPDF(pdfBlob);
 
                 // Show success message temporarily
                 this._pdfExportButton.textContent = "✓ Exported!";

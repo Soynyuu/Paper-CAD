@@ -29,15 +29,33 @@
     border-radius: 0 !important;
 }
 
-/* Menu Button - Remove border */
+/* Menu Button - Remove border (multiple selectors for Shadow DOM override) */
 #MenuButton,
-elix-menu-button {
+elix-menu-button,
+se-menu elix-menu-button,
+.svg_editor elix-menu-button {
     border: none !important;
+    outline: none !important;
 }
 
-#MenuButton::part(button),
-elix-menu-button::part(button) {
+/* Shadow DOM part selector - attribute syntax */
+#MenuButton [part~="button"],
+elix-menu-button [part~="button"],
+se-menu elix-menu-button [part~="button"] {
     border: none !important;
+    outline: none !important;
+}
+
+/* Shadow DOM part selector - pseudo-element syntax */
+#MenuButton::part(button),
+elix-menu-button::part(button),
+se-menu elix-menu-button::part(button),
+.svg_editor elix-menu-button::part(button) {
+    border: none !important;
+    border-width: 0 !important;
+    border-style: none !important;
+    border-color: transparent !important;
+    outline: none !important;
 }
 
 /* Title Panel - Unified with Ribbon UI */

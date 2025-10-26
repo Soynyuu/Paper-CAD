@@ -25,6 +25,13 @@ dependencies:
   # 注：ifcopenshell 0.8.0はOCCT 7.9.0と互換性がないため一時的に無効化
   # - ifcopenshell=0.8.0
   
+  # Geocoding and coordinate transformation (PLATEAU features)
+  - geopy
+  - pyproj
+
+  # HTTP requests
+  - requests
+
   # pip経由でインストール
   - pip
   - pip:
@@ -33,3 +40,8 @@ dependencies:
       - python-multipart==0.0.20
       - pydantic==2.11.7
       - python-dotenv==1.1.1
+      - cairosvg==2.7.1
+      - pypdf==5.2.0
+      - reportlab==4.2.2
+      - svglib==1.5.1
+      - scipy==1.15.3

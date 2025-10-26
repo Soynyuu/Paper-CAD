@@ -119,10 +119,12 @@ class SVGExporter:
         print(f"動的SVGサイズ: {svg_width:.1f} x {svg_height:.1f} px")
         
         # SVG作成 (内容に合わせたサイズ)
+        # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
         dwg = svgwrite.Drawing(
-            output_path, 
-            size=(f"{svg_width}px", f"{svg_height}px"), 
-            viewBox=f"0 0 {svg_width} {svg_height}"
+            output_path,
+            size=(f"{svg_width}px", f"{svg_height}px"),
+            viewBox=f"0 0 {svg_width} {svg_height}",
+            debug=False
         )
         
         # 商用グレードスタイル定義
@@ -607,10 +609,12 @@ class SVGExporter:
         total_height_with_gaps = total_height + page_gap * (len(paged_groups) - 1)
         
         # SVG作成（全ページを含む大きさ）
+        # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
         dwg = svgwrite.Drawing(
             output_path,
             size=(f"{self.page_width_px}px", f"{total_height_with_gaps}px"),
-            viewBox=f"0 0 {self.page_width_px} {total_height_with_gaps}"
+            viewBox=f"0 0 {self.page_width_px} {total_height_with_gaps}",
+            debug=False
         )
         
         # スタイル定義
@@ -818,10 +822,12 @@ class SVGExporter:
             output_path = os.path.join(output_dir, f"page_{page_num:02d}.svg")
             
             # SVG作成 (印刷用固定サイズ)
+            # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
             dwg = svgwrite.Drawing(
                 output_path,
                 size=(f"{self.page_width_px}px", f"{self.page_height_px}px"),
-                viewBox=f"0 0 {self.page_width_px} {self.page_height_px}"
+                viewBox=f"0 0 {self.page_width_px} {self.page_height_px}",
+                debug=False
             )
             
             # ページ用スタイル定義

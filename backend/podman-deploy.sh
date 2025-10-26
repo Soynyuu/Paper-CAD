@@ -76,8 +76,8 @@ case $ACTION in
     
     build-run)
         echo -e "${YELLOW}Building and running container...${NC}"
-        $0 build
-        $0 run
+        bash "$0" build
+        bash "$0" run
         ;;
 
     stop)

@@ -119,10 +119,12 @@ class SVGExporter:
         print(f"動的SVGサイズ: {svg_width:.1f} x {svg_height:.1f} px")
         
         # SVG作成 (内容に合わせたサイズ)
+        # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
         dwg = svgwrite.Drawing(
-            output_path, 
-            size=(f"{svg_width}px", f"{svg_height}px"), 
-            viewBox=f"0 0 {svg_width} {svg_height}"
+            output_path,
+            size=(f"{svg_width}px", f"{svg_height}px"),
+            viewBox=f"0 0 {svg_width} {svg_height}",
+            debug=False
         )
         
         # 商用グレードスタイル定義
@@ -196,21 +198,29 @@ class SVGExporter:
                 full_path = " ".join(path_parts)
 
                 if texture_mapping and pattern_id:
-                    dwg.add(dwg.path(
+                    path_elem = dwg.path(
                         d=full_path,
                         class_="face-polygon-textured",
                         fill=f"url(#{pattern_id})",
                         fill_opacity="1.0",
-                        fill_rule="evenodd"  # 穴を正しく処理
-                    ))
-                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd）")
+                        fill_rule="evenodd"
+                    )
+                    # カスタムデータ属性を追加
+                    if face_number is not None:
+                        path_elem.attribs['data-face-number'] = str(face_number)
+                    dwg.add(path_elem)
+                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd、face: {face_number}）")
                 else:
-                    dwg.add(dwg.path(
+                    path_elem = dwg.path(
                         d=full_path,
                         class_="face-polygon",
-                        fill_rule="evenodd"  # 穴を正しく処理
-                    ))
-                    print(f"  穴付きパスを描画（fill-rule: evenodd）")
+                        fill_rule="evenodd"
+                    )
+                    # カスタムデータ属性を追加
+                    if face_number is not None:
+                        path_elem.attribs['data-face-number'] = str(face_number)
+                    dwg.add(path_elem)
+                    print(f"  穴付きパスを描画（fill-rule: evenodd、face: {face_number}）")
 
                 polygon_count += 1
 
@@ -245,13 +255,20 @@ class SVGExporter:
                                 points=points,
                                 class_="face-polygon-textured",
                                 fill=f"url(#{pattern_id})",
-                                fill_opacity="1.0"  # 不透明度を明示的に設定
+                                fill_opacity="1.0"
                             )
+                            # カスタムデータ属性を追加
+                            if face_number is not None:
+                                polygon_elem.attribs['data-face-number'] = str(face_number)
                             dwg.add(polygon_elem)
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}）")
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}、face: {face_number}）")
                         else:
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画")
+                            polygon_elem = dwg.polygon(points=points, class_="face-polygon")
+                            # カスタムデータ属性を追加
+                            if face_number is not None:
+                                polygon_elem.attribs['data-face-number'] = str(face_number)
+                            dwg.add(polygon_elem)
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（face: {face_number}）")
 
                         polygon_count += 1
 
@@ -592,10 +609,12 @@ class SVGExporter:
         total_height_with_gaps = total_height + page_gap * (len(paged_groups) - 1)
         
         # SVG作成（全ページを含む大きさ）
+        # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
         dwg = svgwrite.Drawing(
             output_path,
             size=(f"{self.page_width_px}px", f"{total_height_with_gaps}px"),
-            viewBox=f"0 0 {self.page_width_px} {total_height_with_gaps}"
+            viewBox=f"0 0 {self.page_width_px} {total_height_with_gaps}",
+            debug=False
         )
         
         # スタイル定義
@@ -684,7 +703,15 @@ class SVGExporter:
 
                     # pathを作成して描画
                     full_path = " ".join(path_parts)
-                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+                    path_elem = dwg.path(
+                        d=full_path,
+                        class_="face-polygon",
+                        fill_rule="evenodd"
+                    )
+                    # カスタムデータ属性を追加
+                    if face_number is not None:
+                        path_elem.attribs['data-face-number'] = str(face_number)
+                    dwg.add(path_elem)
 
                     # 面番号を描画（外形線の中心）
                     if face_number is not None:
@@ -714,7 +741,11 @@ class SVGExporter:
                                  y * self.mm_to_px + margin_px + page_y_offset)
                                 for x, y in polygon
                             ]
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                            polygon_elem = dwg.polygon(points=points, class_="face-polygon")
+                            # カスタムデータ属性を追加
+                            if face_number is not None:
+                                polygon_elem.attribs['data-face-number'] = str(face_number)
+                            dwg.add(polygon_elem)
 
                             # 面番号を描画
                             if face_number is not None:
@@ -791,10 +822,12 @@ class SVGExporter:
             output_path = os.path.join(output_dir, f"page_{page_num:02d}.svg")
             
             # SVG作成 (印刷用固定サイズ)
+            # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
             dwg = svgwrite.Drawing(
                 output_path,
                 size=(f"{self.page_width_px}px", f"{self.page_height_px}px"),
-                viewBox=f"0 0 {self.page_width_px} {self.page_height_px}"
+                viewBox=f"0 0 {self.page_width_px} {self.page_height_px}",
+                debug=False
             )
             
             # ページ用スタイル定義
@@ -873,7 +906,15 @@ class SVGExporter:
 
                     # pathを作成して描画
                     full_path = " ".join(path_parts)
-                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+                    path_elem = dwg.path(
+                        d=full_path,
+                        class_="face-polygon",
+                        fill_rule="evenodd"
+                    )
+                    # カスタムデータ属性を追加
+                    if face_number is not None:
+                        path_elem.attribs['data-face-number'] = str(face_number)
+                    dwg.add(path_elem)
 
                     # 面番号を描画（外形線の中心）
                     if face_number is not None:
@@ -903,7 +944,11 @@ class SVGExporter:
                                  y * actual_scale + margin_px)
                                 for x, y in polygon
                             ]
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                            polygon_elem = dwg.polygon(points=points, class_="face-polygon")
+                            # カスタムデータ属性を追加
+                            if face_number is not None:
+                                polygon_elem.attribs['data-face-number'] = str(face_number)
+                            dwg.add(polygon_elem)
 
                             # 面番号を描画
                             if face_number is not None:

@@ -1,8 +1,8 @@
 {
     "name": "Paper-CAD",
     "scripts": {
-        "dev": "npx rspack dev",
-        "build": "npx rspack build",
+        "dev": "NODE_ENV=development npx rspack dev",
+        "build": "NODE_ENV=production npx rspack build",
         "build:wasm": "cd cpp && cmake --preset release && cmake --build --preset release",
         "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
         "testc": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
@@ -45,6 +45,7 @@
     },
     "dependencies": {
         "lottie-web": "^5.13.0",
+        "panzoom": "^9.4.3",
         "svgedit": "^7.3.8"
     }
 }

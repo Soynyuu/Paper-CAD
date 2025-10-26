@@ -85,7 +85,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
             formData.append("scale_factor", (options.scale || 1).toString());
-            formData.append("layout_mode", options.layoutMode || "canvas");
+            formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
 
@@ -131,7 +131,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
             formData.append("scale_factor", (options.scale || 1).toString());
-            formData.append("layout_mode", options.layoutMode || "canvas");
+            formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
 

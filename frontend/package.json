@@ -45,6 +45,7 @@
     },
     "dependencies": {
         "lottie-web": "^5.13.0",
+        "panzoom": "^9.4.3",
         "svgedit": "^7.3.8"
     }
 }

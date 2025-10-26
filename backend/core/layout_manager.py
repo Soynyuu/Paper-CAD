@@ -433,70 +433,79 @@ class LayoutManager:
 
         # 警告情報を収集するリスト
         warnings = []
-        
+
         # 各グループの境界ボックス計算
         for group in unfolded_groups:
             bbox = self._calculate_group_bbox(group["polygons"])
             group["bbox"] = bbox
-            
-            # グループの横幅チェックとスケール調整
-            # 縦幅は複数ページに分割するため、スケール調整不要
-            scale_applied = False
+
+        # ═══ 統一スケール計算：すべてのグループに対して最小スケールを適用 ═══
+        # すべてのグループをスキャンして、最も厳しいスケール制約（最小スケール）を計算
+        # これにより、複数の建物を展開した際にすべてのパーツが同じスケールになり、組み立てが可能になる
+        unified_scale = 1.0  # デフォルトはスケール調整なし
+        max_width = 0.0  # 最大の横幅を記録
+
+        for group in unfolded_groups:
+            bbox = group["bbox"]
+            # 縦幅は複数ページに分割するため、横幅のみをチェック
             if bbox["width"] > self.printable_width_mm:
-                original_width = bbox["width"]
-                original_height = bbox["height"]
+                required_scale = self.printable_width_mm / bbox["width"]
+                if required_scale < unified_scale:
+                    unified_scale = required_scale
+                    max_width = bbox["width"]
 
-                print(f"警告: グループ横幅({bbox['width']:.1f}mm)が" +
-                      f"印刷可能エリア({self.printable_width_mm}mm)を超えています")
+        # 統一スケールが必要な場合、すべてのグループに適用
+        if unified_scale < 1.0:
+            print(f"統一スケール調整: {unified_scale:.3f}（最大横幅: {max_width:.1f}mm）")
+            print(f"すべてのグループに同じスケールを適用して、組み立て可能な模型を生成します")
 
-                # 横幅のみスケール調整（縦幅はページ分割で対応）
-                scale = self.printable_width_mm / bbox["width"]
-                print(f"横幅スケール調整: {scale:.3f}")
-                scale_applied = True
+            # 元のサイズを記録（警告用）
+            original_total_width = max_width
+            original_total_height = max([g["bbox"]["height"] for g in unfolded_groups])
 
-                # グループをスケールダウン
+            # すべてのグループに統一スケールを適用
+            for group in unfolded_groups:
+                # ポリゴンをスケール
                 scaled_polygons = []
                 for polygon in group["polygons"]:
-                    scaled_polygon = [(x * scale, y * scale) for x, y in polygon]
+                    scaled_polygon = [(x * unified_scale, y * unified_scale) for x, y in polygon]
                     scaled_polygons.append(scaled_polygon)
                 group["polygons"] = scaled_polygons
 
+                # タブをスケール
                 scaled_tabs = []
                 for tab in group.get("tabs", []):
-                    scaled_tab = [(x * scale, y * scale) for x, y in tab]
+                    scaled_tab = [(x * unified_scale, y * unified_scale) for x, y in tab]
                     scaled_tabs.append(scaled_tab)
                 group["tabs"] = scaled_tabs
 
                 # 境界ボックスを再計算
                 bbox = self._calculate_group_bbox(group["polygons"])
                 group["bbox"] = bbox
-                print(f"  -> スケール調整後: {bbox['width']:.1f}x{bbox['height']:.1f}mm")
 
-            # 警告情報を追加（スケール調整が行われた場合）
-            if scale_applied:
-                warnings.append({
-                    "type": "size_exceeded",
-                    "message": f"図形が用紙サイズを超えたため、自動的にスケール調整しました / Shape exceeded page size and was automatically scaled",
-                    "details": {
-                        "original_size_mm": {
-                            "width": round(original_width, 1),
-                            "height": round(original_height, 1)
-                        },
-                        "scaled_size_mm": {
-                            "width": round(bbox["width"], 1),
-                            "height": round(bbox["height"], 1)
-                        },
-                        "scale_factor": round(scale, 3),
-                        "page_format": self.page_format,
-                        "page_orientation": self.page_orientation,
-                        "printable_area_mm": {
-                            "width": self.printable_width_mm,
-                            "height": self.printable_height_mm
-                        }
-                    }
-                })
+            print(f"  -> 全グループをスケール調整完了")
 
-            # 縦幅が印刷可能エリアを超える場合は情報メッセージ
+            # 警告情報を追加
+            warnings.append({
+                "type": "unified_scale_applied",
+                "message": f"複数の図形を統一スケールで調整しました（組み立て可能） / Multiple shapes scaled uniformly for assembly compatibility",
+                "details": {
+                    "original_max_width_mm": round(original_total_width, 1),
+                    "original_max_height_mm": round(original_total_height, 1),
+                    "unified_scale_factor": round(unified_scale, 3),
+                    "page_format": self.page_format,
+                    "page_orientation": self.page_orientation,
+                    "printable_area_mm": {
+                        "width": self.printable_width_mm,
+                        "height": self.printable_height_mm
+                    },
+                    "reason": "All building parts scaled uniformly to ensure consistent scale for assembly"
+                }
+            })
+
+        # 縦幅が印刷可能エリアを超える場合は情報メッセージ
+        for group in unfolded_groups:
+            bbox = group["bbox"]
             if bbox["height"] > self.printable_height_mm:
                 print(f"情報: グループ縦幅({bbox['height']:.1f}mm)が印刷可能エリア({self.printable_height_mm}mm)を超えています")
                 print(f"  -> 複数ページに分割されます")

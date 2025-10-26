@@ -16,6 +16,7 @@ IMAGE_NAME="unfold-step2svg"
 CONTAINER_NAME="unfold-step2svg"
 PORT="${PORT:-8001}"
 DEBUG_VOLUME="${PWD}/core/debug_files:/app/core/debug_files"
+CONTAINERFILE="${CONTAINERFILE:-Containerfile}"
 
 echo -e "${GREEN}=== Unfold-STEP2SVG Podman Deployment ===${NC}"
 
@@ -32,8 +33,22 @@ ACTION=${1:-build-run}
 case $ACTION in
     build)
         echo -e "${YELLOW}Building container image...${NC}"
-        podman build --no-cache -t ${IMAGE_NAME}:latest .
+
+        # Containerfileが存在するか確認
+        if [ ! -f "${CONTAINERFILE}" ]; then
+            echo -e "${RED}Error: ${CONTAINERFILE} not found${NC}"
+            exit 1
+        fi
+
+        # environment-docker.ymlが存在するか確認
+        if [ ! -f "environment-docker.yml" ]; then
+            echo -e "${RED}Error: environment-docker.yml not found${NC}"
+            exit 1
+        fi
+
+        podman build --no-cache -f ${CONTAINERFILE} -t ${IMAGE_NAME}:latest .
         echo -e "${GREEN}Build completed!${NC}"
+        echo -e "${GREEN}Image: ${IMAGE_NAME}:latest${NC}"
         ;;
     
     run)
@@ -64,9 +79,9 @@ case $ACTION in
         $0 build
         $0 run
         ;;
-    
-        echo -e "${YELLOW}Stopping container...${NC}"
+
     stop)
+        echo -e "${YELLOW}Stopping container...${NC}"
         podman stop ${CONTAINER_NAME}
         echo -e "${GREEN}Container stopped${NC}"
         ;;

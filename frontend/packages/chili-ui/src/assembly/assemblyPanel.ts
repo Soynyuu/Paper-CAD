@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { button, div, span } from "chili-controls";
+import { button, div, input, span } from "chili-controls";
 import {
     IApplication,
     IDocument,
@@ -13,6 +13,8 @@ import {
     IView,
 } from "chili-core";
 import { config } from "chili-core/src/config/config";
+import { FaceNumberDisplay } from "chili-three/src/faceNumberDisplay";
+import { Raycaster, Vector2 } from "three";
 import style from "./assemblyPanel.module.css";
 
 export class AssemblyPanel extends HTMLElement {
@@ -28,6 +30,10 @@ export class AssemblyPanel extends HTMLElement {
     private _faceMapping: Map<number, string> = new Map(); // 3D face index to 2D element ID
     private _nodes: ShapeNode[] = [];
     private _svgContent: string = "";
+    private _faceNumberDisplay: FaceNumberDisplay | null = null;
+    private _faceNumberInput: HTMLInputElement | null = null;
+    private _raycaster: Raycaster = new Raycaster();
+    private _mouse: Vector2 = new Vector2();
 
     constructor(app: IApplication) {
         super();
@@ -81,6 +87,31 @@ export class AssemblyPanel extends HTMLElement {
     }
 
     private _render() {
+        // 面番号入力フィールド
+        this._faceNumberInput = input({
+            type: "number",
+            min: "1",
+            className: style.faceNumberInput,
+            placeholder: I18n.translate("assembly.enterFaceNumber"),
+            onkeydown: (e: KeyboardEvent) => {
+                if (e.key === "Enter") {
+                    this._highlightByFaceNumber();
+                }
+            },
+        }) as HTMLInputElement;
+
+        // 面番号入力グループ
+        const faceNumberInputGroup = div(
+            { className: style.inputGroup },
+            span({ className: style.inputLabel, textContent: I18n.translate("assembly.faceNumberInput") }),
+            this._faceNumberInput,
+            button({
+                textContent: I18n.translate("assembly.highlight"),
+                className: style.highlightButton,
+                onclick: () => this._highlightByFaceNumber(),
+            }),
+        );
+
         const closeButton = button({
             textContent: "✕ " + I18n.translate("assembly.close"),
             className: style.closeButton,
@@ -102,7 +133,7 @@ export class AssemblyPanel extends HTMLElement {
                         span({ className: style.titleIcon, textContent: "🔧" }),
                         span({ textContent: I18n.translate("assembly.title") }),
                     ),
-                    div({ className: style.controls }, helpText, closeButton),
+                    div({ className: style.controls }, faceNumberInputGroup, helpText, closeButton),
                 ),
                 div(
                     { className: style.content },
@@ -162,50 +193,46 @@ export class AssemblyPanel extends HTMLElement {
             // Store reference to the existing view
             this._threeView = activeView;
 
-            // Clone the 3D view content to display in the assembly panel
-            const viewportElement = (activeView as any).renderer?.domElement;
-            if (viewportElement) {
-                // Create a copy of the current 3D view
-                const clonedCanvas = document.createElement("canvas");
-                clonedCanvas.style.width = "100%";
-                clonedCanvas.style.height = "100%";
-                this._view3D.appendChild(clonedCanvas);
-
-                // Copy the rendering context
-                const ctx = clonedCanvas.getContext("2d");
-                if (ctx && viewportElement instanceof HTMLCanvasElement) {
-                    // Set up periodic rendering from the main view
-                    const renderFrame = () => {
-                        if (this._view3D.parentElement) {
-                            ctx.drawImage(viewportElement, 0, 0, clonedCanvas.width, clonedCanvas.height);
-                            requestAnimationFrame(renderFrame);
+            // Get FaceNumberDisplay from the active view
+            const visual = activeView.document?.visual as any;
+            if (visual && visual.context) {
+                // Find FaceNumberDisplay in the scene
+                const context = visual.context;
+                const scene = (context as any)._scene;
+                if (scene) {
+                    // Search for FaceNumberDisplay in scene children
+                    scene.traverse((child: any) => {
+                        if (child instanceof FaceNumberDisplay) {
+                            this._faceNumberDisplay = child;
+                            console.log("Found FaceNumberDisplay in scene");
                         }
-                    };
-                    renderFrame();
+                    });
+                }
+
+                // If not found, try to create it from the selected nodes
+                if (!this._faceNumberDisplay && this._nodes.length > 0) {
+                    const shapeNode = this._nodes[0] as ShapeNode;
+                    if (shapeNode.shape) {
+                        this._faceNumberDisplay = new FaceNumberDisplay();
+                        this._faceNumberDisplay.generateFromShape(shapeNode.shape);
+                        this._faceNumberDisplay.setVisible(true);
+                        scene?.add(this._faceNumberDisplay);
+                        console.log("Created new FaceNumberDisplay");
+                    }
                 }
             }
 
-            // Enable face number display for interaction
-            this._enableFaceNumbersFor3D();
+            // Display the 3D view in the panel
+            const viewportElement = (activeView as any).renderer?.domElement;
+            if (viewportElement) {
+                // Append the actual renderer canvas to show live 3D view
+                this._view3D.appendChild(viewportElement.cloneNode(true));
+                console.log("3D view canvas added to panel");
+            }
 
             console.log("3D view setup complete");
         } catch (error) {
             console.error("Failed to setup 3D view:", error);
-        }
-    }
-
-    private _enableFaceNumbersFor3D() {
-        const activeDocument = this._app.activeView?.document;
-        if (activeDocument && activeDocument.visual) {
-            const visual = activeDocument.visual as any;
-            if (visual.context && visual.context._NodeVisualMap) {
-                visual.context._NodeVisualMap.forEach((visualObject: any) => {
-                    if (visualObject && "setFaceNumbersVisible" in visualObject) {
-                        // Enable face detection without showing numbers
-                        visualObject.enableFaceInteraction = true;
-                    }
-                });
-            }
         }
     }
 
@@ -233,6 +260,12 @@ export class AssemblyPanel extends HTMLElement {
                 const faceNumbers = responseData.face_numbers || responseData.faceNumbers;
                 if (faceNumbers) {
                     this._setupFaceMapping(faceNumbers);
+
+                    // Set face numbers to FaceNumberDisplay for 3D highlighting
+                    if (this._faceNumberDisplay) {
+                        this._faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
+                        console.log("Face numbers set to FaceNumberDisplay:", faceNumbers);
+                    }
                 }
 
                 console.log("Unfold generated successfully");
@@ -282,8 +315,11 @@ export class AssemblyPanel extends HTMLElement {
         const svgFaces = this._svgContainer.querySelectorAll("path, polygon, rect, circle");
 
         svgFaces.forEach((element, index) => {
-            // Add data attribute for identification
+            // Add data attributes for identification
             element.setAttribute("data-face-index", index.toString());
+            // Face number is 1-indexed (index + 1)
+            const faceNumber = index + 1;
+            element.setAttribute("data-face-number", faceNumber.toString());
 
             // Add hover effect
             element.addEventListener("mouseenter", () => {
@@ -299,7 +335,7 @@ export class AssemblyPanel extends HTMLElement {
 
             // Add click handler
             element.addEventListener("click", () => {
-                this._handle2DClick(index);
+                this._handle2DClick(faceNumber);
             });
         });
     }
@@ -309,67 +345,119 @@ export class AssemblyPanel extends HTMLElement {
         if (!this._threeView) return;
 
         const rect = this._view3D.getBoundingClientRect();
-        const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Get the intersected face (this would need to be implemented in ThreeView)
-        // For now, we'll simulate with a placeholder
-        const faceIndex = this._detectFaceAt3DPosition(x, y);
+        // Get the camera and scene from the view
+        const threeView = this._threeView as any;
+        const camera = threeView.camera;
+        const scene = threeView.document?.visual?.context?._scene;
 
-        if (faceIndex !== null) {
-            this._highlightCorrespondingFace(faceIndex, "3d");
+        if (!camera || !scene) {
+            console.warn("Camera or scene not available for raycasting");
+            return;
+        }
+
+        // Perform raycasting
+        this._raycaster.setFromCamera(this._mouse, camera);
+        const intersects = this._raycaster.intersectObjects(scene.children, true);
+
+        if (intersects.length > 0) {
+            const intersect = intersects[0];
+            // Try to get face number from the intersected object
+            if (intersect.face && this._faceNumberDisplay) {
+                const faceIndex = intersect.faceIndex ?? 0;
+                const faceNumber = this._faceNumberDisplay.getFaceNumberByIndex(faceIndex);
+                if (faceNumber !== undefined) {
+                    console.log(`3D face clicked: index=${faceIndex}, number=${faceNumber}`);
+                    this._highlightFace(faceNumber);
+                } else {
+                    console.warn(`Could not find face number for face index ${faceIndex}`);
+                }
+            }
         }
     }
 
-    private _handle2DClick(svgFaceIndex: number) {
-        // Find corresponding 3D face and highlight it
-        this._highlightCorrespondingFace(svgFaceIndex, "2d");
+    private _handle2DClick(faceNumber: number) {
+        // Highlight the corresponding face in both 2D and 3D
+        console.log(`2D SVG face ${faceNumber} clicked`);
+        this._highlightFace(faceNumber);
     }
 
-    private _detectFaceAt3DPosition(x: number, y: number): number | null {
-        // TODO: Implement actual raycasting to detect face
-        // This is a placeholder that returns a random face for demonstration
-        return Math.floor(Math.random() * 6);
+    /**
+     * 面番号入力フィールドからハイライト
+     */
+    private _highlightByFaceNumber() {
+        if (!this._faceNumberInput) return;
+
+        const faceNumber = parseInt(this._faceNumberInput.value);
+        if (isNaN(faceNumber) || faceNumber < 1) {
+            PubSub.default.pub("showToast", "Please enter a valid face number (1 or greater)");
+            return;
+        }
+
+        console.log(`Highlighting face number: ${faceNumber}`);
+        this._highlightFace(faceNumber);
     }
 
-    private _highlightCorrespondingFace(faceIndex: number, source: "2d" | "3d") {
+    /**
+     * 指定された面番号をハイライト（3DとSVG両方）
+     */
+    private _highlightFace(faceNumber: number) {
         // Clear previous highlights
         this._clearHighlights();
 
         // Update status
-        this._selectedFaceIndex = faceIndex;
+        this._selectedFaceIndex = faceNumber - 1; // Convert to 0-indexed
         const statusValue = document.getElementById("selected-face-display");
         if (statusValue) {
-            statusValue.textContent = `Face ${faceIndex + 1}`;
+            statusValue.textContent = `Face ${faceNumber}`;
         }
 
-        if (source === "3d") {
-            // Highlight in 2D view
-            const svgElementId = this._faceMapping.get(faceIndex);
-            if (svgElementId) {
-                const svgElement = this._svgContainer.querySelector(`#${svgElementId}`);
-                if (svgElement) {
-                    svgElement.classList.add("highlighted");
-                    (svgElement as SVGElement).style.fill = "rgba(255, 220, 0, 0.5)";
-                    (svgElement as SVGElement).style.stroke = "#ffa500";
-                    (svgElement as SVGElement).style.strokeWidth = "3";
-                }
-            } else {
-                // Fallback: highlight by index
-                const svgElements = this._svgContainer.querySelectorAll("path, polygon");
-                if (svgElements[faceIndex]) {
-                    const element = svgElements[faceIndex] as SVGElement;
-                    element.classList.add("highlighted");
-                    element.style.fill = "rgba(255, 220, 0, 0.5)";
-                    element.style.stroke = "#ffa500";
-                    element.style.strokeWidth = "3";
-                }
-            }
+        // Highlight in 3D view using FaceNumberDisplay
+        if (this._faceNumberDisplay) {
+            this._faceNumberDisplay.highlightFace(faceNumber);
+            console.log(`3D face ${faceNumber} highlighted via FaceNumberDisplay`);
         } else {
-            // Highlight in 3D view
-            // TODO: Implement 3D highlighting through Three.js
-            console.log(`Would highlight 3D face ${faceIndex}`);
+            console.warn("FaceNumberDisplay not available for 3D highlighting");
         }
+
+        // Highlight in 2D view (SVG)
+        this._highlightSVGFace(faceNumber);
+    }
+
+    /**
+     * SVG展開図の指定された面をハイライト
+     */
+    private _highlightSVGFace(faceNumber: number) {
+        // Try to find SVG element by data-face-number attribute
+        const svgElement = this._svgContainer.querySelector(`[data-face-number="${faceNumber}"]`);
+        if (svgElement) {
+            svgElement.classList.add("highlighted");
+            (svgElement as SVGElement).style.fill = "rgba(255, 220, 0, 0.5)";
+            (svgElement as SVGElement).style.stroke = "#ffa500";
+            (svgElement as SVGElement).style.strokeWidth = "3";
+            console.log(`2D SVG face ${faceNumber} highlighted`);
+        } else {
+            // Fallback: highlight by index (faceNumber - 1)
+            const svgElements = this._svgContainer.querySelectorAll("path, polygon");
+            if (svgElements[faceNumber - 1]) {
+                const element = svgElements[faceNumber - 1] as SVGElement;
+                element.classList.add("highlighted");
+                element.style.fill = "rgba(255, 220, 0, 0.5)";
+                element.style.stroke = "#ffa500";
+                element.style.strokeWidth = "3";
+                console.log(`2D SVG face ${faceNumber} highlighted (fallback by index)`);
+            } else {
+                console.warn(`Could not find SVG element for face ${faceNumber}`);
+            }
+        }
+    }
+
+    private _highlightCorrespondingFace(faceIndex: number, source: "2d" | "3d") {
+        // Convert faceIndex to faceNumber (1-indexed)
+        const faceNumber = faceIndex + 1;
+        this._highlightFace(faceNumber);
     }
 
     private _clearHighlights() {
@@ -383,7 +471,11 @@ export class AssemblyPanel extends HTMLElement {
             (element as SVGElement).style.opacity = "1";
         });
 
-        // Clear 3D highlights (TODO)
+        // Clear 3D highlights using FaceNumberDisplay
+        if (this._faceNumberDisplay) {
+            this._faceNumberDisplay.clearHighlights();
+            console.log("3D highlights cleared");
+        }
     }
 
     private _close() {

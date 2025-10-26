@@ -195,22 +195,26 @@ class SVGExporter:
                 # pathを作成して描画
                 full_path = " ".join(path_parts)
 
+                # 共通の属性辞書を作成
+                path_attrs = {
+                    "d": full_path,
+                    "fill_rule": "evenodd"  # 穴を正しく処理
+                }
+
+                # 面番号属性を追加
+                if face_number is not None:
+                    path_attrs["data-face-number"] = str(face_number)
+
                 if texture_mapping and pattern_id:
-                    dwg.add(dwg.path(
-                        d=full_path,
-                        class_="face-polygon-textured",
-                        fill=f"url(#{pattern_id})",
-                        fill_opacity="1.0",
-                        fill_rule="evenodd"  # 穴を正しく処理
-                    ))
-                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd）")
+                    path_attrs["class_"] = "face-polygon-textured"
+                    path_attrs["fill"] = f"url(#{pattern_id})"
+                    path_attrs["fill_opacity"] = "1.0"
+                    dwg.add(dwg.path(**path_attrs))
+                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd、face: {face_number}）")
                 else:
-                    dwg.add(dwg.path(
-                        d=full_path,
-                        class_="face-polygon",
-                        fill_rule="evenodd"  # 穴を正しく処理
-                    ))
-                    print(f"  穴付きパスを描画（fill-rule: evenodd）")
+                    path_attrs["class_"] = "face-polygon"
+                    dwg.add(dwg.path(**path_attrs))
+                    print(f"  穴付きパスを描画（fill-rule: evenodd、face: {face_number}）")
 
                 polygon_count += 1
 
@@ -238,20 +242,28 @@ class SVGExporter:
                         # スケールファクターを適用
                         points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
 
+                        # 共通の属性辞書を作成
+                        polygon_attrs = {
+                            "points": points
+                        }
+
+                        # 面番号属性を追加
+                        if face_number is not None:
+                            polygon_attrs["data-face-number"] = str(face_number)
+
                         # テクスチャがある場合はパターンを適用
                         if texture_mapping and pattern_id:
                             # パターンのfillに加えて、fillOpacityも設定
-                            polygon_elem = dwg.polygon(
-                                points=points,
-                                class_="face-polygon-textured",
-                                fill=f"url(#{pattern_id})",
-                                fill_opacity="1.0"  # 不透明度を明示的に設定
-                            )
+                            polygon_attrs["class_"] = "face-polygon-textured"
+                            polygon_attrs["fill"] = f"url(#{pattern_id})"
+                            polygon_attrs["fill_opacity"] = "1.0"  # 不透明度を明示的に設定
+                            polygon_elem = dwg.polygon(**polygon_attrs)
                             dwg.add(polygon_elem)
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}）")
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}、face: {face_number}）")
                         else:
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画")
+                            polygon_attrs["class_"] = "face-polygon"
+                            dwg.add(dwg.polygon(**polygon_attrs))
+                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（face: {face_number}）")
 
                         polygon_count += 1
 
@@ -684,7 +696,14 @@ class SVGExporter:
 
                     # pathを作成して描画
                     full_path = " ".join(path_parts)
-                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+                    path_attrs = {
+                        "d": full_path,
+                        "class_": "face-polygon",
+                        "fill_rule": "evenodd"
+                    }
+                    if face_number is not None:
+                        path_attrs["data-face-number"] = str(face_number)
+                    dwg.add(dwg.path(**path_attrs))
 
                     # 面番号を描画（外形線の中心）
                     if face_number is not None:
@@ -714,7 +733,10 @@ class SVGExporter:
                                  y * self.mm_to_px + margin_px + page_y_offset)
                                 for x, y in polygon
                             ]
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                            polygon_attrs = {"points": points, "class_": "face-polygon"}
+                            if face_number is not None:
+                                polygon_attrs["data-face-number"] = str(face_number)
+                            dwg.add(dwg.polygon(**polygon_attrs))
 
                             # 面番号を描画
                             if face_number is not None:
@@ -873,7 +895,14 @@ class SVGExporter:
 
                     # pathを作成して描画
                     full_path = " ".join(path_parts)
-                    dwg.add(dwg.path(d=full_path, class_="face-polygon", fill_rule="evenodd"))
+                    path_attrs = {
+                        "d": full_path,
+                        "class_": "face-polygon",
+                        "fill_rule": "evenodd"
+                    }
+                    if face_number is not None:
+                        path_attrs["data-face-number"] = str(face_number)
+                    dwg.add(dwg.path(**path_attrs))
 
                     # 面番号を描画（外形線の中心）
                     if face_number is not None:
@@ -903,7 +932,10 @@ class SVGExporter:
                                  y * actual_scale + margin_px)
                                 for x, y in polygon
                             ]
-                            dwg.add(dwg.polygon(points=points, class_="face-polygon"))
+                            polygon_attrs = {"points": points, "class_": "face-polygon"}
+                            if face_number is not None:
+                                polygon_attrs["data-face-number"] = str(face_number)
+                            dwg.add(dwg.polygon(**polygon_attrs))
 
                             # 面番号を描画
                             if face_number is not None:

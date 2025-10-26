@@ -349,9 +349,9 @@ export class AssemblyPanel extends HTMLElement {
             // Generate unfold with face numbers
             const options: UnfoldOptions = {
                 scale: 1,
-                layoutMode: "canvas",
+                layoutMode: "paged",
                 pageFormat: "A4",
-                pageOrientation: "landscape",
+                pageOrientation: "portrait",
                 returnFaceNumbers: true,
             };
 
@@ -458,16 +458,39 @@ export class AssemblyPanel extends HTMLElement {
                 this._panzoomInstance = null;
             }
 
-            // Create new panzoom instance
-            this._panzoomInstance = panzoom(svg, {
-                maxZoom: 10,
-                minZoom: 0.1,
-                initialZoom: 1,
-                zoomSpeed: 0.1,
-                smoothScroll: false,
-                bounds: true,
-                boundsPadding: 0.1,
-            });
+            // Create new panzoom instance on the wrapper div instead of SVG
+            // This allows SVG elements to receive click events normally
+            const wrapper = svg.parentElement;
+            if (wrapper) {
+                this._panzoomInstance = panzoom(svg, {
+                    maxZoom: 10,
+                    minZoom: 0.1,
+                    initialZoom: 1,
+                    zoomSpeed: 0.1,
+                    smoothScroll: false,
+                    bounds: true,
+                    boundsPadding: 0.1,
+                    // Use beforeWheel to always allow zoom, but filter mousedown for panning
+                    beforeMouseDown: function (e) {
+                        const target = e.target as SVGElement;
+                        const className =
+                            typeof target.className === "string"
+                                ? target.className
+                                : target.className.baseVal;
+                        console.log("🐭 Mouse down on:", target.tagName, "class:", className);
+
+                        // Allow panning only when NOT clicking on face polygons
+                        const shouldPreventPan = className.includes("face-polygon");
+
+                        if (shouldPreventPan) {
+                            console.log("🚫 Preventing pan to allow click on face polygon");
+                            return false;
+                        }
+                        console.log("✅ Allowing pan");
+                        return true;
+                    },
+                });
+            }
 
             console.log("🔍 Panzoom initialized for SVG");
         }
@@ -487,11 +510,27 @@ export class AssemblyPanel extends HTMLElement {
     }
 
     private _setupSVGInteraction() {
+        console.log("🔧 Setting up SVG interaction handlers");
+
         // Add hover and click effects to SVG faces
         // Only select face polygons, not tabs or other elements
         const svgFaces = this._svgContainer.querySelectorAll(
             "path.face-polygon, path.face-polygon-textured, polygon.face-polygon, polygon.face-polygon-textured",
         );
+
+        console.log(`📊 Found ${svgFaces.length} SVG face elements to set up`);
+
+        // Debug: log all SVG elements to see what we have
+        const allSvgElements = this._svgContainer.querySelectorAll("path, polygon");
+        console.log(`📊 Total SVG path/polygon elements: ${allSvgElements.length}`);
+        allSvgElements.forEach((el, idx) => {
+            const svgEl = el as SVGElement;
+            const className =
+                typeof svgEl.className === "string" ? svgEl.className : svgEl.className.baseVal;
+            console.log(
+                `  Element ${idx}: <${svgEl.tagName}> classes="${className}" data-face-number="${svgEl.getAttribute("data-face-number")}"`,
+            );
+        });
 
         svgFaces.forEach((element, index) => {
             // Add data attributes for identification
@@ -523,15 +562,26 @@ export class AssemblyPanel extends HTMLElement {
             });
 
             // Add click handler
-            element.addEventListener("click", () => {
+            element.addEventListener("click", (e) => {
+                console.log(`🖱️ 2D SVG face clicked: ${faceNumber}`);
+                e.stopPropagation(); // Prevent event bubbling
                 this._handle2DClick(faceNumber);
             });
+
+            console.log(`  ✅ Registered click handler for face ${faceNumber} (element ${index})`);
         });
+
+        console.log(`🔧 SVG interaction setup complete: ${svgFaces.length} faces registered`);
     }
 
     private _handle3DClick(event: MouseEvent) {
+        console.log(`🖱️ 3D view clicked`);
+
         // Use raycasting to detect which face was clicked
-        if (!this._scene || !this._camera) return;
+        if (!this._scene || !this._camera) {
+            console.warn("Scene or camera not available for 3D click");
+            return;
+        }
 
         const rect = this._view3D.getBoundingClientRect();
         this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -541,19 +591,31 @@ export class AssemblyPanel extends HTMLElement {
         this._raycaster.setFromCamera(this._mouse, this._camera);
         const intersects = this._raycaster.intersectObjects(this._scene.children, true);
 
+        console.log(`🎯 Raycasting found ${intersects.length} intersections`);
+
         if (intersects.length > 0) {
             const intersect = intersects[0];
+            console.log(`🎯 First intersection:`, {
+                object: intersect.object.type,
+                hasFace: !!intersect.face,
+                faceIndex: intersect.faceIndex,
+            });
+
             // Try to get face number from the intersected object
             if (intersect.face && this._faceNumberDisplay) {
                 const faceIndex = intersect.faceIndex ?? 0;
                 const faceNumber = this._faceNumberDisplay.getFaceNumberByIndex(faceIndex);
                 if (faceNumber !== undefined) {
-                    console.log(`3D face clicked: index=${faceIndex}, number=${faceNumber}`);
+                    console.log(`✅ 3D face clicked: index=${faceIndex}, number=${faceNumber}`);
                     this._highlightFace(faceNumber);
                 } else {
-                    console.warn(`Could not find face number for face index ${faceIndex}`);
+                    console.warn(`❌ Could not find face number for face index ${faceIndex}`);
                 }
+            } else {
+                console.warn(`❌ No face or FaceNumberDisplay available`);
             }
+        } else {
+            console.log(`ℹ️ No 3D object clicked (empty space)`);
         }
     }
 
@@ -583,6 +645,8 @@ export class AssemblyPanel extends HTMLElement {
      * 指定された面番号をハイライト（3DとSVG両方）
      */
     private _highlightFace(faceNumber: number) {
+        console.log(`🎨 Highlighting face number: ${faceNumber}`);
+
         // Clear previous highlights
         this._clearHighlights();
 
@@ -596,9 +660,9 @@ export class AssemblyPanel extends HTMLElement {
         // Highlight in 3D view using FaceNumberDisplay
         if (this._faceNumberDisplay) {
             this._faceNumberDisplay.highlightFace(faceNumber);
-            console.log(`3D face ${faceNumber} highlighted via FaceNumberDisplay`);
+            console.log(`✅ 3D face ${faceNumber} highlighted via FaceNumberDisplay`);
         } else {
-            console.warn("FaceNumberDisplay not available for 3D highlighting");
+            console.warn("❌ FaceNumberDisplay not available for 3D highlighting");
         }
 
         // Highlight in 2D view (SVG)
@@ -609,6 +673,8 @@ export class AssemblyPanel extends HTMLElement {
      * SVG展開図の指定された面をハイライト
      */
     private _highlightSVGFace(faceNumber: number) {
+        console.log(`🔍 Searching for SVG face ${faceNumber}`);
+
         // Try to find SVG element by data-face-number attribute
         const svgElement = this._svgContainer.querySelector(`[data-face-number="${faceNumber}"]`);
         if (svgElement) {
@@ -616,19 +682,25 @@ export class AssemblyPanel extends HTMLElement {
             (svgElement as SVGElement).style.fill = "rgba(255, 220, 0, 0.5)";
             (svgElement as SVGElement).style.stroke = "#ffa500";
             (svgElement as SVGElement).style.strokeWidth = "3";
-            console.log(`2D SVG face ${faceNumber} highlighted`);
+            console.log(`✅ 2D SVG face ${faceNumber} highlighted by data-face-number`);
         } else {
+            console.log(`⚠️ No element found with data-face-number="${faceNumber}", trying fallback`);
             // Fallback: highlight by index (faceNumber - 1)
             const svgElements = this._svgContainer.querySelectorAll("path, polygon");
+            console.log(`📊 Found ${svgElements.length} total SVG path/polygon elements`);
             if (svgElements[faceNumber - 1]) {
                 const element = svgElements[faceNumber - 1] as SVGElement;
                 element.classList.add("highlighted");
                 element.style.fill = "rgba(255, 220, 0, 0.5)";
                 element.style.stroke = "#ffa500";
                 element.style.strokeWidth = "3";
-                console.log(`2D SVG face ${faceNumber} highlighted (fallback by index)`);
+                console.log(
+                    `✅ 2D SVG face ${faceNumber} highlighted (fallback by index ${faceNumber - 1})`,
+                );
             } else {
-                console.warn(`Could not find SVG element for face ${faceNumber}`);
+                console.warn(
+                    `❌ Could not find SVG element for face ${faceNumber} (index ${faceNumber - 1} out of ${svgElements.length})`,
+                );
             }
         }
     }
@@ -642,6 +714,7 @@ export class AssemblyPanel extends HTMLElement {
     private _clearHighlights() {
         // Clear 2D highlights
         const highlightedElements = this._svgContainer.querySelectorAll(".highlighted");
+        console.log(`🧹 Clearing ${highlightedElements.length} highlighted 2D elements`);
         highlightedElements.forEach((element) => {
             element.classList.remove("highlighted");
             (element as SVGElement).style.fill = "";
@@ -653,7 +726,7 @@ export class AssemblyPanel extends HTMLElement {
         // Clear 3D highlights using FaceNumberDisplay
         if (this._faceNumberDisplay) {
             this._faceNumberDisplay.clearHighlights();
-            console.log("3D highlights cleared");
+            console.log("✅ 3D highlights cleared");
         }
     }
 

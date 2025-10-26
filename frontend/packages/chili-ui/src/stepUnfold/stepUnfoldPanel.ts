@@ -697,17 +697,17 @@ export class StepUnfoldPanel extends HTMLElement {
 
         // 警告メッセージを整形
         const warningMessages = warnings.map((warning) => {
+            // バックエンドからのメッセージをそのまま使用（すでにユーザーフレンドリーな形式）
             let message = warning.message;
 
-            // 詳細情報がある場合、追加情報を表示
-            if (warning.details) {
+            // unified_scale_applied タイプの警告の場合、詳細情報を追加表示
+            if (warning.type === "unified_scale_applied" && warning.details) {
                 const details = warning.details;
-                if (details.original_size_mm && details.scaled_size_mm) {
-                    message += `\n\n詳細:\n`;
-                    message += `元のサイズ: ${details.original_size_mm.width} × ${details.original_size_mm.height} mm\n`;
-                    message += `調整後のサイズ: ${details.scaled_size_mm.width} × ${details.scaled_size_mm.height} mm\n`;
-                    message += `スケール比率: ${details.scale_factor}\n`;
-                    message += `用紙: ${details.page_format} (${details.page_orientation})`;
+                // 元のサイズ情報を追加（より詳しく知りたいユーザー向け）
+                if (details.original_max_width_mm && details.page_format) {
+                    message += `\n\n詳細情報:\n`;
+                    message += `最大横幅: ${details.original_max_width_mm} mm → ${Math.round(details.original_max_width_mm * details.unified_scale_factor)} mm\n`;
+                    message += `用紙: ${details.page_format} (${details.page_orientation === "portrait" ? "縦" : "横"})`;
                 }
             }
 

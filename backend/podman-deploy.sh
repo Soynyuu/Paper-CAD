@@ -62,11 +62,15 @@ case $ACTION in
         mkdir -p core/debug_files
         
         # コンテナ実行（Rootlessモード）
+        # 本番環境用の環境変数を明示的に設定
         podman run -d \
             --name ${CONTAINER_NAME} \
             --restart always \
             -p ${PORT}:8001 \
             -v ${DEBUG_VOLUME}:Z \
+            -e FRONTEND_URL=https://app.paper-cad.soynyuu.com \
+            -e CORS_ALLOW_ALL=false \
+            -e PORT=8001 \
             --security-opt label=disable \
             ${IMAGE_NAME}:latest
         

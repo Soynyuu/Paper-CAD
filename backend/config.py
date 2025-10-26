@@ -27,9 +27,23 @@ except ImportError as e:
 # 環境変数の読み込み
 try:
     from dotenv import load_dotenv
-    load_dotenv()  # .envファイルの環境変数を読み込む
+    import os as _os
+
+    # 本番環境では.env.productionを優先的に読み込む
+    # Dockerコンテナでは環境変数を直接設定することを推奨
+    env_file = None
+    if _os.path.exists(".env.production"):
+        env_file = ".env.production"
+    elif _os.path.exists(".env"):
+        env_file = ".env"
+
+    if env_file:
+        load_dotenv(env_file)
+        print(f"[CONFIG] 環境変数を {env_file} から読み込みました")
+    else:
+        print("[CONFIG] 環境変数ファイルが見つかりません。環境変数から直接読み込みます。")
 except ImportError:
-    print("python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。")
+    print("[CONFIG] python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。")
 
 # 設定値
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3001")
@@ -48,8 +62,10 @@ APP_CONFIG = {
 
 def setup_cors(app: FastAPI) -> None:
     """CORS設定を行う"""
-    print(f"フロントエンドURL: {FRONTEND_URL}")
-    print(f"すべてのオリジンを許可: {CORS_ALLOW_ALL}")
+    print(f"\n{'='*60}")
+    print(f"[CORS CONFIG] フロントエンドURL: {FRONTEND_URL}")
+    print(f"[CORS CONFIG] すべてのオリジンを許可: {CORS_ALLOW_ALL}")
+    print(f"{'='*60}\n")
     
     if CORS_ALLOW_ALL or FRONTEND_URL == "*":
         # 開発環境: すべてのオリジンを許可
@@ -60,7 +76,7 @@ def setup_cors(app: FastAPI) -> None:
             allow_methods=["*"],  
             allow_headers=["*"],  
         )
-        print("CORS: すべてのオリジンを許可します")
+        print("[CORS] ⚠️  すべてのオリジンを許可します (開発モード)")
     else:
         # 本番環境: 特定のオリジンのみを許可
         # ホスト名のバリエーションを追加
@@ -88,7 +104,10 @@ def setup_cors(app: FastAPI) -> None:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        print(f"CORS: 以下のオリジンを許可します: {origins}")
+        print(f"[CORS] ✅ 特定のオリジンのみ許可 (本番モード)")
+        print(f"[CORS] 許可されたオリジン数: {len(origins)}")
+        for i, origin in enumerate(origins, 1):
+            print(f"[CORS]   {i}. {origin}")
 
 def create_app() -> FastAPI:
     """FastAPIアプリケーションを作成する"""

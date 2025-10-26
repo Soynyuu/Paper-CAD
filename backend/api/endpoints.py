@@ -966,3 +966,44 @@ async def api_health_check():
             "paged_layout": True
         }
     }
+
+# --- デバッグ: CORS設定確認 ---
+@router.get("/api/debug/cors-config")
+async def debug_cors_config():
+    """
+    CORS設定の診断情報を返す（デバッグ用）
+
+    **警告**: 本番環境では検証後にこのエンドポイントを削除することを推奨
+
+    Returns:
+        dict: 現在のCORS設定とレスポンスヘッダーのプレビュー
+    """
+    import os
+    from config import FRONTEND_URL, CORS_ALLOW_ALL
+
+    # 環境変数の生の値を取得
+    raw_frontend_url = os.getenv("FRONTEND_URL")
+    raw_cors_allow_all = os.getenv("CORS_ALLOW_ALL")
+
+    # 設定の解釈結果
+    cors_mode = "wildcard (開発モード)" if (CORS_ALLOW_ALL or FRONTEND_URL == "*") else "restricted (本番モード)"
+
+    return {
+        "cors_configuration": {
+            "mode": cors_mode,
+            "frontend_url": FRONTEND_URL,
+            "cors_allow_all": CORS_ALLOW_ALL,
+            "is_production_safe": not (CORS_ALLOW_ALL or FRONTEND_URL == "*")
+        },
+        "environment_variables": {
+            "FRONTEND_URL": raw_frontend_url,
+            "CORS_ALLOW_ALL": raw_cors_allow_all
+        },
+        "expected_response_headers": {
+            "access-control-allow-origin": "*" if (CORS_ALLOW_ALL or FRONTEND_URL == "*") else "https://app.paper-cad.soynyuu.com",
+            "access-control-allow-credentials": "true",
+            "access-control-allow-methods": "*",
+            "access-control-allow-headers": "*"
+        },
+        "warning": "This endpoint should be removed in production after verification"
+    }

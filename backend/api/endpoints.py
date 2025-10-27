@@ -986,24 +986,50 @@ async def debug_cors_config():
     raw_cors_allow_all = os.getenv("CORS_ALLOW_ALL")
 
     # 設定の解釈結果
-    cors_mode = "wildcard (開発モード)" if (CORS_ALLOW_ALL or FRONTEND_URL == "*") else "restricted (本番モード)"
+    is_dev_mode = CORS_ALLOW_ALL or FRONTEND_URL == "*"
+    cors_mode = "development (localhost only)" if is_dev_mode else "production (restricted origins)"
+
+    # 許可されるオリジンを構築（config.pyと同じロジック）
+    if is_dev_mode:
+        allowed_origins = [
+            "http://localhost:8001",
+            "http://127.0.0.1:8001",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://localhost:8081",
+            "http://127.0.0.1:8081",
+        ]
+    else:
+        allowed_origins = [
+            "https://paper-cad.soynyuu.com",
+            "https://app.paper-cad.soynyuu.com",
+        ]
+        if FRONTEND_URL and FRONTEND_URL != "*":
+            if FRONTEND_URL not in allowed_origins:
+                allowed_origins.insert(0, FRONTEND_URL)
 
     return {
         "cors_configuration": {
             "mode": cors_mode,
             "frontend_url": FRONTEND_URL,
             "cors_allow_all": CORS_ALLOW_ALL,
-            "is_production_safe": not (CORS_ALLOW_ALL or FRONTEND_URL == "*")
+            "is_production_safe": not is_dev_mode,
+            "allowed_origins": allowed_origins,
+            "allows_credentials": True
         },
         "environment_variables": {
             "FRONTEND_URL": raw_frontend_url,
             "CORS_ALLOW_ALL": raw_cors_allow_all
         },
         "expected_response_headers": {
-            "access-control-allow-origin": "*" if (CORS_ALLOW_ALL or FRONTEND_URL == "*") else "https://app.paper-cad.soynyuu.com",
+            "access-control-allow-origin": f"{allowed_origins[0]} (or matching request origin)",
             "access-control-allow-credentials": "true",
             "access-control-allow-methods": "*",
             "access-control-allow-headers": "*"
+        },
+        "security_notes": {
+            "wildcard_not_used": "Wildcard origin (*) is never used with credentials for security compliance",
+            "rfc_6454_compliance": "Complies with CORS spec (RFC 6454) - no wildcard + credentials combination"
         },
         "warning": "This endpoint should be removed in production after verification"
     }

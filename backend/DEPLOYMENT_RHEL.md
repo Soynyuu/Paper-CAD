@@ -1,6 +1,6 @@
 # RHEL系OSへのPodmanデプロイガイド
 
-Paper-CAD バックエンドAPI（unfold-step2svg）をRHEL系OS（Rocky Linux、AlmaLinux、RHEL 9.x）にPodmanでデプロイする包括的なガイドです。
+Paper-CAD バックエンドAPI（paper-cad）をRHEL系OS（Rocky Linux、AlmaLinux、RHEL 9.x）にPodmanでデプロイする包括的なガイドです。
 
 ## 目次
 
@@ -171,10 +171,10 @@ bash podman-deploy.sh build
 
 ```bash
 # Containerfileを使用してビルド
-podman build --no-cache -f Containerfile -t unfold-step2svg:latest .
+podman build --no-cache -f Containerfile -t paper-cad:latest .
 
 # ビルド完了確認
-podman images | grep unfold-step2svg
+podman images | grep paper-cad
 ```
 
 **ビルド時の注意点:**
@@ -199,20 +199,20 @@ mkdir -p core/debug_files
 
 # コンテナ起動（rootlessモード）
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --restart always \
   -p 8001:8001 \
   -v ${PWD}/core/debug_files:/app/core/debug_files:Z \
   --security-opt label=disable \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # 起動確認
-podman ps -a --filter name=unfold-step2svg
+podman ps -a --filter name=paper-cad
 ```
 
 **起動オプションの説明:**
 - `-d`: バックグラウンドで実行
-- `--name unfold-step2svg`: コンテナ名を指定
+- `--name paper-cad`: コンテナ名を指定
 - `--restart always`: コンテナが停止した場合に自動再起動
 - `-p 8001:8001`: ホストの8001ポートをコンテナの8001ポートにマッピング
 - `-v ${PWD}/core/debug_files:/app/core/debug_files:Z`: デバッグファイル用ボリューム（SELinuxラベル付き）
@@ -243,10 +243,10 @@ curl http://localhost:8001/api/health | python3 -m json.tool
 bash podman-deploy.sh logs
 
 # または直接podmanコマンド
-podman logs -f unfold-step2svg
+podman logs -f paper-cad
 
 # 過去100行のログを表示
-podman logs --tail 100 unfold-step2svg
+podman logs --tail 100 paper-cad
 ```
 
 #### 5.3 APIテスト
@@ -277,33 +277,33 @@ systemdサービスとして登録することで、OS起動時の自動起動�
 bash podman-deploy.sh systemd
 
 # 生成されたサービスファイルを確認
-cat container-unfold-step2svg.service
+cat container-paper-cad.service
 
 # ユーザーサービスとしてインストール
 mkdir -p ~/.config/systemd/user/
-mv container-unfold-step2svg.service ~/.config/systemd/user/
+mv container-paper-cad.service ~/.config/systemd/user/
 
 # systemdをリロード
 systemctl --user daemon-reload
 
 # サービスを有効化（ログイン時に自動起動）
-systemctl --user enable container-unfold-step2svg.service
+systemctl --user enable container-paper-cad.service
 
 # サービスを開始
-systemctl --user start container-unfold-step2svg.service
+systemctl --user start container-paper-cad.service
 
 # サービスステータス確認
-systemctl --user status container-unfold-step2svg.service
+systemctl --user status container-paper-cad.service
 
 # ログ確認
-journalctl --user -u container-unfold-step2svg.service -f
+journalctl --user -u container-paper-cad.service -f
 ```
 
 ### 方法2: システムサービスとして登録（root権限が必要）
 
 ```bash
 # systemdサービスファイルを手動作成
-sudo tee /etc/systemd/system/unfold-step2svg.service > /dev/null <<'EOF'
+sudo tee /etc/systemd/system/paper-cad.service > /dev/null <<'EOF'
 [Unit]
 Description=Unfold STEP2SVG API Service
 After=network-online.target
@@ -313,17 +313,17 @@ Wants=network-online.target
 Type=exec
 Restart=always
 RestartSec=10
-ExecStartPre=/usr/bin/podman stop -i -t 10 unfold-step2svg
-ExecStartPre=/usr/bin/podman rm -i -f unfold-step2svg
+ExecStartPre=/usr/bin/podman stop -i -t 10 paper-cad
+ExecStartPre=/usr/bin/podman rm -i -f paper-cad
 ExecStart=/usr/bin/podman run \
-  --name unfold-step2svg \
+  --name paper-cad \
   --replace \
   -p 8001:8001 \
   -v /opt/applications/Paper-CAD/backend/core/debug_files:/app/core/debug_files:Z \
   --security-opt label=disable \
-  unfold-step2svg:latest
-ExecStop=/usr/bin/podman stop -t 10 unfold-step2svg
-ExecStopPost=/usr/bin/podman rm -f unfold-step2svg
+  paper-cad:latest
+ExecStop=/usr/bin/podman stop -t 10 paper-cad
+ExecStopPost=/usr/bin/podman rm -f paper-cad
 
 [Install]
 WantedBy=multi-user.target
@@ -335,32 +335,32 @@ EOF
 sudo systemctl daemon-reload
 
 # サービスを有効化（OS起動時に自動起動）
-sudo systemctl enable unfold-step2svg.service
+sudo systemctl enable paper-cad.service
 
 # サービスを開始
-sudo systemctl start unfold-step2svg.service
+sudo systemctl start paper-cad.service
 
 # サービスステータス確認
-sudo systemctl status unfold-step2svg.service
+sudo systemctl status paper-cad.service
 
 # ログ確認
-sudo journalctl -u unfold-step2svg.service -f
+sudo journalctl -u paper-cad.service -f
 ```
 
 ### systemdサービスの管理コマンド
 
 ```bash
 # ユーザーサービスの場合
-systemctl --user start container-unfold-step2svg.service    # 開始
-systemctl --user stop container-unfold-step2svg.service     # 停止
-systemctl --user restart container-unfold-step2svg.service  # 再起動
-systemctl --user status container-unfold-step2svg.service   # ステータス確認
+systemctl --user start container-paper-cad.service    # 開始
+systemctl --user stop container-paper-cad.service     # 停止
+systemctl --user restart container-paper-cad.service  # 再起動
+systemctl --user status container-paper-cad.service   # ステータス確認
 
 # システムサービスの場合（sudoが必要）
-sudo systemctl start unfold-step2svg.service    # 開始
-sudo systemctl stop unfold-step2svg.service     # 停止
-sudo systemctl restart unfold-step2svg.service  # 再起動
-sudo systemctl status unfold-step2svg.service   # ステータス確認
+sudo systemctl start paper-cad.service    # 開始
+sudo systemctl stop paper-cad.service     # 停止
+sudo systemctl restart paper-cad.service  # 再起動
+sudo systemctl status paper-cad.service   # ステータス確認
 ```
 
 ---
@@ -452,13 +452,13 @@ Podmanはrootless（非root）モードで実行することでセキュリテ�
 ```bash
 # 現在のユーザーで実行（rootlessモード）
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --user 1000:1000 \
   -p 8001:8001 \
   --read-only \
   --tmpfs /tmp \
   --tmpfs /app/core/debug_files \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # rootlessモードで実行されているか確認
 podman ps --format "{{.Names}} {{.User}}"
@@ -478,7 +478,7 @@ podman ps --format "{{.Names}} {{.User}}"
 ```bash
 # CPU/メモリ制限付きでコンテナを起動
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --restart always \
   --memory="4g" \
   --memory-swap="6g" \
@@ -486,13 +486,13 @@ podman run -d \
   --pids-limit=200 \
   -p 8001:8001 \
   -v ${PWD}/core/debug_files:/app/core/debug_files:Z \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # リソース使用状況の監視
-podman stats unfold-step2svg
+podman stats paper-cad
 
 # 実行中のコンテナのリソース制限を変更
-podman update --memory="8g" --cpus="4" unfold-step2svg
+podman update --memory="8g" --cpus="4" paper-cad
 ```
 
 ### ログローテーション設定
@@ -500,16 +500,16 @@ podman update --memory="8g" --cpus="4" unfold-step2svg
 ```bash
 # ログサイズ制限付きで起動
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --restart always \
   -p 8001:8001 \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
   -v ${PWD}/core/debug_files:/app/core/debug_files:Z \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # ログサイズ確認
-podman inspect unfold-step2svg | grep -A 5 LogConfig
+podman inspect paper-cad | grep -A 5 LogConfig
 ```
 
 ### リバースプロキシの設定（Nginx）
@@ -521,8 +521,8 @@ podman inspect unfold-step2svg | grep -A 5 LogConfig
 sudo dnf install -y nginx
 
 # 設定ファイルの作成
-sudo tee /etc/nginx/conf.d/unfold-step2svg.conf > /dev/null <<'EOF'
-upstream unfold_backend {
+sudo tee /etc/nginx/conf.d/paper-cad.conf > /dev/null <<'EOF'
+upstream paper_cad_backend {
     server localhost:8001;
 }
 
@@ -534,7 +534,7 @@ server {
     # return 301 https://$host$request_uri;
 
     location /api/ {
-        proxy_pass http://unfold_backend;
+        proxy_pass http://paper_cad_backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -564,13 +564,13 @@ sudo systemctl start nginx
 
 ```bash
 # イメージをtarアーカイブとして保存
-podman save unfold-step2svg:latest -o unfold-step2svg-backup.tar
+podman save paper-cad:latest -o paper-cad-backup.tar
 
 # 別サーバーへ転送
-scp unfold-step2svg-backup.tar user@remote-server:/tmp/
+scp paper-cad-backup.tar user@remote-server:/tmp/
 
 # リストア
-podman load -i unfold-step2svg-backup.tar
+podman load -i paper-cad-backup.tar
 ```
 
 #### ボリュームデータのバックアップ
@@ -589,10 +589,10 @@ tar -xzf debug_files_backup_20250126.tar.gz
 
 ```bash
 # コンテナイベントをリアルタイム監視
-podman events --filter container=unfold-step2svg
+podman events --filter container=paper-cad
 
 # 特定期間のイベントを確認
-podman events --since '2025-01-26 10:00:00' --filter container=unfold-step2svg
+podman events --since '2025-01-26 10:00:00' --filter container=paper-cad
 ```
 
 #### ヘルスチェックの自動化
@@ -631,7 +631,7 @@ crontab -e
 
 ```bash
 # コンテナログの詳細確認
-podman logs unfold-step2svg 2>&1 | less
+podman logs paper-cad 2>&1 | less
 
 # podman-deploy.shでログ確認
 bash podman-deploy.sh logs
@@ -644,10 +644,10 @@ bash podman-deploy.sh logs
 podman run -it --rm \
   -p 8001:8001 \
   -v ${PWD}/core/debug_files:/app/core/debug_files:Z \
-  unfold-step2svg:latest /bin/bash
+  paper-cad:latest /bin/bash
 
 # コンテナ内で手動起動
-conda activate unfold-step2svg
+conda activate paper-cad
 python main.py
 ```
 
@@ -668,17 +668,17 @@ sudo kill -9 $(sudo lsof -t -i:8001)
 ```bash
 # メモリ制限を増やしてコンテナを起動
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --memory="8g" \
   --memory-swap="12g" \
   -p 8001:8001 \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # システムメモリの確認
 free -h
 
 # コンテナのメモリ使用状況を監視
-podman stats unfold-step2svg
+podman stats paper-cad
 ```
 
 ### ネットワーク接続の問題
@@ -687,10 +687,10 @@ podman stats unfold-step2svg
 
 ```bash
 # コンテナのポートマッピング確認
-podman port unfold-step2svg
+podman port paper-cad
 
 # ネットワーク設定の詳細確認
-podman inspect unfold-step2svg | grep -A 20 NetworkSettings
+podman inspect paper-cad | grep -A 20 NetworkSettings
 ```
 
 #### ホストネットワークモードで実行（最終手段）
@@ -698,9 +698,9 @@ podman inspect unfold-step2svg | grep -A 20 NetworkSettings
 ```bash
 # ホストネットワークを直接使用
 podman run -d \
-  --name unfold-step2svg \
+  --name paper-cad \
   --network host \
-  unfold-step2svg:latest
+  paper-cad:latest
 
 # この場合、ポートマッピング不要（ホストの8001ポートを直接使用）
 ```
@@ -736,7 +736,7 @@ sudo semanage port -a -t http_port_t -p tcp 8001
 
 ```bash
 # キャッシュをクリアして再ビルド
-podman build --no-cache -f Containerfile -t unfold-step2svg:latest .
+podman build --no-cache -f Containerfile -t paper-cad:latest .
 
 # environment-docker.ymlの確認
 cat environment-docker.yml
@@ -753,7 +753,7 @@ dns_servers = ["8.8.8.8", "8.8.4.4"]
 EOF
 
 # 再ビルド
-podman build -f Containerfile -t unfold-step2svg:latest .
+podman build -f Containerfile -t paper-cad:latest .
 ```
 
 ### パフォーマンスの問題
@@ -762,10 +762,10 @@ podman build -f Containerfile -t unfold-step2svg:latest .
 
 ```bash
 # CPU/メモリリソースを増やす
-podman update --cpus="4" --memory="8g" unfold-step2svg
+podman update --cpus="4" --memory="8g" paper-cad
 
 # コンテナのリソース使用状況を確認
-podman stats unfold-step2svg
+podman stats paper-cad
 ```
 
 #### ディスクI/O遅延
@@ -782,16 +782,16 @@ podman info | grep -A 5 graphDriverName
 
 ```bash
 # コンテナの詳細情報を確認
-podman inspect unfold-step2svg | less
+podman inspect paper-cad | less
 
 # コンテナ内でコマンド実行
-podman exec -it unfold-step2svg /bin/bash
+podman exec -it paper-cad /bin/bash
 
 # Conda環境の確認
-podman exec -it unfold-step2svg conda env list
+podman exec -it paper-cad conda env list
 
 # Pythonパッケージの確認
-podman exec -it unfold-step2svg conda run -n unfold-step2svg pip list
+podman exec -it paper-cad conda run -n paper-cad pip list
 ```
 
 ---
@@ -905,13 +905,13 @@ podman --version
 podman info
 
 # コンテナログ
-podman logs unfold-step2svg > container.log 2>&1
+podman logs paper-cad > container.log 2>&1
 
 # SELinuxログ
 sudo ausearch -m avc -ts recent > selinux.log
 
 # systemdログ（サービス化している場合）
-journalctl --user -u container-unfold-step2svg.service > systemd.log
+journalctl --user -u container-paper-cad.service > systemd.log
 ```
 
 ### 問題報告先

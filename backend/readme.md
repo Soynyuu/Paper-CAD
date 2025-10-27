@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="logo.png" alt="unfold-step2svg logo" width="400">
-  <h1>unfold-step2svg</h1>
+  <img src="logo.png" alt="Paper-CAD logo" width="400">
+  <h1>Paper-CAD Backend</h1>
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
@@ -29,11 +29,11 @@ English: A tiny FastAPI service that unfolds STEP into print‑ready SVG papercr
 
 ```bash
 # 1) Clone
-git clone https://github.com/soynyuu/unfold-step2svg
-cd unfold-step2svg
+git clone https://github.com/soynyuu/Paper-CAD
+cd Paper-CAD/backend
 
 # 2) Create env (Conda 推奨)
-conda env create -f environment.yml && conda activate unfold-step2svg
+conda env create -f environment.yml && conda activate paper-cad
 
 # 3) Run API (dev)
 python main.py  # http://localhost:8001
@@ -65,7 +65,7 @@ curl -X POST \
 
 ```bash
 # Build & run (Docker)
-docker build -t unfold-step2svg .
+docker build -t paper-cad .
 docker compose up -d
 curl http://localhost:8001/api/health
 
@@ -147,7 +147,7 @@ PLATEAU の CityGML から STEP を生成する高精度パイプラインを提
 
 ```bash
 # 事前: conda 環境を有効化（OCCT が必要）
-conda activate unfold-step2svg
+conda activate paper-cad
 
 # サンプル（samples/minimal_building.gml → output/minimal_building.step）
 python test_citygml_to_step.py --debug
@@ -221,4 +221,4 @@ MIT License
 - OpenCASCADE Technology
 - 一般社団法人未踏 未踏ジュニア（2025）
 
-— Made with ❤️ by the unfold-step2svg team
+— Made with ❤️ by the Paper-CAD team

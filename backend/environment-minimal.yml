@@ -1,4 +1,4 @@
-name: unfold-step2svg
+name: paper-cad
 channels:
   - conda-forge
   - defaults

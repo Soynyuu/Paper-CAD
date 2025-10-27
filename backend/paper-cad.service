@@ -1,10 +1,10 @@
-# Systemd service file for unfold-step2svg
-# Place this file in /etc/systemd/system/unfold-step2svg.service
-# For Rootless Podman, place in ~/.config/systemd/user/unfold-step2svg.service
+# Systemd service file for paper-cad
+# Place this file in /etc/systemd/system/paper-cad.service
+# For Rootless Podman, place in ~/.config/systemd/user/paper-cad.service
 
 [Unit]
-Description=Unfold STEP to SVG Service (Podman)
-Documentation=https://github.com/Soynyuu/unfold-step2svg
+Description=Paper-CAD Backend Service (Podman)
+Documentation=https://github.com/Soynyuu/Paper-CAD
 After=network-online.target
 Wants=network-online.target
 
@@ -20,28 +20,28 @@ Environment="PORT=8001"
 
 # Pre-start commands
 ExecStartPre=/usr/bin/podman pull continuumio/miniconda3:24.11.1-0
-ExecStartPre=-/usr/bin/podman stop unfold-step2svg
-ExecStartPre=-/usr/bin/podman rm unfold-step2svg
+ExecStartPre=-/usr/bin/podman stop paper-cad
+ExecStartPre=-/usr/bin/podman rm paper-cad
 
 # Main service
 ExecStart=/usr/bin/podman run \
     --rm \
-    --name unfold-step2svg \
+    --name paper-cad \
     --replace \
     --cgroups=no-conmon \
     --sdnotify=conmon \
     -p 8001:8001 \
-    -v %h/unfold-step2svg/core/debug_files:/app/core/debug_files:Z \
+    -v %h/paper-cad/core/debug_files:/app/core/debug_files:Z \
     --health-cmd="python -c 'import requests; requests.get(\"http://localhost:8001/api/health\")'" \
     --health-interval=30s \
     --health-timeout=10s \
     --health-retries=3 \
     --health-start-period=40s \
-    unfold-step2svg:latest
+    paper-cad:latest
 
 # Stop command
-ExecStop=/usr/bin/podman stop -t 10 unfold-step2svg
-ExecStopPost=/usr/bin/podman rm -f unfold-step2svg
+ExecStop=/usr/bin/podman stop -t 10 paper-cad
+ExecStopPost=/usr/bin/podman rm -f paper-cad
 
 # Resource limits (optional, adjust as needed)
 # MemoryLimit=4G

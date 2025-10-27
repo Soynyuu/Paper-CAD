@@ -1,14 +1,14 @@
 version: '3.8'
 
 services:
-  unfold-step2svg:
+  paper-cad:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: 1
-    image: unfold-step2svg:latest
-    container_name: unfold-step2svg
+    image: paper-cad:latest
+    container_name: paper-cad
     restart: unless-stopped
     ports:
       - "${PORT:-8001}:8001"
@@ -28,7 +28,7 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - unfold-network
+      - paper-cad-network
     logging:
       driver: "json-file"
       options:
@@ -38,21 +38,21 @@ services:
   # Optional: Nginx reverse proxy for local development
   nginx:
     image: nginx:alpine
-    container_name: unfold-nginx
+    container_name: paper-cad-nginx
     restart: unless-stopped
     ports:
       - "80:80"
     volumes:
-      - ./nginx/unfold-step2svg.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/paper-cad.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - unfold-step2svg
+      - paper-cad
     networks:
-      - unfold-network
+      - paper-cad-network
     profiles:
       - with-nginx
 
 networks:
-  unfold-network:
+  paper-cad-network:
     driver: bridge
 
 volumes:

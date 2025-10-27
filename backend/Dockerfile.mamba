@@ -20,11 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # micromamba用の環境ファイルを作成（最小構成）
-RUN micromamba create -n unfold-step2svg python=3.10 -c conda-forge -y && \
+RUN micromamba create -n paper-cad python=3.10 -c conda-forge -y && \
     micromamba clean --all --yes
 
 # 必須パッケージのみを段階的にインストール
-RUN micromamba install -n unfold-step2svg -c conda-forge \
+RUN micromamba install -n paper-cad -c conda-forge \
     pythonocc-core=7.9.0 \
     numpy \
     lxml \
@@ -32,14 +32,14 @@ RUN micromamba install -n unfold-step2svg -c conda-forge \
     micromamba clean --all --yes
 
 # 追加パッケージ
-RUN micromamba install -n unfold-step2svg -c conda-forge \
+RUN micromamba install -n paper-cad -c conda-forge \
     shapely \
     ifcopenshell=0.8.0 \
     -y && \
     micromamba clean --all --yes
 
 # pipパッケージ
-RUN micromamba run -n unfold-step2svg pip install --no-cache-dir \
+RUN micromamba run -n paper-cad pip install --no-cache-dir \
     fastapi==0.116.1 \
     uvicorn==0.35.0 \
     python-multipart==0.0.20 \
@@ -53,4 +53,4 @@ COPY . .
 EXPOSE 8001
 
 # 環境をアクティベートして起動
-CMD ["micromamba", "run", "-n", "unfold-step2svg", "python", "main.py"]
+CMD ["micromamba", "run", "-n", "paper-cad", "python", "main.py"]

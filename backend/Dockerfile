@@ -30,11 +30,11 @@ COPY . .
 EXPOSE 8001
 
 # Conda環境をアクティベートしてアプリケーションを起動
-SHELL ["conda", "run", "-n", "unfold-step2svg", "/bin/bash", "-c"]
+SHELL ["conda", "run", "-n", "paper-cad", "/bin/bash", "-c"]
 
 # ヘルスチェック設定
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD conda run -n unfold-step2svg python -c "import requests; requests.get('http://localhost:8001/api/health')" || exit 1
+    CMD conda run -n paper-cad python -c "import requests; requests.get('http://localhost:8001/api/health')" || exit 1
 
 # アプリケーション起動
-CMD ["conda", "run", "--no-capture-output", "-n", "unfold-step2svg", "python", "main.py"]
+CMD ["conda", "run", "--no-capture-output", "-n", "paper-cad", "python", "main.py"]

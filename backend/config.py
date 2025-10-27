@@ -51,8 +51,8 @@ CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
 # アプリケーション設定
 APP_CONFIG = {
-    "title": "unfold-step2svg",
-    "description": "unfold step model to svg",
+    "title": "Paper-CAD",
+    "description": "Paper-CAD Backend API - STEP to SVG unfold service",
     "version": "1.0.0",
     "contact": {
         "name": "Kodai MIYAZAKI",

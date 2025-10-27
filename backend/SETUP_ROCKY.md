@@ -20,18 +20,18 @@ podman --version
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/soynyuu/unfold-step2svg
-cd unfold-step2svg
+git clone https://github.com/soynyuu/paper-cad
+cd paper-cad
 ```
 
 ### 3. コンテナイメージのビルド
 
 ```bash
 # Containerfileを使用してビルド（プラットフォーム非依存）
-podman build -f Containerfile -t unfold-step2svg .
+podman build -f Containerfile -t paper-cad .
 
 # ビルドの確認
-podman images | grep unfold-step2svg
+podman images | grep paper-cad
 ```
 
 ### 4. コンテナの実行
@@ -42,7 +42,7 @@ podman run -d \
   --name unfold-app \
   -p 8001:8001 \
   --restart unless-stopped \
-  unfold-step2svg
+  paper-cad
 
 # 起動確認
 podman ps
@@ -52,7 +52,7 @@ podman run -d \
   --name unfold-app \
   -p 8001:8001 \
   --restart unless-stopped \
-  unfold-step2svg
+  paper-cad
 ```
 
 ### 5. 動作確認
@@ -141,7 +141,7 @@ sudo setenforce 0
 podman logs unfold-app 2>&1
 
 # インタラクティブモードで起動してデバッグ
-podman run -it --rm -p 8001:8001 unfold-step2svg /bin/bash
+podman run -it --rm -p 8001:8001 paper-cad /bin/bash
 ```
 
 ### メモリ不足エラー
@@ -153,7 +153,7 @@ podman run -d \
   --memory="4g" \
   --cpus="2" \
   -p 8001:8001 \
-  unfold-step2svg
+  paper-cad
 ```
 
 ### ネットワーク接続の問題
@@ -169,7 +169,7 @@ podman port unfold-app
 podman run -d \
   --name unfold-app \
   --network host \
-  unfold-step2svg
+  paper-cad
 ```
 ## コンテナの管理
 
@@ -181,7 +181,7 @@ podman stop unfold-app
 podman rm unfold-app
 
 # イメージの削除
-podman rmi unfold-step2svg
+podman rmi paper-cad
 
 # すべてクリーンアップ
 podman system prune -a
@@ -221,7 +221,7 @@ podman run -d \
   -p 8001:8001 \
   --read-only \
   --tmpfs /tmp \
-  unfold-step2svg
+  paper-cad
 ```
 
 ## ログローテーション設定
@@ -233,12 +233,12 @@ podman run -d \
   -p 8001:8001 \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
-  unfold-step2svg
+  paper-cad
 ```
 
 ## 問題が解決しない場合
 
-1. GitHub Issuesで報告: https://github.com/soynyuu/unfold-step2svg/issues
+1. GitHub Issuesで報告: https://github.com/soynyuu/paper-cad/issues
 2. デバッグファイルの確認: `core/debug_files/`
 3. Podmanのバージョンアップグレード検討
 

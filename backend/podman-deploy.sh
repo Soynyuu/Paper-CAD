@@ -12,13 +12,13 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # 設定
-IMAGE_NAME="unfold-step2svg"
-CONTAINER_NAME="unfold-step2svg"
+IMAGE_NAME="paper-cad"
+CONTAINER_NAME="paper-cad"
 PORT="${PORT:-8001}"
 DEBUG_VOLUME="${PWD}/core/debug_files:/app/core/debug_files"
 CONTAINERFILE="${CONTAINERFILE:-Containerfile}"
 
-echo -e "${GREEN}=== Unfold-STEP2SVG Podman Deployment ===${NC}"
+echo -e "${GREEN}=== Paper-CAD Podman Deployment ===${NC}"
 
 # Podmanインストール確認
 if ! command -v podman &> /dev/null; then

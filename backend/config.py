@@ -91,8 +91,11 @@ def setup_cors(app: FastAPI) -> None:
 
         # 本番ドメインを追加
         origins.extend([
+            # カスタムドメイン
             "https://paper-cad.soynyuu.com",
             "https://app.paper-cad.soynyuu.com",
+            # Cloudflare Pagesデフォルトドメイン
+            "https://paper-cad.pages.dev",
         ])
         print(f"[CORS] 🔒 本番モード: 特定のオリジンのみ許可")
 

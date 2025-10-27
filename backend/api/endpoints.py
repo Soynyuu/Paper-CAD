@@ -1001,8 +1001,11 @@ async def debug_cors_config():
         ]
     else:
         allowed_origins = [
+            # カスタムドメイン
             "https://paper-cad.soynyuu.com",
             "https://app.paper-cad.soynyuu.com",
+            # Cloudflare Pagesデフォルトドメイン
+            "https://paper-cad.pages.dev",
         ]
         if FRONTEND_URL and FRONTEND_URL != "*":
             if FRONTEND_URL not in allowed_origins:

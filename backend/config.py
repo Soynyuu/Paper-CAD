@@ -66,48 +66,48 @@ def setup_cors(app: FastAPI) -> None:
     print(f"[CORS CONFIG] フロントエンドURL: {FRONTEND_URL}")
     print(f"[CORS CONFIG] すべてのオリジンを許可: {CORS_ALLOW_ALL}")
     print(f"{'='*60}\n")
-    
+
+    # オリジンリストを構築
+    origins = []
+
     if CORS_ALLOW_ALL or FRONTEND_URL == "*":
-        # 開発環境: すべてのオリジンを許可
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],  # すべてのオリジンを許可
-            allow_credentials=True,
-            allow_methods=["*"],  
-            allow_headers=["*"],  
-        )
-        print("[CORS] ⚠️  すべてのオリジンを許可します (開発モード)")
-    else:
-        # 本番環境: 特定のオリジンのみを許可
-        # ホスト名のバリエーションを追加
-        origins = []
-        
-        # FRONTENDを設定
-        if FRONTEND_URL:
-            origins.append(FRONTEND_URL)
-        
+        # 開発環境: ローカルホストを明示的に許可
+        # セキュリティ上の理由から、allow_origins=["*"]とallow_credentials=Trueの
+        # 組み合わせは使用しない（CORS仕様違反、ブラウザでブロックされる）
         origins.extend([
             "http://localhost:8001",
             "http://127.0.0.1:8001",
             "http://localhost:8080",
             "http://127.0.0.1:8080",
             "http://localhost:8081",
+            "http://127.0.0.1:8081",
+        ])
+        print("[CORS] 🔧 開発モード: ローカルホストのみ許可")
+    else:
+        # 本番環境: 特定のオリジンのみを許可
+        # FRONTENDを設定
+        if FRONTEND_URL and FRONTEND_URL != "*":
+            origins.append(FRONTEND_URL)
+
+        # 本番ドメインを追加
+        origins.extend([
             "https://paper-cad.soynyuu.com",
             "https://app.paper-cad.soynyuu.com",
-            "https://backend-diorama.soynyuu.com"
         ])
-        
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-        print(f"[CORS] ✅ 特定のオリジンのみ許可 (本番モード)")
-        print(f"[CORS] 許可されたオリジン数: {len(origins)}")
-        for i, origin in enumerate(origins, 1):
-            print(f"[CORS]   {i}. {origin}")
+        print(f"[CORS] 🔒 本番モード: 特定のオリジンのみ許可")
+
+    # CORSミドルウェアを追加
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    print(f"[CORS] 許可されたオリジン数: {len(origins)}")
+    for i, origin in enumerate(origins, 1):
+        print(f"[CORS]   {i}. {origin}")
 
 def create_app() -> FastAPI:
     """FastAPIアプリケーションを作成する"""

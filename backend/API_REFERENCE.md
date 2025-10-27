@@ -1,4 +1,4 @@
-# unfold-step2svg API Reference
+# paper-cad API Reference
 
 STEP ソリッドモデル（.step/.stp）を高精度な展開図（SVG）へ変換する FastAPI。
 
@@ -163,5 +163,5 @@ Response
 - OCCT が未導入の場合は 503 を返すか、一部機能が制限されます
 - 一時ファイルはサーバ側で管理されます
 
-— Made with ❤️ by the unfold-step2svg team
+— Made with ❤️ by the paper-cad team
 

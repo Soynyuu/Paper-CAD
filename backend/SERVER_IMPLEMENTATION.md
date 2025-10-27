@@ -1,4 +1,4 @@
-# unfold-step2svg サーバーサイド実装詳細
+# paper-cad サーバーサイド実装詳細
 
 ## 概要
 3D STEPファイルを2Dペーパークラフト用SVGに変換するWebサービス  
@@ -145,14 +145,14 @@ brew install miniforge  # または brew install miniconda
 conda --version  # 未インストールなら上記「Condaのインストール」参照
 
 # 2. リポジトリクローン
-git clone https://github.com/soynyuu/unfold-step2svg
-cd unfold-step2svg
+git clone https://github.com/soynyuu/paper-cad
+cd paper-cad
 
 # 3. Conda環境作成（初回のみ、約10-15分）
 conda env create -f environment.yml
 
 # 4. 環境有効化
-conda activate unfold-step2svg
+conda activate paper-cad
 
 # 5. 環境確認
 python -c "import OCC; print('OpenCASCADE OK')"  # エラーが出なければ成功
@@ -173,19 +173,19 @@ conda env list
 conda env update -f environment.yml
 
 # 環境削除（クリーンインストールしたい場合）
-conda env remove -n unfold-step2svg
+conda env remove -n paper-cad
 
 # パッケージ一覧確認
-conda list -n unfold-step2svg | grep pythonocc
+conda list -n paper-cad | grep pythonocc
 ```
 
 ### 方法2: Docker使用（Conda環境込み）
 ```bash
 # 1. Dockerイメージビルド（Conda環境を内包）
-docker build -t unfold-step2svg .
+docker build -t paper-cad .
 
 # 2. コンテナ起動
-docker run -d -p 8001:8001 --name unfold-app unfold-step2svg
+docker run -d -p 8001:8001 --name unfold-app paper-cad
 
 # 3. ログ確認
 docker logs -f unfold-app
@@ -227,8 +227,8 @@ podman --version
 ### 方法1: Podmanデプロイスクリプト使用（最も簡単）
 ```bash
 # 1. リポジトリクローン
-git clone https://github.com/soynyuu/unfold-step2svg
-cd unfold-step2svg
+git clone https://github.com/soynyuu/paper-cad
+cd paper-cad
 
 # 2. 実行権限付与
 chmod +x podman-deploy.sh
@@ -248,14 +248,14 @@ chmod +x podman-deploy.sh
 ### 方法2: Podman手動実行
 ```bash
 # 1. イメージビルド
-podman build -t unfold-step2svg .
+podman build -t paper-cad .
 
 # 2. コンテナ作成・起動
 podman run -d \
   --name unfold-app \
   -p 8001:8001 \
   -v ./core/debug_files:/app/core/debug_files:Z \
-  unfold-step2svg
+  paper-cad
 
 # 3. ログ確認
 podman logs -f unfold-app
@@ -283,14 +283,14 @@ podman-compose down
 ### Podman Systemdサービス化（本番環境）
 ```bash
 # 1. サービスファイル生成
-podman generate systemd --new --name unfold-app > ~/.config/systemd/user/unfold-step2svg.service
+podman generate systemd --new --name unfold-app > ~/.config/systemd/user/paper-cad.service
 
 # 2. サービス有効化
-systemctl --user enable unfold-step2svg.service
-systemctl --user start unfold-step2svg.service
+systemctl --user enable paper-cad.service
+systemctl --user start paper-cad.service
 
 # 3. 状態確認
-systemctl --user status unfold-step2svg.service
+systemctl --user status paper-cad.service
 ```
 
 ## 環境変数設定
@@ -391,7 +391,7 @@ conda install -c conda-forge pythonocc-core=7.9.0
 ```bash
 # 大規模モデルで処理失敗
 # 解決方法: Dockerメモリ増加
-docker run -m 8g unfold-step2svg
+docker run -m 8g paper-cad
 ```
 
 ### CORS エラー
@@ -432,5 +432,5 @@ MIT License
 
 ## サポート
 
-Issues: https://github.com/soynyuu/unfold-step2svg/issues
-Documentation: https://github.com/soynyuu/unfold-step2svg/blob/main/readme.md　
+Issues: https://github.com/soynyuu/paper-cad/issues
+Documentation: https://github.com/soynyuu/paper-cad/blob/main/readme.md　

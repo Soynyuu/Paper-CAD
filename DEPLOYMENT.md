@@ -60,12 +60,15 @@ Paper-CADは以下の2つのコンポーネントから構成されています:
 #### Wrangler CLIのインストールと認証
 
 ```bash
-# Wrangler CLIのインストール (グローバル)
+# Wrangler CLIのインストール (グローバル - オプション)
+# 注: package.jsonに含まれているため、npx経由でも使用可能
 npm install -g wrangler
 
 # Cloudflareアカウントにログイン
-wrangler login
+npx wrangler login
 ```
+
+**注**: Wranglerはグローバルインストール不要です。`npx wrangler`で実行できます。
 
 ### 2. 環境変数の設定
 
@@ -85,6 +88,17 @@ EOF
 ```
 
 ### 3. ビルドとデプロイ
+
+#### 依存関係のインストール
+
+初回または依存関係更新時に必要です:
+
+```bash
+cd frontend
+
+# 依存関係をインストール
+npm install
+```
 
 #### 開発ブランチへのデプロイ (ステージング)
 
@@ -180,6 +194,10 @@ docker compose --profile with-nginx up -d --build
 
 Rocky LinuxなどのRHEL系OSでPodmanを使った本番デプロイに推奨です。
 
+**重要**: PodmanとDocker Composeは異なるビルドファイルを使用します：
+- **Podman**: `Containerfile` + `environment-docker.yml`（軽量版、プラットフォーム非依存）
+- **Docker Compose**: `Dockerfile` + `environment.yml`（フルセット版、開発環境含む）
+
 #### 1. Podmanのインストール
 
 ```bash
@@ -187,7 +205,18 @@ Rocky LinuxなどのRHEL系OSでPodmanを使った本番デプロイに推奨で
 sudo dnf install -y podman podman-compose
 ```
 
-#### 2. デプロイスクリプトの実行
+#### 2. 必要なファイルの確認
+
+デプロイ前に以下のファイルが存在することを確認してください（すべてリポジトリに含まれています）:
+
+```bash
+cd backend
+
+# 必要なファイルを確認
+ls -la Containerfile environment-docker.yml podman-deploy.sh
+```
+
+#### 3. デプロイスクリプトの実行
 
 ```bash
 cd backend
@@ -200,7 +229,9 @@ bash podman-deploy.sh build
 bash podman-deploy.sh run
 ```
 
-#### 3. コンテナの管理
+**注意**: `podman-deploy.sh`は自動的に`Containerfile`と`environment-docker.yml`を使用します。環境変数`CONTAINERFILE`で変更可能です。
+
+#### 4. コンテナの管理
 
 ```bash
 cd backend
@@ -221,7 +252,7 @@ bash podman-deploy.sh stop
 bash podman-deploy.sh remove
 ```
 
-#### 4. Systemdサービスとして登録 (推奨)
+#### 5. Systemdサービスとして登録 (推奨)
 
 本番環境では、コンテナをSystemdサービスとして登録することで、自動起動や管理が容易になります:
 
@@ -481,8 +512,8 @@ sudo tail -f /var/log/nginx/paper-cad.error.log
 **解決策**:
 1. ログを確認: `docker compose logs` または `podman logs paper-cad`
 2. 必要なファイルが存在するか確認:
-   - `environment.yml` (Conda環境定義)
-   - `Dockerfile` または `Containerfile`
+   - **Docker Compose**: `environment.yml` + `Dockerfile`
+   - **Podman**: `environment-docker.yml` + `Containerfile`
 3. ポート8001が他のプロセスで使用されていないか確認: `sudo lsof -i :8001`
 
 #### OpenCASCADE (OCCT) が利用できない
@@ -493,10 +524,15 @@ sudo tail -f /var/log/nginx/paper-cad.error.log
 1. Conda環境が正しくビルドされているか確認
 2. コンテナを再ビルド:
    ```bash
+   # Docker Composeの場合
    docker compose down
    docker compose up -d --build
+
+   # Podmanの場合
+   bash podman-deploy.sh remove
+   bash podman-deploy.sh build-run
    ```
-3. `environment.yml` に `pythonocc-core` と `occt` が含まれているか確認
+3. 環境ファイル (`environment.yml` または `environment-docker.yml`) に `pythonocc-core` と `occt` が含まれているか確認
 
 #### CORS エラーが発生する
 
@@ -664,19 +700,22 @@ crontab -e
 **フロントエンドデプロイ**:
 ```bash
 cd frontend
+npm install  # 初回のみ
 npm run build
 npm run deploy:production
 ```
 
-**バックエンドデプロイ (Docker)**:
+**バックエンドデプロイ (Docker Compose)**:
 ```bash
 cd backend
+# 使用ファイル: Dockerfile + environment.yml
 docker compose up -d --build
 ```
 
 **バックエンドデプロイ (Podman + Systemd)**:
 ```bash
 cd backend
+# 使用ファイル: Containerfile + environment-docker.yml
 bash podman-deploy.sh build-run
 bash podman-deploy.sh systemd
 sudo cp container-paper-cad.service /etc/systemd/system/

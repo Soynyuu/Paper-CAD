@@ -10,6 +10,7 @@ import {
     IApplication,
     ICommand,
     PubSub,
+    Result,
     Transaction,
 } from "chili-core";
 import {

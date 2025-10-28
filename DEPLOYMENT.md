@@ -23,7 +23,7 @@ Paper-CADは以下の2つのコンポーネントから構成されています:
 
 - **フロントエンド**: TypeScript/WebAssemblyで実装されたWebアプリケーション
   - デプロイ先: Cloudflare Pages
-  - 本番URL: https://paper-cad.soynyuu.com, https://app.paper-cad.soynyuu.com
+  - 本番URL: https://paper-cad.soynyuu.com, https://app-paper-cad.soynyuu.com
 
 - **バックエンド**: FastAPI (Python) + OpenCASCADEで実装されたAPIサーバー
   - デプロイ先: Docker/Podmanコンテナ
@@ -136,7 +136,7 @@ npx wrangler pages deploy dist --project-name=paper-cad
 2. **Custom domains** タブに移動
 3. カスタムドメインを追加:
    - `paper-cad.soynyuu.com`
-   - `app.paper-cad.soynyuu.com`
+   - `app-paper-cad.soynyuu.com`
 4. DNS設定を確認 (CNAMEレコードが自動的に設定されます)
 
 ---
@@ -161,7 +161,7 @@ cd backend
 # .envファイルを作成
 cat > .env <<EOF
 PORT=8001
-FRONTEND_URL=https://app.paper-cad.soynyuu.com
+FRONTEND_URL=https://app-paper-cad.soynyuu.com
 CORS_ALLOW_ALL=false
 EOF
 ```
@@ -299,7 +299,7 @@ sudo journalctl -u container-paper-cad.service -f
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|-------------|-----|
 | `PORT` | APIサーバーのポート番号 | `8001` | `8001` |
-| `FRONTEND_URL` | フロントエンドのオリジンURL (CORS設定) | `http://localhost:3001` | `https://app.paper-cad.soynyuu.com` |
+| `FRONTEND_URL` | フロントエンドのオリジンURL (CORS設定) | `http://localhost:3001` | `https://app-paper-cad.soynyuu.com` |
 | `CORS_ALLOW_ALL` | すべてのオリジンを許可するか (開発環境のみ) | `false` | `true` (開発環境), `false` (本番環境) |
 | `PYTHONUNBUFFERED` | Pythonの出力バッファリングを無効化 | - | `1` |
 
@@ -443,7 +443,7 @@ curl https://backend-paper-cad.soynyuu.com/api/health
 ### 2. フロントエンドの動作確認
 
 ブラウザで以下のURLにアクセス:
-- https://paper-cad.soynyuu.com または https://app.paper-cad.soynyuu.com
+- https://paper-cad.soynyuu.com または https://app-paper-cad.soynyuu.com
 
 確認項目:
 - ページが正常に表示されるか

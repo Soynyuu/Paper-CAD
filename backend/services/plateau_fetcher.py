@@ -603,8 +603,9 @@ def parse_buildings_from_citygml(
         # Extract building ID (try multiple sources)
         building_id = None
 
-        # Try 1: uro:buildingIDAttribute/uro:buildingID (PLATEAU standard)
-        building_id_elem = building_elem.find(".//uro:buildingIDAttribute/uro:buildingID", NS)
+        # Try 1: uro:buildingIDAttribute/uro:BuildingIDAttribute/uro:buildingID (PLATEAU standard)
+        # Format: <uro:buildingIDAttribute><uro:BuildingIDAttribute><uro:buildingID>13101-bldg-1234</uro:buildingID>...
+        building_id_elem = building_elem.find(".//uro:buildingIDAttribute/uro:BuildingIDAttribute/uro:buildingID", NS)
         if building_id_elem is not None and building_id_elem.text:
             building_id = building_id_elem.text.strip()
 

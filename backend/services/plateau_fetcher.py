@@ -600,15 +600,30 @@ def parse_buildings_from_citygml(
         if not gml_id:
             continue
 
-        # Extract building ID (generic attribute - preferred)
+        # Extract building ID (try multiple sources)
         building_id = None
-        for attr in building_elem.findall(".//gen:stringAttribute", NS):
-            name = attr.get("name")
-            if name in ["建物ID", "buildingID"]:
-                value_elem = attr.find("./gen:value", NS)
-                if value_elem is not None and value_elem.text:
-                    building_id = value_elem.text.strip()
-                    break
+
+        # Try 1: uro:buildingIDAttribute/uro:BuildingIDAttribute/uro:buildingID (PLATEAU standard)
+        # Format: <uro:buildingIDAttribute><uro:BuildingIDAttribute><uro:buildingID>13101-bldg-1234</uro:buildingID>...
+        building_id_elem = building_elem.find(".//uro:buildingIDAttribute/uro:BuildingIDAttribute/uro:buildingID", NS)
+        if building_id_elem is not None and building_id_elem.text:
+            building_id = building_id_elem.text.strip()
+
+        # Try 2: uro:buildingDetails/uro:buildingID (alternative location)
+        if not building_id:
+            building_id_elem = building_elem.find(".//uro:buildingDetails/uro:buildingID", NS)
+            if building_id_elem is not None and building_id_elem.text:
+                building_id = building_id_elem.text.strip()
+
+        # Try 3: gen:stringAttribute (generic attribute)
+        if not building_id:
+            for attr in building_elem.findall(".//gen:stringAttribute", NS):
+                name = attr.get("name")
+                if name in ["建物ID", "buildingID"]:
+                    value_elem = attr.find("./gen:value", NS)
+                    if value_elem is not None and value_elem.text:
+                        building_id = value_elem.text.strip()
+                        break
 
         # Extract coordinates (try multiple sources)
         coords = _extract_building_coordinates(building_elem)
@@ -1139,6 +1154,512 @@ def search_buildings_by_address(
         "citygml_xml": xml_content,  # Include fetched XML to avoid re-fetching
         "search_mode": search_mode,
         "error": None
+    }
+
+
+def extract_municipality_code(building_id: str) -> Optional[str]:
+    """Extract municipality code from building ID.
+
+    PLATEAU building IDs typically follow the format: {municipality_code}-bldg-{number}
+    Example: "13101-bldg-2287" -> "13101" (Chiyoda-ku, Tokyo)
+
+    Args:
+        building_id: Building ID string
+
+    Returns:
+        5-digit municipality code if found, None otherwise
+    """
+    if not building_id or not isinstance(building_id, str):
+        return None
+
+    # Extract first part before "-bldg-"
+    parts = building_id.split("-")
+    if len(parts) >= 2 and parts[0].isdigit() and len(parts[0]) == 5:
+        return parts[0]
+
+    return None
+
+
+def _get_municipality_name_from_code(municipality_code: str) -> Optional[str]:
+    """Get municipality name from code using a mapping of major municipalities.
+
+    For comprehensive coverage, this uses geocoding as fallback.
+    """
+    # Tokyo special wards (23区)
+    tokyo_wards = {
+        "13101": "千代田区", "13102": "中央区", "13103": "港区",
+        "13104": "新宿区", "13105": "文京区", "13106": "台東区",
+        "13107": "墨田区", "13108": "江東区", "13109": "品川区",
+        "13110": "目黒区", "13111": "大田区", "13112": "世田谷区",
+        "13113": "渋谷区", "13114": "中野区", "13115": "杉並区",
+        "13116": "豊島区", "13117": "北区", "13118": "荒川区",
+        "13119": "板橋区", "13120": "練馬区", "13121": "足立区",
+        "13122": "葛飾区", "13123": "江戸川区",
+    }
+
+    return tokyo_wards.get(municipality_code)
+
+
+def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> Optional[Tuple[str, str, int]]:
+    """Fetch CityGML data from PLATEAU using municipality code.
+
+    Strategy:
+    1. Get municipality name from code
+    2. Geocode municipality city hall to get coordinates
+    3. Calculate mesh codes (center + neighbors) to cover the municipality
+    4. Download CityGML files using mesh code search (m:)
+    5. Combine into single XML document
+
+    Args:
+        municipality_code: 5-digit municipality code (e.g., "13113" for Shibuya-ku)
+        timeout: Request timeout in seconds
+
+    Returns:
+        Tuple of (xml_content, municipality_name, total_buildings) if successful, None otherwise
+    """
+    print(f"[PLATEAU] Fetching CityGML for municipality: {municipality_code}")
+
+    # Step 1: Get municipality name
+    municipality_name = _get_municipality_name_from_code(municipality_code)
+    if not municipality_name:
+        print(f"[PLATEAU] Municipality code {municipality_code} not found in mapping")
+        return None
+
+    print(f"[PLATEAU] Municipality: {municipality_name}")
+
+    # Step 2: Geocode city hall to get representative coordinates
+    geocode_query = f"{municipality_name}役所"
+    geocoding = geocode_address(geocode_query)
+
+    if not geocoding:
+        print(f"[PLATEAU] Failed to geocode municipality: {geocode_query}")
+        return None
+
+    print(f"[PLATEAU] Center coordinates: ({geocoding.latitude}, {geocoding.longitude})")
+
+    # Step 3: Calculate mesh codes (center + neighbors for wider coverage)
+    try:
+        center_mesh = latlon_to_mesh_3rd(geocoding.latitude, geocoding.longitude)
+        print(f"[PLATEAU] Center mesh: {center_mesh}")
+
+        # Get neighboring meshes (3x3 grid = 9 meshes total, covering ~3km x 3km)
+        mesh_codes = get_neighboring_meshes_3rd(center_mesh)
+        print(f"[PLATEAU] Searching {len(mesh_codes)} mesh(es) to cover municipality")
+    except Exception as e:
+        print(f"[PLATEAU] Failed to calculate mesh codes: {e}")
+        return None
+
+    # Step 4: Query PLATEAU API for each mesh and collect CityGML URLs
+    all_citygml_urls = []
+    MAX_MESHES = 9  # Limit to center + 8 neighbors
+    MAX_FILES_PER_MESH = 5  # Limit files per mesh
+
+    for i, mesh_code in enumerate(mesh_codes[:MAX_MESHES]):
+        api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
+        print(f"[PLATEAU] Mesh {i+1}/{min(len(mesh_codes), MAX_MESHES)}: {mesh_code}")
+
+        try:
+            response = requests.get(api_url, timeout=timeout)
+            response.raise_for_status()
+            catalog_data = response.json()
+
+            # Extract building CityGML file URLs
+            if "cities" in catalog_data:
+                for city in catalog_data["cities"]:
+                    city_name = city.get("cityName", "Unknown")
+                    files = city.get("files", {})
+                    bldg_files = files.get("bldg", [])
+
+                    print(f"[PLATEAU]   {city_name}: {len(bldg_files)} building file(s)")
+
+                    for bldg_file in bldg_files[:MAX_FILES_PER_MESH]:
+                        url = bldg_file.get("url")
+                        if url and url not in all_citygml_urls:  # Deduplicate
+                            all_citygml_urls.append(url)
+
+        except requests.exceptions.RequestException as e:
+            print(f"[PLATEAU]   API request failed: {e}")
+            # Continue with next mesh
+            continue
+        except ValueError as e:
+            print(f"[PLATEAU]   Invalid JSON response: {e}")
+            continue
+
+    if not all_citygml_urls:
+        print(f"[PLATEAU] No CityGML files found for {municipality_name}")
+        return None
+
+    print(f"[PLATEAU] Downloading {len(all_citygml_urls)} CityGML file(s)...")
+
+    # Step 5: Download and combine CityGML files
+    combined_xml = _download_and_combine_citygml(all_citygml_urls, timeout=timeout)
+
+    if not combined_xml:
+        print(f"[PLATEAU] Failed to download CityGML files")
+        return None
+
+    # Count total buildings in XML
+    try:
+        root = ET.fromstring(combined_xml)
+        buildings = root.findall(".//{http://www.opengis.net/citygml/building/2.0}Building")
+        total_buildings = len(buildings)
+        print(f"[PLATEAU] Success: Found {total_buildings} total buildings in {municipality_name}")
+    except ET.ParseError as e:
+        print(f"[PLATEAU] Failed to parse combined XML: {e}")
+        total_buildings = 0
+
+    return (combined_xml, municipality_name, total_buildings)
+
+
+def search_building_by_id(building_id: str, debug: bool = False) -> dict:
+    """Search for a specific building by its ID in PLATEAU data.
+
+    Args:
+        building_id: Building ID (e.g., "13101-bldg-2287")
+        debug: Enable debug logging
+
+    Returns:
+        Dictionary with search results:
+        {
+            "success": bool,
+            "building": BuildingInfo or None,
+            "municipality_code": str or None,
+            "municipality_name": str or None,
+            "citygml_file": str or None,
+            "citygml_xml": str or None,
+            "total_buildings_in_file": int or None,
+            "error": str or None,
+            "error_details": str or None
+        }
+    """
+    print(f"\n{'='*60}")
+    print(f"[BUILDING ID SEARCH] Searching for building: {building_id}")
+    print(f"{'='*60}\n")
+
+    # Step 1: Extract municipality code
+    municipality_code = extract_municipality_code(building_id)
+    if not municipality_code:
+        return {
+            "success": False,
+            "building": None,
+            "municipality_code": None,
+            "municipality_name": None,
+            "citygml_file": None,
+            "citygml_xml": None,
+            "total_buildings_in_file": None,
+            "error": "Invalid building ID format",
+            "error_details": f"Expected format: {{5-digit-code}}-bldg-{{number}}, got: {building_id}"
+        }
+
+    print(f"[BUILDING ID SEARCH] Extracted municipality code: {municipality_code}")
+
+    # Step 2: Fetch CityGML for municipality
+    fetch_result = fetch_citygml_by_municipality(municipality_code)
+    if not fetch_result:
+        return {
+            "success": False,
+            "building": None,
+            "municipality_code": municipality_code,
+            "municipality_name": None,
+            "citygml_file": None,
+            "citygml_xml": None,
+            "total_buildings_in_file": None,
+            "error": "Failed to fetch PLATEAU data",
+            "error_details": f"No CityGML data found for municipality code: {municipality_code}"
+        }
+
+    xml_content, municipality_name, total_buildings = fetch_result
+    print(f"[BUILDING ID SEARCH] Municipality: {municipality_name}, Total buildings: {total_buildings}")
+
+    # Step 3: Parse buildings and find the target building
+    buildings = parse_buildings_from_citygml(xml_content)
+    if not buildings:
+        return {
+            "success": False,
+            "building": None,
+            "municipality_code": municipality_code,
+            "municipality_name": municipality_name,
+            "citygml_file": None,
+            "citygml_xml": xml_content,
+            "total_buildings_in_file": total_buildings,
+            "error": "No buildings parsed from CityGML",
+            "error_details": f"CityGML contained {total_buildings} buildings but none could be parsed successfully"
+        }
+
+    # Step 4: Find building by gml:id
+    target_building = None
+    for building in buildings:
+        if building.gml_id == building_id or (building.building_id and building.building_id == building_id):
+            target_building = building
+            break
+
+    if not target_building:
+        # Try fuzzy match (case-insensitive, strip whitespace)
+        building_id_normalized = building_id.strip().lower()
+        for building in buildings:
+            gml_id_normalized = building.gml_id.strip().lower() if building.gml_id else ""
+            building_id_norm = building.building_id.strip().lower() if building.building_id else ""
+
+            if gml_id_normalized == building_id_normalized or building_id_norm == building_id_normalized:
+                target_building = building
+                break
+
+    if not target_building:
+        # Collect similar IDs for error message
+        similar_ids = [b.gml_id for b in buildings[:5]]
+        return {
+            "success": False,
+            "building": None,
+            "municipality_code": municipality_code,
+            "municipality_name": municipality_name,
+            "citygml_file": None,
+            "citygml_xml": xml_content,
+            "total_buildings_in_file": len(buildings),
+            "error": f"Building not found",
+            "error_details": f"Searched {len(buildings)} buildings in {municipality_name}, but building ID '{building_id}' was not found. Example IDs from this area: {', '.join(similar_ids[:3])}"
+        }
+
+    print(f"\n{'='*60}")
+    print(f"[BUILDING ID SEARCH] Success: Found building!")
+    print(f"[BUILDING ID SEARCH]   ID: {target_building.gml_id}")
+    print(f"[BUILDING ID SEARCH]   Name: {target_building.name or 'N/A'}")
+    print(f"[BUILDING ID SEARCH]   Height: {target_building.height or target_building.measured_height or 'N/A'}m")
+    print(f"[BUILDING ID SEARCH]   LOD2: {target_building.has_lod2}, LOD3: {target_building.has_lod3}")
+    print(f"{'='*60}\n")
+
+    return {
+        "success": True,
+        "building": target_building,
+        "municipality_code": municipality_code,
+        "municipality_name": municipality_name,
+        "citygml_file": None,  # Could extract from URL if needed
+        "citygml_xml": xml_content,
+        "total_buildings_in_file": len(buildings),
+        "error": None,
+        "error_details": None
+    }
+
+
+def fetch_citygml_by_mesh_code(
+    mesh_code: str,
+    timeout: int = 30
+) -> Optional[str]:
+    """Fetch CityGML data from PLATEAU using mesh code directly.
+
+    Args:
+        mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
+        timeout: Request timeout in seconds
+
+    Returns:
+        Combined CityGML XML content as string if successful, None otherwise
+
+    Example:
+        >>> xml = fetch_citygml_by_mesh_code("53394511")
+        >>> if xml:
+        ...     print(f"Fetched {len(xml)} bytes of CityGML data")
+    """
+    print(f"[PLATEAU] Fetching CityGML for mesh code: {mesh_code}")
+
+    # Validate mesh code format (8 digits for 3rd mesh)
+    if not mesh_code.isdigit() or len(mesh_code) != 8:
+        print(f"[PLATEAU] Invalid mesh code format: {mesh_code} (expected 8 digits)")
+        return None
+
+    # Query PLATEAU API with mesh code
+    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
+
+    print(f"[PLATEAU] Querying API...")
+
+    try:
+        response = requests.get(api_url, timeout=timeout)
+        response.raise_for_status()
+        catalog_data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"[PLATEAU] API request failed: {e}")
+        return None
+    except ValueError as e:
+        print(f"[PLATEAU] Invalid JSON response: {e}")
+        return None
+
+    # Extract building CityGML file URLs
+    citygml_urls = []
+    MAX_FILES = 5  # Limit to prevent memory issues
+
+    if "cities" in catalog_data:
+        for city in catalog_data["cities"]:
+            city_name = city.get("cityName", "Unknown")
+            files = city.get("files", {})
+            bldg_files = files.get("bldg", [])
+
+            print(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
+
+            for bldg_file in bldg_files:
+                url = bldg_file.get("url")
+                if url:
+                    citygml_urls.append(url)
+                    if len(citygml_urls) >= MAX_FILES:
+                        break
+
+            if len(citygml_urls) >= MAX_FILES:
+                break
+
+    if not citygml_urls:
+        print(f"[PLATEAU] No CityGML files found for mesh code: {mesh_code}")
+        return None
+
+    if len(citygml_urls) > MAX_FILES:
+        citygml_urls = citygml_urls[:MAX_FILES]
+        print(f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues")
+
+    print(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
+
+    # Download and combine CityGML files
+    combined_xml = _download_and_combine_citygml(citygml_urls, timeout=timeout)
+
+    if combined_xml:
+        print(f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)")
+    else:
+        print(f"[PLATEAU] Failed to download CityGML files")
+
+    return combined_xml
+
+
+def search_building_by_id_and_mesh(
+    building_id: str,
+    mesh_code: str,
+    debug: bool = False
+) -> dict:
+    """Search for a specific building by building ID + mesh code (optimized).
+
+    This function is much faster than search_building_by_id() because it only
+    downloads 1km² area instead of the entire municipality.
+
+    Args:
+        building_id: Building ID (e.g., "13101-bldg-2287")
+        mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
+        debug: Enable debug logging
+
+    Returns:
+        Dictionary with search results:
+        {
+            "success": bool,
+            "building": BuildingInfo or None,
+            "mesh_code": str,
+            "citygml_xml": str or None,
+            "total_buildings_in_mesh": int or None,
+            "error": str or None,
+            "error_details": str or None
+        }
+
+    Example:
+        >>> result = search_building_by_id_and_mesh("13101-bldg-2287", "53394511")
+        >>> if result["success"]:
+        ...     print(f"Found: {result['building'].name}")
+    """
+    print(f"\n{'='*60}")
+    print(f"[BUILDING SEARCH] Building ID: {building_id}, Mesh Code: {mesh_code}")
+    print(f"{'='*60}\n")
+
+    # Step 1: Validate mesh code
+    if not mesh_code.isdigit() or len(mesh_code) != 8:
+        return {
+            "success": False,
+            "building": None,
+            "mesh_code": mesh_code,
+            "citygml_xml": None,
+            "total_buildings_in_mesh": None,
+            "error": "Invalid mesh code format",
+            "error_details": f"Expected 8-digit number, got: {mesh_code}"
+        }
+
+    # Step 2: Validate building ID format
+    if not building_id or "-bldg-" not in building_id:
+        return {
+            "success": False,
+            "building": None,
+            "mesh_code": mesh_code,
+            "citygml_xml": None,
+            "total_buildings_in_mesh": None,
+            "error": "Invalid building ID format",
+            "error_details": f"Expected format: {{municipality}}-bldg-{{number}}, got: {building_id}"
+        }
+
+    # Step 3: Fetch CityGML for the specified mesh code
+    xml_content = fetch_citygml_by_mesh_code(mesh_code)
+    if not xml_content:
+        return {
+            "success": False,
+            "building": None,
+            "mesh_code": mesh_code,
+            "citygml_xml": None,
+            "total_buildings_in_mesh": None,
+            "error": "Failed to fetch PLATEAU data",
+            "error_details": f"No CityGML data found for mesh code: {mesh_code}"
+        }
+
+    # Step 4: Parse buildings
+    buildings = parse_buildings_from_citygml(xml_content)
+    if not buildings:
+        return {
+            "success": False,
+            "building": None,
+            "mesh_code": mesh_code,
+            "citygml_xml": xml_content,
+            "total_buildings_in_mesh": 0,
+            "error": "No buildings found in mesh area",
+            "error_details": f"Mesh code {mesh_code} contains no parseable buildings"
+        }
+
+    total_buildings = len(buildings)
+    print(f"[BUILDING SEARCH] Found {total_buildings} building(s) in mesh {mesh_code}")
+
+    # Step 5: Find building by ID (exact match on gml_id or building_id)
+    target_building = None
+    for building in buildings:
+        if building.gml_id == building_id or (building.building_id and building.building_id == building_id):
+            target_building = building
+            break
+
+    # Fallback: Try fuzzy match (case-insensitive, strip whitespace)
+    if not target_building:
+        building_id_normalized = building_id.strip().lower()
+        for building in buildings:
+            gml_id_normalized = building.gml_id.strip().lower() if building.gml_id else ""
+            building_id_norm = building.building_id.strip().lower() if building.building_id else ""
+
+            if gml_id_normalized == building_id_normalized or building_id_norm == building_id_normalized:
+                target_building = building
+                break
+
+    if not target_building:
+        # Collect similar IDs for error message
+        similar_ids = [b.gml_id for b in buildings[:5]]
+        return {
+            "success": False,
+            "building": None,
+            "mesh_code": mesh_code,
+            "citygml_xml": xml_content,
+            "total_buildings_in_mesh": total_buildings,
+            "error": "Building not found in mesh area",
+            "error_details": f"Searched {total_buildings} buildings in mesh {mesh_code}, but building ID '{building_id}' was not found. Example IDs from this area: {', '.join(similar_ids[:3])}"
+        }
+
+    print(f"\n{'='*60}")
+    print(f"[BUILDING SEARCH] Success: Found building!")
+    print(f"[BUILDING SEARCH]   ID: {target_building.gml_id}")
+    print(f"[BUILDING SEARCH]   Name: {target_building.name or 'N/A'}")
+    print(f"[BUILDING SEARCH]   Height: {target_building.height or target_building.measured_height or 'N/A'}m")
+    print(f"[BUILDING SEARCH]   LOD2: {target_building.has_lod2}, LOD3: {target_building.has_lod3}")
+    print(f"{'='*60}\n")
+
+    return {
+        "success": True,
+        "building": target_building,
+        "mesh_code": mesh_code,
+        "citygml_xml": xml_content,
+        "total_buildings_in_mesh": total_buildings,
+        "error": None,
+        "error_details": None
     }
 
 

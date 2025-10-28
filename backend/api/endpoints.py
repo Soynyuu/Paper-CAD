@@ -15,10 +15,13 @@ from models.request_models import (
     PlateauFetchAndConvertRequest,
     PlateauSearchResponse,
     BuildingInfoResponse,
-    GeocodingResultResponse
+    GeocodingResultResponse,
+    PlateauBuildingIdRequest,
+    PlateauBuildingIdSearchResponse,
+    PlateauBuildingIdWithMeshRequest
 )
 from services.citygml_to_step import export_step_from_citygml, parse_citygml_footprints
-from services.plateau_fetcher import search_buildings_by_address
+from services.plateau_fetcher import search_buildings_by_address, search_building_by_id, search_building_by_id_and_mesh
 
 # APIルーターの作成
 router = APIRouter()
@@ -941,6 +944,367 @@ async def plateau_fetch_and_convert(
                 "Cache-Control": "no-cache"
             }
         )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+
+
+# --- PLATEAU: Building ID Search ---
+@router.post("/api/plateau/search-by-id", response_model=PlateauBuildingIdSearchResponse)
+async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
+    """
+    Search for a specific PLATEAU building by its building ID.
+
+    Args:
+        request: PlateauBuildingIdRequest with building_id
+
+    Returns:
+        PlateauBuildingIdSearchResponse with building information or error details
+
+    Example:
+        POST /api/plateau/search-by-id
+        {
+            "building_id": "13101-bldg-2287"
+        }
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/search-by-id")
+        print(f"[API] Building ID: {request.building_id}")
+        print(f"{'='*60}\n")
+
+        # Search for building by ID
+        result = search_building_by_id(request.building_id, debug=request.debug)
+
+        if not result["success"]:
+            return PlateauBuildingIdSearchResponse(
+                success=False,
+                building=None,
+                municipality_code=result.get("municipality_code"),
+                municipality_name=result.get("municipality_name"),
+                citygml_file=result.get("citygml_file"),
+                total_buildings_in_file=result.get("total_buildings_in_file"),
+                error=result.get("error"),
+                error_details=result.get("error_details")
+            )
+
+        # Success: Return building information
+        return PlateauBuildingIdSearchResponse(
+            success=True,
+            building=result["building"],
+            municipality_code=result["municipality_code"],
+            municipality_name=result["municipality_name"],
+            citygml_file=result.get("citygml_file"),
+            total_buildings_in_file=result["total_buildings_in_file"],
+            error=None,
+            error_details=None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return PlateauBuildingIdSearchResponse(
+            success=False,
+            building=None,
+            error="Internal server error",
+            error_details=f"予期しないエラー: {str(e)}"
+        )
+
+
+@router.post("/api/plateau/fetch-by-id")
+async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
+    """
+    Fetch PLATEAU building by ID and convert to STEP format.
+
+    This endpoint combines search and conversion in one step:
+    1. Searches for building by ID
+    2. Converts the building to STEP format
+    3. Returns STEP file
+
+    Args:
+        request: PlateauBuildingIdRequest with building_id and conversion options
+
+    Returns:
+        STEP file as application/octet-stream
+
+    Example:
+        POST /api/plateau/fetch-by-id
+        {
+            "building_id": "13101-bldg-2287",
+            "precision_mode": "ultra",
+            "shape_fix_level": "minimal"
+        }
+    """
+    if not OCCT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。"
+        )
+
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/fetch-by-id")
+        print(f"[API] Building ID: {request.building_id}")
+        print(f"[API] Precision Mode: {request.precision_mode}")
+        print(f"[API] Shape Fix Level: {request.shape_fix_level}")
+        print(f"{'='*60}\n")
+
+        # Step 1: Search for building by ID
+        search_result = search_building_by_id(request.building_id, debug=request.debug)
+
+        if not search_result["success"]:
+            error_msg = search_result.get("error", "Building not found")
+            error_details = search_result.get("error_details", "")
+            raise HTTPException(
+                status_code=404,
+                detail=f"{error_msg}. {error_details}"
+            )
+
+        # Step 2: Convert to STEP
+        citygml_xml = search_result.get("citygml_xml")
+        if not citygml_xml:
+            raise HTTPException(
+                status_code=500,
+                detail="CityGML data is missing from search result"
+            )
+
+        # Save CityGML to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.gml', delete=False, encoding='utf-8') as tmp_gml:
+            tmp_gml.write(citygml_xml)
+            tmp_gml_path = tmp_gml.name
+
+        # Create temporary STEP output file
+        step_file_name = f"{request.building_id.replace('-', '_')}.step"
+        tmp_step_path = os.path.join(tempfile.gettempdir(), step_file_name)
+
+        try:
+            # Export to STEP with specified building ID filter
+            success, message = export_step_from_citygml(
+                tmp_gml_path,
+                tmp_step_path,
+                building_ids=[request.building_id],
+                filter_attribute="gml:id",
+                method=request.method,
+                auto_reproject=request.auto_reproject,
+                precision_mode=request.precision_mode,
+                shape_fix_level=request.shape_fix_level,
+                merge_building_parts=request.merge_building_parts,
+                debug=request.debug
+            )
+
+            if not success:
+                raise HTTPException(status_code=500, detail=f"CityGML to STEP conversion failed: {message}")
+
+            # Verify STEP file exists
+            if not os.path.exists(tmp_step_path):
+                raise HTTPException(status_code=500, detail="STEP file was not created")
+
+            # Return STEP file
+            print(f"[API] Success: Returning STEP file for building {request.building_id}")
+            return FileResponse(
+                path=tmp_step_path,
+                media_type="application/octet-stream",
+                filename=step_file_name,
+                background=BackgroundTasks()
+            )
+
+        finally:
+            # Clean up temporary CityGML file
+            if os.path.exists(tmp_gml_path):
+                os.remove(tmp_gml_path)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+
+
+# --- PLATEAU: Building ID + Mesh Code Search (Optimized) ---
+@router.post("/api/plateau/search-by-id-and-mesh", response_model=PlateauBuildingIdSearchResponse)
+async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
+    """
+    Search for a specific PLATEAU building by building ID + mesh code (optimized).
+
+    This endpoint is much faster than /api/plateau/search-by-id because it only
+    downloads 1km² area instead of the entire municipality.
+
+    Args:
+        request: PlateauBuildingIdWithMeshRequest with building_id and mesh_code
+
+    Returns:
+        PlateauBuildingIdSearchResponse with building information or error details
+
+    Example:
+        POST /api/plateau/search-by-id-and-mesh
+        {
+            "building_id": "13101-bldg-2287",
+            "mesh_code": "53394511"
+        }
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/search-by-id-and-mesh")
+        print(f"[API] Building ID: {request.building_id}")
+        print(f"[API] Mesh Code: {request.mesh_code}")
+        print(f"{'='*60}\n")
+
+        # Search for building by ID + mesh code
+        result = search_building_by_id_and_mesh(
+            request.building_id,
+            request.mesh_code,
+            debug=request.debug
+        )
+
+        if not result["success"]:
+            return PlateauBuildingIdSearchResponse(
+                success=False,
+                building=None,
+                municipality_code=None,  # Not used in mesh-based search
+                municipality_name=None,
+                citygml_file=None,
+                total_buildings_in_file=result.get("total_buildings_in_mesh"),
+                error=result.get("error"),
+                error_details=result.get("error_details")
+            )
+
+        # Success: Return building information
+        return PlateauBuildingIdSearchResponse(
+            success=True,
+            building=result["building"],
+            municipality_code=None,  # Not extracted in mesh-based search
+            municipality_name=None,
+            citygml_file=None,
+            total_buildings_in_file=result["total_buildings_in_mesh"],
+            error=None,
+            error_details=None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return PlateauBuildingIdSearchResponse(
+            success=False,
+            building=None,
+            error="Internal server error",
+            error_details=f"予期しないエラー: {str(e)}"
+        )
+
+
+@router.post("/api/plateau/fetch-by-id-and-mesh")
+async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
+    """
+    Fetch PLATEAU building by ID + mesh code and convert to STEP format (optimized).
+
+    This endpoint is much faster than /api/plateau/fetch-by-id because it only
+    downloads 1km² area instead of the entire municipality.
+
+    Args:
+        request: PlateauBuildingIdWithMeshRequest with building_id, mesh_code, and conversion options
+
+    Returns:
+        STEP file as application/octet-stream
+
+    Example:
+        POST /api/plateau/fetch-by-id-and-mesh
+        {
+            "building_id": "13101-bldg-2287",
+            "mesh_code": "53394511",
+            "precision_mode": "ultra",
+            "shape_fix_level": "minimal"
+        }
+    """
+    if not OCCT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。"
+        )
+
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/fetch-by-id-and-mesh")
+        print(f"[API] Building ID: {request.building_id}")
+        print(f"[API] Mesh Code: {request.mesh_code}")
+        print(f"[API] Precision Mode: {request.precision_mode}")
+        print(f"[API] Shape Fix Level: {request.shape_fix_level}")
+        print(f"{'='*60}\n")
+
+        # Step 1: Search for building by ID + mesh code
+        search_result = search_building_by_id_and_mesh(
+            request.building_id,
+            request.mesh_code,
+            debug=request.debug
+        )
+
+        if not search_result["success"]:
+            error_msg = search_result.get("error", "Building not found")
+            error_details = search_result.get("error_details", "")
+            raise HTTPException(
+                status_code=404,
+                detail=f"{error_msg}. {error_details}"
+            )
+
+        # Step 2: Convert to STEP
+        citygml_xml = search_result.get("citygml_xml")
+        if not citygml_xml:
+            raise HTTPException(
+                status_code=500,
+                detail="CityGML data is missing from search result"
+            )
+
+        # Save CityGML to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.gml', delete=False, encoding='utf-8') as tmp_gml:
+            tmp_gml.write(citygml_xml)
+            tmp_gml_path = tmp_gml.name
+
+        # Create temporary STEP output file
+        step_file_name = f"{request.building_id.replace('-', '_')}.step"
+        tmp_step_path = os.path.join(tempfile.gettempdir(), step_file_name)
+
+        try:
+            # Export to STEP with specified building ID filter
+            success, message = export_step_from_citygml(
+                tmp_gml_path,
+                tmp_step_path,
+                building_ids=[request.building_id],
+                filter_attribute="gml:id",
+                method=request.method,
+                auto_reproject=request.auto_reproject,
+                precision_mode=request.precision_mode,
+                shape_fix_level=request.shape_fix_level,
+                merge_building_parts=request.merge_building_parts,
+                debug=request.debug
+            )
+
+            if not success:
+                raise HTTPException(status_code=500, detail=f"CityGML to STEP conversion failed: {message}")
+
+            # Verify STEP file exists
+            if not os.path.exists(tmp_step_path):
+                raise HTTPException(status_code=500, detail="STEP file was not created")
+
+            # Return STEP file
+            print(f"[API] Success: Returning STEP file for building {request.building_id}")
+            return FileResponse(
+                path=tmp_step_path,
+                media_type="application/octet-stream",
+                filename=step_file_name,
+                background=BackgroundTasks()
+            )
+
+        finally:
+            # Clean up temporary CityGML file
+            if os.path.exists(tmp_gml_path):
+                os.remove(tmp_gml_path)
 
     except HTTPException:
         raise

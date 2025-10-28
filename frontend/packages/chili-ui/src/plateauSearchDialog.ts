@@ -11,8 +11,10 @@ export interface PlateauSearchOptions {
     buildingLimit: number;
     autoReproject: boolean;
     mergeBuildingParts: boolean;
-    searchMode: "distance" | "name" | "hybrid";
+    searchMode: "distance" | "name" | "hybrid" | "buildingId";
     nameFilter?: string;
+    buildingId?: string; // 建物ID直接検索用
+    meshCode?: string; // メッシュコード（8桁、3次メッシュ）
 }
 
 export class PlateauSearchDialog {
@@ -27,7 +29,8 @@ export class PlateauSearchDialog {
 
         // State for form inputs
         let query = "";
-        let searchType: "facility" | "address" = "facility"; // New: 検索タイプ
+        let meshCode = ""; // メッシュコード（建物IDモード用）
+        let searchType: "facility" | "address" | "buildingId" = "facility"; // 検索タイプ
         let radiusMeters = 100; // ~100m default (in meters)
         let radius = 0.001; // degrees
         let autoReproject = true; // 常にtrue（ユーザーには非表示）
@@ -47,6 +50,27 @@ export class PlateauSearchDialog {
             },
             oninput: (e) => {
                 query = (e.target as HTMLInputElement).value;
+                // エラー表示をクリア
+                if (errorContainer) {
+                    errorContainer.style.display = "none";
+                }
+            },
+        });
+
+        // メッシュコード入力フィールド（建物IDモード専用）
+        const meshCodeInput = input({
+            type: "text",
+            placeholder: "例: 53394511（8桁、3次メッシュ）",
+            style: {
+                width: "100%",
+                padding: "8px",
+                marginTop: "8px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--font-size-sm)",
+            },
+            oninput: (e) => {
+                meshCode = (e.target as HTMLInputElement).value;
                 // エラー表示をクリア
                 if (errorContainer) {
                     errorContainer.style.display = "none";
@@ -88,6 +112,9 @@ export class PlateauSearchDialog {
             }, 5000);
         }
 
+        // メッシュコードコンテナ（後で定義するが、ここで先行宣言）
+        let meshCodeContainer: HTMLElement;
+
         // 検索タイプラジオボタン
         const facilityRadio = input({
             type: "radio",
@@ -99,6 +126,8 @@ export class PlateauSearchDialog {
                 searchType = "facility";
                 queryInput.placeholder = '例: "東京駅", "渋谷スクランブルスクエア"';
                 hintText.textContent = "💡 ヒント: 施設名で検索すると、建物名マッチングで精度が向上します";
+                radiusContainer.style.display = "block"; // 検索半径スライダーを表示
+                if (meshCodeContainer) meshCodeContainer.style.display = "none"; // メッシュコード入力を非表示
             },
         });
 
@@ -111,6 +140,22 @@ export class PlateauSearchDialog {
                 searchType = "address";
                 queryInput.placeholder = '例: "東京都千代田区丸の内1-9-1"';
                 hintText.textContent = "💡 ヒント: 住所検索では、最も近い建物を距離で判定します";
+                radiusContainer.style.display = "block"; // 検索半径スライダーを表示
+                if (meshCodeContainer) meshCodeContainer.style.display = "none"; // メッシュコード入力を非表示
+            },
+        });
+
+        const buildingIdRadio = input({
+            type: "radio",
+            name: "searchType",
+            value: "buildingId",
+            style: { cursor: "pointer", marginRight: "8px" },
+            onchange: () => {
+                searchType = "buildingId";
+                queryInput.placeholder = '例: "13101-bldg-2287"';
+                hintText.textContent = "💡 ヒント: 建物IDとメッシュコードの両方が必要です";
+                radiusContainer.style.display = "none"; // 検索半径スライダーを非表示
+                meshCodeContainer.style.display = "block"; // メッシュコード入力を表示
             },
         });
 
@@ -144,6 +189,46 @@ export class PlateauSearchDialog {
                 radius = radiusMeters / 111000; // メートル→度数に変換（概算）
             },
         });
+
+        // 検索半径スライダーコンテナ（建物IDモードでは非表示）
+        const radiusContainer = div(
+            {},
+            div(
+                {
+                    style: {
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "8px",
+                    },
+                },
+                label(
+                    {
+                        style: {
+                            fontWeight: "var(--font-weight-medium)",
+                            fontSize: "var(--font-size-sm)",
+                            color: "var(--foreground-color)",
+                        },
+                    },
+                    "検索半径",
+                ),
+                radiusLabel,
+            ),
+            radiusSlider,
+            div(
+                {
+                    style: {
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--neutral-500)",
+                        marginTop: "4px",
+                    },
+                },
+                div({}, "50m"),
+                div({}, "500m"),
+            ),
+        );
 
         // 詳細設定用チェックボックス（アコーディオン内に配置）
         const mergeBuildingPartsCheckbox = input({
@@ -210,6 +295,36 @@ export class PlateauSearchDialog {
                     },
                     "建物パーツを結合（詳細保持優先: OFF推奨）",
                 ),
+            ),
+        );
+
+        // メッシュコードコンテナ（建物IDモード専用、初期は非表示）
+        meshCodeContainer = div(
+            {
+                style: {
+                    display: "none", // 初期は非表示
+                },
+            },
+            label(
+                {
+                    style: {
+                        fontWeight: "var(--font-weight-medium)",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--foreground-color)",
+                    },
+                },
+                "メッシュコード（3次メッシュ） *",
+            ),
+            meshCodeInput,
+            div(
+                {
+                    style: {
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--neutral-600)",
+                        marginTop: "4px",
+                    },
+                },
+                "💡 ヒント: 8桁の数字（例: 53394511）。地図から確認できます",
             ),
         );
 
@@ -357,38 +472,67 @@ export class PlateauSearchDialog {
                             ),
                         ),
                     ),
+                    div(
+                        {
+                            style: {
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "8px",
+                            },
+                        },
+                        buildingIdRadio,
+                        div(
+                            {
+                                style: {
+                                    flex: "1",
+                                    cursor: "pointer",
+                                },
+                                onclick: () => {
+                                    buildingIdRadio.checked = true;
+                                    buildingIdRadio.dispatchEvent(new Event("change"));
+                                },
+                            },
+                            label(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-sm)",
+                                        fontWeight: "var(--font-weight-medium)",
+                                        display: "block",
+                                        cursor: "pointer",
+                                    },
+                                },
+                                "🆔 建物IDで検索",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-600)",
+                                        marginTop: "2px",
+                                    },
+                                },
+                                "建物IDが分かっている場合",
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--neutral-500)",
+                                        marginTop: "2px",
+                                        fontStyle: "italic",
+                                    },
+                                },
+                                '例: "13101-bldg-2287"',
+                            ),
+                        ),
+                    ),
                 ),
             ),
-            // 住所/施設名入力
+            // 住所/施設名/建物ID入力
             div(
                 {},
-                label(
-                    {
-                        style: {
-                            fontWeight: "var(--font-weight-medium)",
-                            fontSize: "var(--font-size-sm)",
-                            color: "var(--foreground-color)",
-                        },
-                    },
-                    "住所または施設名 *",
-                ),
-                queryInput,
-                hintText,
-                errorContainer,
-            ),
-            // 検索半径スライダー
-            div(
-                {},
-                div(
-                    {
-                        style: {
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "8px",
-                        },
-                    },
-                    label(
+                (() => {
+                    const queryLabel = label(
                         {
                             style: {
                                 fontWeight: "var(--font-weight-medium)",
@@ -396,25 +540,42 @@ export class PlateauSearchDialog {
                                 color: "var(--foreground-color)",
                             },
                         },
-                        "検索半径",
-                    ),
-                    radiusLabel,
-                ),
-                radiusSlider,
-                div(
-                    {
-                        style: {
-                            display: "flex",
-                            justifyContent: "space-between",
-                            fontSize: "var(--font-size-xs)",
-                            color: "var(--neutral-500)",
-                            marginTop: "4px",
-                        },
-                    },
-                    div({}, "50m"),
-                    div({}, "500m"),
-                ),
+                        "住所または施設名 *",
+                    );
+                    // ラジオボタンの変更時にラベルも更新
+                    const originalFacilityChange = facilityRadio.onchange;
+                    const originalAddressChange = addressRadio.onchange;
+                    const originalBuildingIdChange = buildingIdRadio.onchange;
+
+                    facilityRadio.onchange = function (e) {
+                        if (originalFacilityChange) {
+                            originalFacilityChange.call(this, e as Event);
+                        }
+                        queryLabel.textContent = "住所または施設名 *";
+                    };
+                    addressRadio.onchange = function (e) {
+                        if (originalAddressChange) {
+                            originalAddressChange.call(this, e as Event);
+                        }
+                        queryLabel.textContent = "住所または施設名 *";
+                    };
+                    buildingIdRadio.onchange = function (e) {
+                        if (originalBuildingIdChange) {
+                            originalBuildingIdChange.call(this, e as Event);
+                        }
+                        queryLabel.textContent = "建物ID *";
+                    };
+
+                    return queryLabel;
+                })(),
+                queryInput,
+                hintText,
+                errorContainer,
             ),
+            // メッシュコード入力（建物IDモード専用）
+            meshCodeContainer,
+            // 検索半径スライダー（建物IDモードでは非表示）
+            radiusContainer,
             // 詳細設定
             advancedToggle,
             advancedContainer,
@@ -424,8 +585,36 @@ export class PlateauSearchDialog {
             if (result === DialogResult.ok) {
                 // Validate query
                 if (!query.trim()) {
-                    showInlineError("住所または施設名を入力してください");
+                    const errorMsg =
+                        searchType === "buildingId"
+                            ? "建物IDを入力してください"
+                            : "住所または施設名を入力してください";
+                    showInlineError(errorMsg);
                     return;
+                }
+
+                // 建物IDの形式チェック（簡易）
+                if (searchType === "buildingId") {
+                    const buildingIdPattern = /^\d{5}-bldg-\d+$/;
+                    if (!buildingIdPattern.test(query.trim())) {
+                        showInlineError("建物IDの形式が正しくありません（例: 13101-bldg-2287）");
+                        return;
+                    }
+
+                    // メッシュコードの入力チェック
+                    if (!meshCode.trim()) {
+                        showInlineError("メッシュコードを入力してください");
+                        return;
+                    }
+
+                    // メッシュコードの形式チェック（8桁の数字）
+                    const meshCodePattern = /^\d{8}$/;
+                    if (!meshCodePattern.test(meshCode.trim())) {
+                        showInlineError(
+                            "メッシュコードの形式が正しくありません（8桁の数字を入力してください）",
+                        );
+                        return;
+                    }
                 }
 
                 dialog.remove();
@@ -444,10 +633,17 @@ export class PlateauSearchDialog {
                               searchMode: "hybrid" as const,
                               nameFilter: query.trim(), // ✅ 施設名をnameFilterに使用
                           }
-                        : {
-                              searchMode: "distance" as const,
-                              nameFilter: undefined, // ✅ 住所検索ではnameFilterなし
-                          }),
+                        : searchType === "address"
+                          ? {
+                                searchMode: "distance" as const,
+                                nameFilter: undefined, // ✅ 住所検索ではnameFilterなし
+                            }
+                          : {
+                                searchMode: "buildingId" as const,
+                                nameFilter: undefined,
+                                buildingId: query.trim(), // ✅ 建物IDを設定
+                                meshCode: meshCode.trim(), // ✅ メッシュコードを設定
+                            }),
                 };
 
                 callback?.(DialogResult.ok, options);

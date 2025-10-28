@@ -1529,13 +1529,14 @@ def search_building_by_id_and_mesh(
     mesh_code: str,
     debug: bool = False
 ) -> dict:
-    """Search for a specific building by building ID + mesh code (optimized).
+    """Search for a specific building by GML ID + mesh code (optimized).
 
     This function is much faster than search_building_by_id() because it only
     downloads 1km² area instead of the entire municipality.
 
     Args:
-        building_id: Building ID (e.g., "13101-bldg-2287")
+        building_id: GML ID (e.g., "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86")
+                     or legacy building ID (e.g., "13101-bldg-2287")
         mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
         debug: Enable debug logging
 
@@ -1552,7 +1553,7 @@ def search_building_by_id_and_mesh(
         }
 
     Example:
-        >>> result = search_building_by_id_and_mesh("13101-bldg-2287", "53394511")
+        >>> result = search_building_by_id_and_mesh("bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86", "53394511")
         >>> if result["success"]:
         ...     print(f"Found: {result['building'].name}")
     """
@@ -1572,8 +1573,10 @@ def search_building_by_id_and_mesh(
             "error_details": f"Expected 8-digit number, got: {mesh_code}"
         }
 
-    # Step 2: Validate building ID format
-    if not building_id or "-bldg-" not in building_id:
+    # Step 2: Validate building ID format (accept both building ID and GML ID)
+    # GML ID format: bldg_uuid (e.g., bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86)
+    # Building ID format: 13101-bldg-2287 (legacy, rarely exists in actual data)
+    if not building_id or not (building_id.startswith("bldg_") or "-bldg-" in building_id):
         return {
             "success": False,
             "building": None,
@@ -1581,7 +1584,7 @@ def search_building_by_id_and_mesh(
             "citygml_xml": None,
             "total_buildings_in_mesh": None,
             "error": "Invalid building ID format",
-            "error_details": f"Expected format: {{municipality}}-bldg-{{number}}, got: {building_id}"
+            "error_details": f"Expected GML ID (bldg_...) or building ID (xxxxx-bldg-nnn), got: {building_id}"
         }
 
     # Step 3: Fetch CityGML for the specified mesh code

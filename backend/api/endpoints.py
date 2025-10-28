@@ -1131,13 +1131,13 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
 @router.post("/api/plateau/search-by-id-and-mesh", response_model=PlateauBuildingIdSearchResponse)
 async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
-    Search for a specific PLATEAU building by building ID + mesh code (optimized).
+    Search for a specific PLATEAU building by GML ID + mesh code (optimized).
 
     This endpoint is much faster than /api/plateau/search-by-id because it only
     downloads 1km² area instead of the entire municipality.
 
     Args:
-        request: PlateauBuildingIdWithMeshRequest with building_id and mesh_code
+        request: PlateauBuildingIdWithMeshRequest with building_id (GML ID) and mesh_code
 
     Returns:
         PlateauBuildingIdSearchResponse with building information or error details
@@ -1145,7 +1145,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
     Example:
         POST /api/plateau/search-by-id-and-mesh
         {
-            "building_id": "13101-bldg-2287",
+            "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
             "mesh_code": "53394511"
         }
     """
@@ -1203,13 +1203,13 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
 @router.post("/api/plateau/fetch-by-id-and-mesh")
 async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
-    Fetch PLATEAU building by ID + mesh code and convert to STEP format (optimized).
+    Fetch PLATEAU building by GML ID + mesh code and convert to STEP format (optimized).
 
     This endpoint is much faster than /api/plateau/fetch-by-id because it only
     downloads 1km² area instead of the entire municipality.
 
     Args:
-        request: PlateauBuildingIdWithMeshRequest with building_id, mesh_code, and conversion options
+        request: PlateauBuildingIdWithMeshRequest with building_id (GML ID), mesh_code, and conversion options
 
     Returns:
         STEP file as application/octet-stream
@@ -1217,7 +1217,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
     Example:
         POST /api/plateau/fetch-by-id-and-mesh
         {
-            "building_id": "13101-bldg-2287",
+            "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
             "mesh_code": "53394511",
             "precision_mode": "ultra",
             "shape_fix_level": "minimal"

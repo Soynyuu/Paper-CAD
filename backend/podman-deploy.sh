@@ -68,7 +68,7 @@ case $ACTION in
             --restart always \
             -p ${PORT}:8001 \
             -v ${DEBUG_VOLUME}:Z \
-            -e FRONTEND_URL=https://app.paper-cad.soynyuu.com \
+            -e FRONTEND_URL=https://app-paper-cad.soynyuu.com \
             -e CORS_ALLOW_ALL=false \
             -e PORT=8001 \
             --security-opt label=disable \

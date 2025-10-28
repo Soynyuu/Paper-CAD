@@ -29,19 +29,30 @@ try:
     from dotenv import load_dotenv
     import os as _os
 
-    # 本番環境では.env.productionを優先的に読み込む
-    # Dockerコンテナでは環境変数を直接設定することを推奨
+    # ENV環境変数で実行環境を判定（development/production）
+    # デフォルトは development
+    ENV = _os.getenv("ENV", _os.getenv("PYTHON_ENV", "development"))
+
+    # 環境に応じた.envファイルを選択
     env_file = None
-    if _os.path.exists(".env.production"):
-        env_file = ".env.production"
-    elif _os.path.exists(".env"):
-        env_file = ".env"
+    if ENV == "production":
+        # 本番環境: .env.production → .env の順で探す
+        if _os.path.exists(".env.production"):
+            env_file = ".env.production"
+        elif _os.path.exists(".env"):
+            env_file = ".env"
+    else:
+        # 開発環境（デフォルト）: .env.development → .env の順で探す
+        if _os.path.exists(".env.development"):
+            env_file = ".env.development"
+        elif _os.path.exists(".env"):
+            env_file = ".env"
 
     if env_file:
         load_dotenv(env_file)
-        print(f"[CONFIG] 環境変数を {env_file} から読み込みました")
+        print(f"[CONFIG] 環境変数を {env_file} から読み込みました (ENV={ENV})")
     else:
-        print("[CONFIG] 環境変数ファイルが見つかりません。環境変数から直接読み込みます。")
+        print(f"[CONFIG] 環境変数ファイルが見つかりません (ENV={ENV})。環境変数から直接読み込みます。")
 except ImportError:
     print("[CONFIG] python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。")
 

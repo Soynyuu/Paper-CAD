@@ -157,28 +157,58 @@ npx wrangler pages deploy dist --project-name=paper-cad
 ```bash
 cd backend
 
-# 環境変数をdocker-compose.ymlで直接設定するか、
-# .envファイルを作成
+# 本番環境用の環境変数を設定
+# 方法1: ENV変数を使って.env.productionを読み込む (推奨)
+# .env.productionは既に存在するので、ENV=productionを設定するだけでOK
+
+# 方法2: 環境変数を直接設定する場合は.envファイルを作成
 cat > .env <<EOF
+ENV=production
 PORT=8001
 FRONTEND_URL=https://app-paper-cad.soynyuu.com
 CORS_ALLOW_ALL=false
 EOF
 ```
 
+**注意**: バックエンドには既に `.env.development` と `.env.production` が用意されています。
+- ローカル開発: 何も設定しなければ`.env.development`が自動的に読み込まれます
+- 本番環境: `ENV=production`を設定すると`.env.production`が読み込まれます
+
 #### 2. ビルドと起動
+
+**本番環境での起動** (ENV=productionを設定):
 
 ```bash
 cd backend
 
-# ビルドと起動
-docker compose up -d --build
+# ENV=productionを指定してビルド・起動
+ENV=production docker compose up -d --build
+
+# または docker-compose.yml に環境変数を追加:
+# environment:
+#   - ENV=production
+#   - PORT=8001
 
 # ログの確認
 docker compose logs -f
 
+# 起動時のログで環境変数の読み込みを確認
+# "[CONFIG] 環境変数を .env.production から読み込みました (ENV=production)" と表示されるはず
+
 # 停止
 docker compose down
+```
+
+**開発環境での起動** (ENV変数なし、デフォルトでdevelopment):
+
+```bash
+cd backend
+
+# ENV変数を設定しない場合、自動的に.env.developmentが読み込まれる
+docker compose up -d --build
+
+# ログで確認
+# "[CONFIG] 環境変数を .env.development から読み込みました (ENV=development)" と表示される
 ```
 
 #### 3. Nginxリバースプロキシとセットで起動
@@ -218,18 +248,34 @@ ls -la Containerfile environment-docker.yml podman-deploy.sh
 
 #### 3. デプロイスクリプトの実行
 
+**本番環境での起動**:
+
 ```bash
 cd backend
 
-# ビルドと起動 (一括実行)
-bash podman-deploy.sh build-run
+# ENV=productionを設定してビルド・起動
+ENV=production bash podman-deploy.sh build-run
 
 # または個別に実行
-bash podman-deploy.sh build
-bash podman-deploy.sh run
+ENV=production bash podman-deploy.sh build
+ENV=production bash podman-deploy.sh run
+
+# コンテナ内部でENV=productionが設定され、.env.productionが読み込まれる
 ```
 
-**注意**: `podman-deploy.sh`は自動的に`Containerfile`と`environment-docker.yml`を使用します。環境変数`CONTAINERFILE`で変更可能です。
+**開発環境での起動** (ENV変数なし):
+
+```bash
+cd backend
+
+# ENV変数を設定しない場合、自動的に.env.developmentが読み込まれる
+bash podman-deploy.sh build-run
+```
+
+**注意**:
+- `podman-deploy.sh`は自動的に`Containerfile`と`environment-docker.yml`を使用します
+- 環境変数`CONTAINERFILE`で変更可能です
+- ENV変数は`podman-deploy.sh`実行時に指定する必要があります（コンテナに渡されます）
 
 #### 4. コンテナの管理
 
@@ -259,8 +305,12 @@ bash podman-deploy.sh remove
 ```bash
 cd backend
 
-# Systemdサービスファイルを生成
-bash podman-deploy.sh systemd
+# ENV=productionを設定してSystemdサービスファイルを生成
+ENV=production bash podman-deploy.sh systemd
+
+# 生成されたサービスファイルを確認
+cat container-paper-cad.service
+# Environment="ENV=production" が含まれていることを確認
 
 # サービスファイルをシステムにインストール
 sudo cp container-paper-cad.service /etc/systemd/system/
@@ -273,9 +323,12 @@ sudo systemctl start container-paper-cad.service
 # ステータス確認
 sudo systemctl status container-paper-cad.service
 
-# ログの確認
+# ログの確認 (.env.production が読み込まれていることを確認)
 sudo journalctl -u container-paper-cad.service -f
+# "[CONFIG] 環境変数を .env.production から読み込みました (ENV=production)" と表示されるはず
 ```
+
+**重要**: Systemdサービスとして登録する場合、ENV変数は`podman-deploy.sh systemd`実行時に指定した値がサービスファイルに埋め込まれます。後から変更する場合は、サービスファイルを再生成してください。
 
 ---
 
@@ -294,17 +347,31 @@ sudo journalctl -u container-paper-cad.service -f
 
 ### バックエンド環境変数
 
-バックエンドの環境変数は `docker-compose.yml` または Podman実行時の `-e` オプションで設定します:
+バックエンドの環境変数は `.env.development`/`.env.production` ファイル、`docker-compose.yml`、または Podman実行時の `-e` オプションで設定します:
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|-------------|-----|
+| `ENV` | 実行環境 (`development`/`production`) | `development` | `production` |
 | `PORT` | APIサーバーのポート番号 | `8001` | `8001` |
 | `FRONTEND_URL` | フロントエンドのオリジンURL (CORS設定) | `http://localhost:3001` | `https://app-paper-cad.soynyuu.com` |
 | `CORS_ALLOW_ALL` | すべてのオリジンを許可するか (開発環境のみ) | `false` | `true` (開発環境), `false` (本番環境) |
 | `PYTHONUNBUFFERED` | Pythonの出力バッファリングを無効化 | - | `1` |
 
+**ENV変数の動作** (v1.1.0以降):
+- `ENV=development` (デフォルト): `.env.development` → `.env` の順で読み込み
+- `ENV=production`: `.env.production` → `.env` の順で読み込み
+- 環境変数ファイルが見つからない場合、直接設定された環境変数を使用
+
+**ローカル開発環境**:
+- `ENV`変数を設定しない場合、自動的に`development`モードで`.env.development`が読み込まれます
+- `.env.development`には`CORS_ALLOW_ALL=true`が設定されており、localhost:8080からのアクセスが許可されます
+
+**本番環境**:
+- `ENV=production`を設定すると`.env.production`が読み込まれます
+- 必ず`CORS_ALLOW_ALL=false`に設定し、`FRONTEND_URL`に実際のドメインを指定してください
+
 **セキュリティ上の注意**:
-- 本番環境では必ず `CORS_ALLOW_ALL=false` に設定してください
+- 本番環境では必ず `ENV=production` と `CORS_ALLOW_ALL=false` を設定してください
 - `FRONTEND_URL` には実際のフロントエンドのドメインを設定してください
 - 追加のオリジンは `backend/config.py` の `origins` リストで設定できます
 
@@ -539,10 +606,30 @@ sudo tail -f /var/log/nginx/paper-cad.error.log
 **問題**: ブラウザのコンソールに CORS エラーが表示される
 
 **解決策**:
-1. `FRONTEND_URL` 環境変数が正しく設定されているか確認
-2. `backend/config.py` の `origins` リストに必要なオリジンが含まれているか確認
-3. 本番環境では `CORS_ALLOW_ALL=false` に設定
-4. バックエンドを再起動
+
+1. **環境設定を確認**:
+   - ローカル開発: `ENV`変数が設定されていないか、`ENV=development`になっているか確認
+   - 本番環境: `ENV=production`が設定されているか確認
+
+2. **適切な.envファイルが読み込まれているか確認**:
+   ```bash
+   # ログで確認
+   docker compose logs | grep CONFIG
+   # または
+   podman logs paper-cad | grep CONFIG
+
+   # 期待される出力:
+   # [CONFIG] 環境変数を .env.development から読み込みました (ENV=development)  # 開発環境
+   # [CONFIG] 環境変数を .env.production から読み込みました (ENV=production)  # 本番環境
+   ```
+
+3. **CORS設定を確認**:
+   - 開発環境: `.env.development`で`CORS_ALLOW_ALL=true`が設定されているか
+   - 本番環境: `.env.production`で`CORS_ALLOW_ALL=false`と`FRONTEND_URL`が正しく設定されているか
+
+4. `backend/config.py` の `origins` リストに必要なオリジンが含まれているか確認
+
+5. バックエンドを再起動して設定を反映
 
 #### 大きなファイルのアップロードが失敗する
 
@@ -625,6 +712,11 @@ git pull origin main
 
 # コンテナを再ビルドして再起動
 docker compose down
+
+# 本番環境
+ENV=production docker compose up -d --build
+
+# 開発環境
 docker compose up -d --build
 ```
 
@@ -643,16 +735,19 @@ sudo systemctl stop container-paper-cad.service
 podman stop paper-cad
 podman rm paper-cad
 
-# 新しいイメージをビルド
-bash podman-deploy.sh build
+# 新しいイメージをビルド (本番環境)
+ENV=production bash podman-deploy.sh build
 
-# Systemdサービスファイルを再生成
-bash podman-deploy.sh systemd
+# Systemdサービスファイルを再生成 (ENV=productionを忘れずに)
+ENV=production bash podman-deploy.sh systemd
 sudo cp container-paper-cad.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # サービスを再起動
 sudo systemctl start container-paper-cad.service
+
+# ログで.env.productionが読み込まれていることを確認
+sudo journalctl -u container-paper-cad.service -f
 ```
 
 ### モニタリング
@@ -709,6 +804,11 @@ npm run deploy:production
 ```bash
 cd backend
 # 使用ファイル: Dockerfile + environment.yml
+
+# 本番環境
+ENV=production docker compose up -d --build
+
+# 開発環境 (ENV変数なしでdevelopmentがデフォルト)
 docker compose up -d --build
 ```
 
@@ -716,10 +816,15 @@ docker compose up -d --build
 ```bash
 cd backend
 # 使用ファイル: Containerfile + environment-docker.yml
-bash podman-deploy.sh build-run
-bash podman-deploy.sh systemd
+
+# 本番環境
+ENV=production bash podman-deploy.sh build-run
+ENV=production bash podman-deploy.sh systemd
 sudo cp container-paper-cad.service /etc/systemd/system/
 sudo systemctl enable --now container-paper-cad.service
+
+# 開発環境 (ENV変数なしでdevelopmentがデフォルト)
+bash podman-deploy.sh build-run
 ```
 
 ### サポート

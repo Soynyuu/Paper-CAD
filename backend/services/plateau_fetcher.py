@@ -1613,11 +1613,19 @@ def search_building_by_id_and_mesh(
     total_buildings = len(buildings)
     print(f"[BUILDING SEARCH] Found {total_buildings} building(s) in mesh {mesh_code}")
 
+    # Debug: Show sample of extracted building IDs
+    print(f"[BUILDING SEARCH] Searching for building_id: '{building_id}'")
+    print(f"[BUILDING SEARCH] Sample building IDs from mesh (first 5):")
+    for i, b in enumerate(buildings[:5], 1):
+        print(f"[BUILDING SEARCH]   {i}. gml_id: {b.gml_id}")
+        print(f"[BUILDING SEARCH]      building_id: {b.building_id or 'None'}")
+
     # Step 5: Find building by ID (exact match on gml_id or building_id)
     target_building = None
     for building in buildings:
         if building.gml_id == building_id or (building.building_id and building.building_id == building_id):
             target_building = building
+            print(f"[BUILDING SEARCH] ✓ Match found: {building.building_id or building.gml_id}")
             break
 
     # Fallback: Try fuzzy match (case-insensitive, strip whitespace)
@@ -1632,8 +1640,18 @@ def search_building_by_id_and_mesh(
                 break
 
     if not target_building:
-        # Collect similar IDs for error message
-        similar_ids = [b.gml_id for b in buildings[:5]]
+        # Collect similar IDs for error message (show both gml_id and building_id)
+        similar_ids = []
+        for b in buildings[:5]:
+            if b.building_id:
+                similar_ids.append(f"{b.building_id} (gml:{b.gml_id[:30]}...)")
+            else:
+                similar_ids.append(f"gml:{b.gml_id[:50]}")
+
+        print(f"[BUILDING SEARCH] ❌ Building not found!")
+        print(f"[BUILDING SEARCH] Searched: '{building_id}'")
+        print(f"[BUILDING SEARCH] Example IDs: {similar_ids[:3]}")
+
         return {
             "success": False,
             "building": None,

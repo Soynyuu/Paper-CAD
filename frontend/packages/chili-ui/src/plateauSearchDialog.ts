@@ -152,8 +152,8 @@ export class PlateauSearchDialog {
             style: { cursor: "pointer", marginRight: "8px" },
             onchange: () => {
                 searchType = "buildingId";
-                queryInput.placeholder = '例: "13101-bldg-2287"';
-                hintText.textContent = "💡 ヒント: 建物IDとメッシュコードの両方が必要です";
+                queryInput.placeholder = '例: "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86"';
+                hintText.textContent = "💡 ヒント: GML IDとメッシュコードの両方が必要です";
                 radiusContainer.style.display = "none"; // 検索半径スライダーを非表示
                 meshCodeContainer.style.display = "block"; // メッシュコード入力を表示
             },
@@ -501,7 +501,7 @@ export class PlateauSearchDialog {
                                         cursor: "pointer",
                                     },
                                 },
-                                "🆔 建物IDで検索",
+                                "🆔 GML IDで検索",
                             ),
                             div(
                                 {
@@ -511,7 +511,7 @@ export class PlateauSearchDialog {
                                         marginTop: "2px",
                                     },
                                 },
-                                "建物IDが分かっている場合",
+                                "GML IDが分かっている場合",
                             ),
                             div(
                                 {
@@ -522,7 +522,7 @@ export class PlateauSearchDialog {
                                         fontStyle: "italic",
                                     },
                                 },
-                                '例: "13101-bldg-2287"',
+                                '例: "bldg_48aa415d-b82f-4e8f-97e1-..."',
                             ),
                         ),
                     ),
@@ -563,7 +563,7 @@ export class PlateauSearchDialog {
                         if (originalBuildingIdChange) {
                             originalBuildingIdChange.call(this, e as Event);
                         }
-                        queryLabel.textContent = "建物ID *";
+                        queryLabel.textContent = "GML ID *";
                     };
 
                     return queryLabel;
@@ -587,17 +587,19 @@ export class PlateauSearchDialog {
                 if (!query.trim()) {
                     const errorMsg =
                         searchType === "buildingId"
-                            ? "建物IDを入力してください"
+                            ? "GML IDを入力してください"
                             : "住所または施設名を入力してください";
                     showInlineError(errorMsg);
                     return;
                 }
 
-                // 建物IDの形式チェック（簡易）
+                // GML IDの形式チェック（簡易）
                 if (searchType === "buildingId") {
-                    const buildingIdPattern = /^\d{5}-bldg-\d+$/;
-                    if (!buildingIdPattern.test(query.trim())) {
-                        showInlineError("建物IDの形式が正しくありません（例: 13101-bldg-2287）");
+                    const gmlIdPattern = /^bldg_[a-zA-Z0-9\-_]+$/;
+                    if (!gmlIdPattern.test(query.trim())) {
+                        showInlineError(
+                            "GML IDの形式が正しくありません（例: bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86）",
+                        );
                         return;
                     }
 

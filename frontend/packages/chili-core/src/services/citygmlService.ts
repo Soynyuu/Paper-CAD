@@ -464,6 +464,63 @@ export class CityGMLService implements ICityGMLService {
         }
     }
 
+    async fetchAndConvertByBuildingIdAndMesh(
+        buildingId: string,
+        meshCode: string,
+        options?: PlateauBuildingIdWithMeshSearchOptions,
+    ): Promise<Result<Blob>> {
+        try {
+            const requestBody = {
+                building_id: buildingId,
+                mesh_code: meshCode,
+                merge_building_parts: options?.mergeBuildingParts ?? false,
+                debug: options?.debug ?? false,
+                precision_mode: "ultra",
+                shape_fix_level: "minimal",
+                method: "solid",
+                auto_reproject: true,
+            };
+
+            const response = await fetch(`${this.baseUrl}/plateau/fetch-by-id-and-mesh`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 404) {
+                    errorMessage = "Building not found in mesh area";
+                } else if (response.status === 400 || response.status === 422) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Invalid request parameters";
+                } else if (response.status === 500) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Conversion failed due to server error";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            const blob = await response.blob();
+            return Result.ok(blob);
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("fetch")) {
+                    return Result.err(
+                        "Cannot connect to PLATEAU fetch and convert service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
+                }
+                return Result.err(error.message);
+            }
+            return Result.err("Unknown error during PLATEAU fetch and convert");
+        }
+    }
+
     private isValidCityGMLFile(file: File): boolean {
         const validExtensions = [".gml", ".xml"];
         const fileName = file.name.toLowerCase();

@@ -470,27 +470,30 @@ export class CityGMLService implements ICityGMLService {
         options?: PlateauBuildingIdWithMeshSearchOptions,
     ): Promise<Result<Blob>> {
         try {
-            const formData = new FormData();
-            formData.append("building_id", buildingId);
-            formData.append("mesh_code", meshCode);
-
-            if (options?.debug !== undefined) {
-                formData.append("debug", options.debug.toString());
-            }
-            if (options?.mergeBuildingParts !== undefined) {
-                formData.append("merge_building_parts", options.mergeBuildingParts.toString());
-            }
+            const requestBody = {
+                building_id: buildingId,
+                mesh_code: meshCode,
+                merge_building_parts: options?.mergeBuildingParts ?? false,
+                debug: options?.debug ?? false,
+                precision_mode: "ultra",
+                shape_fix_level: "minimal",
+                method: "solid",
+                auto_reproject: true,
+            };
 
             const response = await fetch(`${this.baseUrl}/plateau/fetch-by-id-and-mesh`, {
                 method: "POST",
-                body: formData,
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {
                 let errorMessage: string;
                 if (response.status === 404) {
                     errorMessage = "Building not found in mesh area";
-                } else if (response.status === 400) {
+                } else if (response.status === 400 || response.status === 422) {
                     const errorData = await response.json().catch(() => null);
                     errorMessage = errorData?.detail || "Invalid request parameters";
                 } else if (response.status === 500) {

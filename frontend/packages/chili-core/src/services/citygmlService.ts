@@ -23,6 +23,10 @@ export interface ICityGMLService extends IService {
     validateCityGML(cityGmlFile: File): Promise<Result<ValidationResponse>>;
     searchByAddress(query: string, options?: PlateauSearchOptions): Promise<Result<PlateauSearchResponse>>;
     fetchAndConvertByAddress(query: string, options?: PlateauFetchAndConvertOptions): Promise<Result<Blob>>;
+    searchByBuildingId(
+        buildingId: string,
+        options?: PlateauBuildingIdSearchOptions,
+    ): Promise<Result<PlateauBuildingIdSearchResponse>>;
 }
 
 export interface ValidationResponse {
@@ -82,6 +86,21 @@ export interface PlateauFetchAndConvertOptions extends PlateauSearchOptions {
     method?: "auto" | "solid" | "sew" | "extrude";
     autoReproject?: boolean;
     mergeBuildingParts?: boolean; // Merge BuildingParts into single solid (default: false, preserves detail)
+}
+
+export interface PlateauBuildingIdSearchOptions {
+    debug?: boolean;
+}
+
+export interface PlateauBuildingIdSearchResponse {
+    success: boolean;
+    building?: BuildingInfo;
+    municipality_code?: string;
+    municipality_name?: string;
+    citygml_file?: string;
+    total_buildings_in_file?: number;
+    error?: string;
+    error_details?: string;
 }
 
 export class CityGMLService implements ICityGMLService {
@@ -327,6 +346,57 @@ export class CityGMLService implements ICityGMLService {
                 return Result.err(error.message);
             }
             return Result.err("Unknown error during PLATEAU fetch and convert");
+        }
+    }
+
+    async searchByBuildingId(
+        buildingId: string,
+        options?: PlateauBuildingIdSearchOptions,
+    ): Promise<Result<PlateauBuildingIdSearchResponse>> {
+        try {
+            const requestBody = {
+                building_id: buildingId,
+                debug: options?.debug ?? false,
+            };
+
+            const response = await fetch(`${this.baseUrl}/plateau/search-by-id`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 404) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Building not found";
+                } else if (response.status === 400) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Invalid building ID format";
+                } else if (response.status === 500) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Search failed due to server error";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            const data: PlateauBuildingIdSearchResponse = await response.json();
+            return Result.ok(data);
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("fetch")) {
+                    return Result.err(
+                        "Cannot connect to PLATEAU building ID search service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
+                }
+                return Result.err(error.message);
+            }
+            return Result.err("Unknown error during PLATEAU building ID search");
         }
     }
 

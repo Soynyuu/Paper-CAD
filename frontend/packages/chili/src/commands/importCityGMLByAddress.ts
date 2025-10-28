@@ -61,36 +61,78 @@ export class ImportCityGMLByAddress implements ICommand {
                             "showPermanent",
                             async () => {
                                 try {
-                                    console.log("[PLATEAU] Searching for buildings:", {
-                                        query,
-                                        radius: options.radius,
-                                        searchMode: options.searchMode,
-                                        nameFilter: options.nameFilter,
-                                    });
+                                    // 建物IDモードの場合
+                                    if (options.searchMode === "buildingId" && options.buildingId) {
+                                        console.log("[PLATEAU] Searching by building ID:", {
+                                            buildingId: options.buildingId,
+                                        });
 
-                                    const searchResult = await this.cityGMLService.searchByAddress(query, {
-                                        radius: options.radius,
-                                        limit: 20, // Get more candidates for user to choose from
-                                        searchMode: options.searchMode,
-                                        nameFilter: options.nameFilter,
-                                    });
+                                        const searchResult = await this.cityGMLService.searchByBuildingId(
+                                            options.buildingId,
+                                            {
+                                                debug: false,
+                                            },
+                                        );
 
-                                    if (!searchResult.isOk) {
-                                        reject(new Error(searchResult.error));
-                                        return;
+                                        if (!searchResult.isOk) {
+                                            reject(new Error(searchResult.error));
+                                            return;
+                                        }
+
+                                        const response = searchResult.value;
+
+                                        if (!response.success || !response.building) {
+                                            const errorMsg =
+                                                response.error_details ||
+                                                response.error ||
+                                                "Building not found";
+                                            reject(new Error(errorMsg));
+                                            return;
+                                        }
+
+                                        // 1件の建物を配列に変換
+                                        buildings = [response.building];
+
+                                        console.log(
+                                            `[PLATEAU] Found building: ${response.building.gml_id} in ${response.municipality_name}`,
+                                        );
+                                        resolve();
+                                    } else {
+                                        // 住所/施設名検索モード
+                                        console.log("[PLATEAU] Searching for buildings:", {
+                                            query,
+                                            radius: options.radius,
+                                            searchMode: options.searchMode,
+                                            nameFilter: options.nameFilter,
+                                        });
+
+                                        const searchResult = await this.cityGMLService.searchByAddress(
+                                            query,
+                                            {
+                                                radius: options.radius,
+                                                limit: 20, // Get more candidates for user to choose from
+                                                searchMode: options.searchMode,
+                                                nameFilter: options.nameFilter,
+                                            },
+                                        );
+
+                                        if (!searchResult.isOk) {
+                                            reject(new Error(searchResult.error));
+                                            return;
+                                        }
+
+                                        buildings = searchResult.value.buildings;
+
+                                        if (buildings.length === 0) {
+                                            reject(new Error(`No buildings found: ${query}`));
+                                            return;
+                                        }
+
+                                        console.log(
+                                            `[PLATEAU] Found ${buildings.length} building(s), showing selection dialog`,
+                                        );
+                                        resolve();
                                     }
-
-                                    buildings = searchResult.value.buildings;
-
-                                    if (buildings.length === 0) {
-                                        reject(new Error(`No buildings found: ${query}`));
-                                        return;
-                                    }
-
-                                    console.log(
-                                        `[PLATEAU] Found ${buildings.length} building(s), showing selection dialog`,
-                                    );
-                                    resolve();
                                 } catch (error) {
                                     reject(error);
                                 }

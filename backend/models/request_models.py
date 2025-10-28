@@ -112,3 +112,27 @@ class PlateauSearchResponse(BaseModel):
     found_count: int
     search_mode: Optional[str] = "hybrid"  # The search mode that was used
     error: Optional[str] = None
+
+
+class PlateauBuildingIdRequest(BaseModel):
+    """Request to fetch PLATEAU building by building ID"""
+    building_id: str  # Building ID (e.g., "13101-bldg-2287")
+    # Conversion options
+    merge_building_parts: Optional[bool] = False  # Merge BuildingPart into main building
+    precision_mode: Optional[str] = "ultra"  # Precision mode: standard, high, maximum, ultra
+    shape_fix_level: Optional[str] = "minimal"  # Shape fixing: minimal, standard, aggressive, ultra
+    method: Optional[str] = "solid"  # Conversion method
+    auto_reproject: Optional[bool] = True  # Auto-reproject to planar CRS
+    debug: Optional[bool] = False  # Debug mode
+
+
+class PlateauBuildingIdSearchResponse(BaseModel):
+    """Response from building ID search"""
+    success: bool
+    building: Optional[BuildingInfoResponse] = None
+    municipality_code: Optional[str] = None  # Extracted municipality code
+    municipality_name: Optional[str] = None  # Municipality name (if found)
+    citygml_file: Optional[str] = None  # CityGML file name
+    total_buildings_in_file: Optional[int] = None  # Total buildings found in CityGML
+    error: Optional[str] = None
+    error_details: Optional[str] = None  # Detailed error information

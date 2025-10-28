@@ -1165,11 +1165,37 @@ def extract_municipality_code(building_id: str) -> Optional[str]:
     return None
 
 
+def _get_municipality_name_from_code(municipality_code: str) -> Optional[str]:
+    """Get municipality name from code using a mapping of major municipalities.
+
+    For comprehensive coverage, this uses geocoding as fallback.
+    """
+    # Tokyo special wards (23区)
+    tokyo_wards = {
+        "13101": "千代田区", "13102": "中央区", "13103": "港区",
+        "13104": "新宿区", "13105": "文京区", "13106": "台東区",
+        "13107": "墨田区", "13108": "江東区", "13109": "品川区",
+        "13110": "目黒区", "13111": "大田区", "13112": "世田谷区",
+        "13113": "渋谷区", "13114": "中野区", "13115": "杉並区",
+        "13116": "豊島区", "13117": "北区", "13118": "荒川区",
+        "13119": "板橋区", "13120": "練馬区", "13121": "足立区",
+        "13122": "葛飾区", "13123": "江戸川区",
+    }
+
+    return tokyo_wards.get(municipality_code)
+
+
 def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> Optional[Tuple[str, str, int]]:
     """Fetch CityGML data from PLATEAU using municipality code.
 
+    Strategy:
+    1. Get municipality name from code
+    2. Geocode municipality city hall to get coordinates
+    3. Use bbox (r:) search with wide radius to cover the municipality
+    4. Download and combine CityGML files
+
     Args:
-        municipality_code: 5-digit municipality code (e.g., "13101" for Chiyoda-ku)
+        municipality_code: 5-digit municipality code (e.g., "13113" for Shibuya-ku)
         timeout: Request timeout in seconds
 
     Returns:
@@ -1177,15 +1203,44 @@ def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> 
     """
     print(f"[PLATEAU] Fetching CityGML for municipality: {municipality_code}")
 
-    # Try city code endpoint
-    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/c:{municipality_code}"
+    # Step 1: Get municipality name
+    municipality_name = _get_municipality_name_from_code(municipality_code)
+    if not municipality_name:
+        print(f"[PLATEAU] Municipality code {municipality_code} not found in mapping")
+        return None
+
+    print(f"[PLATEAU] Municipality: {municipality_name}")
+
+    # Step 2: Geocode city hall to get representative coordinates
+    geocode_query = f"{municipality_name}役所" if municipality_name else f"{municipality_code}"
+    geocoding = geocode_address(geocode_query)
+
+    if not geocoding:
+        print(f"[PLATEAU] Failed to geocode municipality: {geocode_query}")
+        return None
+
+    print(f"[PLATEAU] Center coordinates: ({geocoding.latitude}, {geocoding.longitude})")
+
+    # Step 3: Use bbox search with wide radius (0.05 degrees ≈ 5km)
+    # This should cover most municipalities
+    radius = 0.05
+    lon1 = geocoding.longitude - radius
+    lat1 = geocoding.latitude - radius
+    lon2 = geocoding.longitude + radius
+    lat2 = geocoding.latitude + radius
+
+    # PLATEAU API bbox endpoint (note: lon,lat order!)
+    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:{lon1},{lat1},{lon2},{lat2}"
+
+    print(f"[PLATEAU] Bbox: ({lat1},{lon1}) to ({lat2},{lon2})")
+    print(f"[PLATEAU] API URL: {api_url}")
 
     try:
         response = requests.get(api_url, timeout=timeout)
         response.raise_for_status()
         catalog_data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"[PLATEAU] API request failed for city code: {e}")
+        print(f"[PLATEAU] API request failed: {e}")
         return None
     except ValueError as e:
         print(f"[PLATEAU] Invalid JSON response: {e}")
@@ -1193,15 +1248,11 @@ def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> 
 
     # Extract building CityGML file URLs
     citygml_urls = []
-    municipality_name = None
-    MAX_FILES = 10  # Limit to prevent memory issues
+    MAX_FILES = 20  # Increase limit for wider search
 
     if "cities" in catalog_data:
         for city in catalog_data["cities"]:
             city_name = city.get("cityName", "Unknown")
-            if not municipality_name:
-                municipality_name = city_name
-
             files = city.get("files", {})
             bldg_files = files.get("bldg", [])
 
@@ -1218,7 +1269,7 @@ def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> 
                 break
 
     if not citygml_urls:
-        print(f"[PLATEAU] No CityGML files found for municipality {municipality_code}")
+        print(f"[PLATEAU] No CityGML files found for {municipality_name}")
         return None
 
     print(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
@@ -1235,12 +1286,12 @@ def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> 
         root = ET.fromstring(combined_xml)
         buildings = root.findall(".//{http://www.opengis.net/citygml/building/2.0}Building")
         total_buildings = len(buildings)
-        print(f"[PLATEAU] Success: Found {total_buildings} total buildings in {municipality_name or municipality_code}")
+        print(f"[PLATEAU] Success: Found {total_buildings} total buildings in {municipality_name}")
     except ET.ParseError as e:
         print(f"[PLATEAU] Failed to parse combined XML: {e}")
         total_buildings = 0
 
-    return (combined_xml, municipality_name or municipality_code, total_buildings)
+    return (combined_xml, municipality_name, total_buildings)
 
 
 def search_building_by_id(building_id: str, debug: bool = False) -> dict:

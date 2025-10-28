@@ -1824,6 +1824,89 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     return None
 
 
+def _diagnose_shape_errors(shape, debug: bool = False) -> dict:
+    """Diagnose detailed errors in a shape using BRepCheck_Analyzer.
+
+    Args:
+        shape: TopoDS_Shape to diagnose
+        debug: Enable debug logging
+
+    Returns:
+        Dictionary with error information
+    """
+    from OCC.Core.BRepCheck import BRepCheck_Analyzer
+    from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SHELL
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopoDS import topods
+    from OCC.Core.BRep import BRep_Tool
+
+    errors = {
+        'is_valid': False,
+        'free_edges_count': 0,
+        'invalid_faces': [],
+        'shell_closed': None,
+        'error_summary': {}
+    }
+
+    try:
+        analyzer = BRepCheck_Analyzer(shape)
+        errors['is_valid'] = analyzer.IsValid()
+
+        if not errors['is_valid']:
+            # Count free edges (edges not fully connected)
+            edge_exp = TopExp_Explorer(shape, TopAbs_EDGE)
+            edge_count = 0
+            free_edge_count = 0
+            while edge_exp.More():
+                edge = topods.Edge(edge_exp.Current())
+                # Free edges are not closed (not shared by 2 faces)
+                try:
+                    if not BRep_Tool.IsClosed(edge, shape):
+                        free_edge_count += 1
+                except:
+                    pass
+                edge_count += 1
+                edge_exp.Next()
+            errors['free_edges_count'] = free_edge_count
+
+            # Check faces
+            face_exp = TopExp_Explorer(shape, TopAbs_FACE)
+            face_count = 0
+            while face_exp.More():
+                face = topods.Face(face_exp.Current())
+                face_analyzer = BRepCheck_Analyzer(face)
+                if not face_analyzer.IsValid():
+                    errors['invalid_faces'].append(face_count)
+                face_count += 1
+                face_exp.Next()
+
+            # Check shell closure
+            shell_exp = TopExp_Explorer(shape, TopAbs_SHELL)
+            if shell_exp.More():
+                shell = topods.Shell(shell_exp.Current())
+                errors['shell_closed'] = BRep_Tool.IsClosed(shell)
+
+            errors['error_summary'] = {
+                'total_edges': edge_count,
+                'free_edges': free_edge_count,
+                'total_faces': face_count,
+                'invalid_faces_count': len(errors['invalid_faces']),
+                'shell_closed': errors['shell_closed']
+            }
+
+            if debug:
+                log(f"[DIAGNOSTICS] Shape validation failed:")
+                log(f"  - Total edges: {edge_count}, Free edges: {free_edge_count}")
+                log(f"  - Total faces: {face_count}, Invalid faces: {len(errors['invalid_faces'])}")
+                log(f"  - Shell closed: {errors['shell_closed']}")
+    except Exception as e:
+        errors['exception'] = str(e)
+        if debug:
+            log(f"[DIAGNOSTICS] Exception during diagnosis: {e}")
+
+    return errors
+
+
 def _is_valid_solid(shape) -> bool:
     """Check if a shape is a valid solid (not just any shape or invalid shell).
 
@@ -1947,6 +2030,23 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                 return solid
             else:
                 log(f"[VALIDATION] ✗ Initial solid validation failed")
+
+                # Diagnose the specific errors
+                if debug:
+                    log(f"\n[PHASE:4.5] ERROR DIAGNOSIS")
+                    diag = _diagnose_shape_errors(solid, debug=True)
+                    if 'exception' not in diag:
+                        log(f"[DIAGNOSIS] Root cause analysis:")
+                        summary = diag.get('error_summary', {})
+                        if summary.get('free_edges', 0) > 0:
+                            log(f"  ⚠ {summary['free_edges']}/{summary['total_edges']} edges are not fully connected (FREE EDGES)")
+                            log(f"     → This means some faces don't share edges properly")
+                        if summary.get('invalid_faces_count', 0) > 0:
+                            log(f"  ⚠ {summary['invalid_faces_count']}/{summary['total_faces']} faces are invalid")
+                        if summary.get('shell_closed') == False:
+                            log(f"  ⚠ Shell is not closed (has gaps or holes)")
+                        log(f"[DIAGNOSIS] This geometry has fundamental topology issues that may not be repairable")
+
                 log(f"\n[PHASE:5] AUTOMATIC REPAIR WITH AUTO-ESCALATION")
 
                 # Define escalation levels (minimal → standard → aggressive → ultra)

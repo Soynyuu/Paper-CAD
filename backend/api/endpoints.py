@@ -992,10 +992,28 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
                 error_details=result.get("error_details")
             )
 
-        # Success: Return building information
+        # Success: Convert BuildingInfo to BuildingInfoResponse
+        building_data = result["building"]
+        building_response = BuildingInfoResponse(
+            building_id=building_data.building_id,
+            gml_id=building_data.gml_id,
+            latitude=building_data.latitude,
+            longitude=building_data.longitude,
+            distance_meters=building_data.distance_meters,
+            height=building_data.height,
+            usage=building_data.usage,
+            measured_height=building_data.measured_height,
+            name=building_data.name,
+            relevance_score=building_data.relevance_score,
+            name_similarity=building_data.name_similarity,
+            match_reason=building_data.match_reason,
+            has_lod2=building_data.has_lod2,
+            has_lod3=building_data.has_lod3
+        )
+
         return PlateauBuildingIdSearchResponse(
             success=True,
-            building=result["building"],
+            building=building_response,
             municipality_code=result["municipality_code"],
             municipality_name=result["municipality_name"],
             citygml_file=result.get("citygml_file"),
@@ -1175,10 +1193,28 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
                 error_details=result.get("error_details")
             )
 
-        # Success: Return building information
+        # Success: Convert BuildingInfo to BuildingInfoResponse
+        building_data = result["building"]
+        building_response = BuildingInfoResponse(
+            building_id=building_data.building_id,
+            gml_id=building_data.gml_id,
+            latitude=building_data.latitude,
+            longitude=building_data.longitude,
+            distance_meters=building_data.distance_meters,
+            height=building_data.height,
+            usage=building_data.usage,
+            measured_height=building_data.measured_height,
+            name=building_data.name,
+            relevance_score=building_data.relevance_score,
+            name_similarity=building_data.name_similarity,
+            match_reason=building_data.match_reason,
+            has_lod2=building_data.has_lod2,
+            has_lod3=building_data.has_lod3
+        )
+
         return PlateauBuildingIdSearchResponse(
             success=True,
-            building=result["building"],
+            building=building_response,
             municipality_code=None,  # Not extracted in mesh-based search
             municipality_name=None,
             citygml_file=None,

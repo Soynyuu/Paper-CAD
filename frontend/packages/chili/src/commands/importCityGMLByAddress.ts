@@ -61,36 +61,136 @@ export class ImportCityGMLByAddress implements ICommand {
                             "showPermanent",
                             async () => {
                                 try {
-                                    console.log("[PLATEAU] Searching for buildings:", {
-                                        query,
-                                        radius: options.radius,
-                                        searchMode: options.searchMode,
-                                        nameFilter: options.nameFilter,
-                                    });
+                                    // 建物IDモードの場合
+                                    if (options.searchMode === "buildingId" && options.buildingId) {
+                                        // メッシュコードがある場合は最適化されたエンドポイントを使用
+                                        if (options.meshCode) {
+                                            console.log(
+                                                "[PLATEAU] Searching by building ID + mesh code (optimized):",
+                                                {
+                                                    buildingId: options.buildingId,
+                                                    meshCode: options.meshCode,
+                                                },
+                                            );
 
-                                    const searchResult = await this.cityGMLService.searchByAddress(query, {
-                                        radius: options.radius,
-                                        limit: 20, // Get more candidates for user to choose from
-                                        searchMode: options.searchMode,
-                                        nameFilter: options.nameFilter,
-                                    });
+                                            const searchResult =
+                                                await this.cityGMLService.searchByBuildingIdAndMesh(
+                                                    options.buildingId,
+                                                    options.meshCode,
+                                                    {
+                                                        debug: false,
+                                                        mergeBuildingParts: options.mergeBuildingParts,
+                                                    },
+                                                );
 
-                                    if (!searchResult.isOk) {
-                                        reject(new Error(searchResult.error));
-                                        return;
+                                            if (!searchResult.isOk) {
+                                                reject(new Error(searchResult.error));
+                                                return;
+                                            }
+
+                                            const response = searchResult.value;
+
+                                            if (!response.success || !response.building) {
+                                                const errorMsg =
+                                                    response.error_details ||
+                                                    response.error ||
+                                                    "Building not found in mesh area";
+                                                reject(new Error(errorMsg));
+                                                return;
+                                            }
+
+                                            // 1件の建物を配列に変換
+                                            buildings = [response.building];
+
+                                            console.log(
+                                                `[PLATEAU] Found building: ${response.building.gml_id} in mesh ${options.meshCode}`,
+                                            );
+                                            resolve();
+                                        } else {
+                                            // メッシュコードなし：従来の市区町村全体検索（後方互換性）
+                                            console.log(
+                                                "[PLATEAU] Searching by building ID (municipality-wide):",
+                                                {
+                                                    buildingId: options.buildingId,
+                                                },
+                                            );
+
+                                            const searchResult =
+                                                await this.cityGMLService.searchByBuildingId(
+                                                    options.buildingId,
+                                                    {
+                                                        debug: false,
+                                                    },
+                                                );
+
+                                            if (!searchResult.isOk) {
+                                                reject(new Error(searchResult.error));
+                                                return;
+                                            }
+
+                                            const response = searchResult.value;
+
+                                            if (!response.success || !response.building) {
+                                                const errorMsg =
+                                                    response.error_details ||
+                                                    response.error ||
+                                                    "Building not found";
+                                                reject(new Error(errorMsg));
+                                                return;
+                                            }
+
+                                            // 1件の建物を配列に変換
+                                            buildings = [response.building];
+
+                                            console.log(
+                                                `[PLATEAU] Found building: ${response.building.gml_id} in ${response.municipality_name}`,
+                                            );
+                                            resolve();
+                                        }
+                                    } else {
+                                        // 住所/施設名検索モード
+                                        console.log("[PLATEAU] Searching for buildings:", {
+                                            query,
+                                            radius: options.radius,
+                                            searchMode: options.searchMode,
+                                            nameFilter: options.nameFilter,
+                                        });
+
+                                        // searchModeの型を明示的に指定（buildingIdはここには来ない）
+                                        const validSearchMode: "distance" | "name" | "hybrid" =
+                                            options.searchMode === "distance" ||
+                                            options.searchMode === "name" ||
+                                            options.searchMode === "hybrid"
+                                                ? options.searchMode
+                                                : "hybrid";
+
+                                        const searchResult = await this.cityGMLService.searchByAddress(
+                                            query,
+                                            {
+                                                radius: options.radius,
+                                                limit: 20, // Get more candidates for user to choose from
+                                                searchMode: validSearchMode,
+                                                nameFilter: options.nameFilter,
+                                            },
+                                        );
+
+                                        if (!searchResult.isOk) {
+                                            reject(new Error(searchResult.error));
+                                            return;
+                                        }
+
+                                        buildings = searchResult.value.buildings;
+
+                                        if (buildings.length === 0) {
+                                            reject(new Error(`No buildings found: ${query}`));
+                                            return;
+                                        }
+
+                                        console.log(
+                                            `[PLATEAU] Found ${buildings.length} building(s), showing selection dialog`,
+                                        );
+                                        resolve();
                                     }
-
-                                    buildings = searchResult.value.buildings;
-
-                                    if (buildings.length === 0) {
-                                        reject(new Error(`No buildings found: ${query}`));
-                                        return;
-                                    }
-
-                                    console.log(
-                                        `[PLATEAU] Found ${buildings.length} building(s), showing selection dialog`,
-                                    );
-                                    resolve();
                                 } catch (error) {
                                     reject(error);
                                 }

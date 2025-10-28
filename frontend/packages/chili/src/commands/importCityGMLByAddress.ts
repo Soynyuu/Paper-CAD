@@ -106,12 +106,20 @@ export class ImportCityGMLByAddress implements ICommand {
                                             nameFilter: options.nameFilter,
                                         });
 
+                                        // searchModeの型を明示的に指定（buildingIdはここには来ない）
+                                        const validSearchMode: "distance" | "name" | "hybrid" =
+                                            options.searchMode === "distance" ||
+                                            options.searchMode === "name" ||
+                                            options.searchMode === "hybrid"
+                                                ? options.searchMode
+                                                : "hybrid";
+
                                         const searchResult = await this.cityGMLService.searchByAddress(
                                             query,
                                             {
                                                 radius: options.radius,
                                                 limit: 20, // Get more candidates for user to choose from
-                                                searchMode: options.searchMode,
+                                                searchMode: validSearchMode,
                                                 nameFilter: options.nameFilter,
                                             },
                                         );

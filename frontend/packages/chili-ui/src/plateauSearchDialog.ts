@@ -488,16 +488,22 @@ export class PlateauSearchDialog {
                     const originalAddressChange = addressRadio.onchange;
                     const originalBuildingIdChange = buildingIdRadio.onchange;
 
-                    facilityRadio.onchange = (e) => {
-                        originalFacilityChange?.(e as Event);
+                    facilityRadio.onchange = function (e) {
+                        if (originalFacilityChange) {
+                            originalFacilityChange.call(this, e as Event);
+                        }
                         queryLabel.textContent = "住所または施設名 *";
                     };
-                    addressRadio.onchange = (e) => {
-                        originalAddressChange?.(e as Event);
+                    addressRadio.onchange = function (e) {
+                        if (originalAddressChange) {
+                            originalAddressChange.call(this, e as Event);
+                        }
                         queryLabel.textContent = "住所または施設名 *";
                     };
-                    buildingIdRadio.onchange = (e) => {
-                        originalBuildingIdChange?.(e as Event);
+                    buildingIdRadio.onchange = function (e) {
+                        if (originalBuildingIdChange) {
+                            originalBuildingIdChange.call(this, e as Event);
+                        }
                         queryLabel.textContent = "建物ID *";
                     };
 

@@ -63,40 +63,90 @@ export class ImportCityGMLByAddress implements ICommand {
                                 try {
                                     // 建物IDモードの場合
                                     if (options.searchMode === "buildingId" && options.buildingId) {
-                                        console.log("[PLATEAU] Searching by building ID:", {
-                                            buildingId: options.buildingId,
-                                        });
+                                        // メッシュコードがある場合は最適化されたエンドポイントを使用
+                                        if (options.meshCode) {
+                                            console.log(
+                                                "[PLATEAU] Searching by building ID + mesh code (optimized):",
+                                                {
+                                                    buildingId: options.buildingId,
+                                                    meshCode: options.meshCode,
+                                                },
+                                            );
 
-                                        const searchResult = await this.cityGMLService.searchByBuildingId(
-                                            options.buildingId,
-                                            {
-                                                debug: false,
-                                            },
-                                        );
+                                            const searchResult =
+                                                await this.cityGMLService.searchByBuildingIdAndMesh(
+                                                    options.buildingId,
+                                                    options.meshCode,
+                                                    {
+                                                        debug: false,
+                                                        mergeBuildingParts: options.mergeBuildingParts,
+                                                    },
+                                                );
 
-                                        if (!searchResult.isOk) {
-                                            reject(new Error(searchResult.error));
-                                            return;
+                                            if (!searchResult.isOk) {
+                                                reject(new Error(searchResult.error));
+                                                return;
+                                            }
+
+                                            const response = searchResult.value;
+
+                                            if (!response.success || !response.building) {
+                                                const errorMsg =
+                                                    response.error_details ||
+                                                    response.error ||
+                                                    "Building not found in mesh area";
+                                                reject(new Error(errorMsg));
+                                                return;
+                                            }
+
+                                            // 1件の建物を配列に変換
+                                            buildings = [response.building];
+
+                                            console.log(
+                                                `[PLATEAU] Found building: ${response.building.gml_id} in mesh ${options.meshCode}`,
+                                            );
+                                            resolve();
+                                        } else {
+                                            // メッシュコードなし：従来の市区町村全体検索（後方互換性）
+                                            console.log(
+                                                "[PLATEAU] Searching by building ID (municipality-wide):",
+                                                {
+                                                    buildingId: options.buildingId,
+                                                },
+                                            );
+
+                                            const searchResult =
+                                                await this.cityGMLService.searchByBuildingId(
+                                                    options.buildingId,
+                                                    {
+                                                        debug: false,
+                                                    },
+                                                );
+
+                                            if (!searchResult.isOk) {
+                                                reject(new Error(searchResult.error));
+                                                return;
+                                            }
+
+                                            const response = searchResult.value;
+
+                                            if (!response.success || !response.building) {
+                                                const errorMsg =
+                                                    response.error_details ||
+                                                    response.error ||
+                                                    "Building not found";
+                                                reject(new Error(errorMsg));
+                                                return;
+                                            }
+
+                                            // 1件の建物を配列に変換
+                                            buildings = [response.building];
+
+                                            console.log(
+                                                `[PLATEAU] Found building: ${response.building.gml_id} in ${response.municipality_name}`,
+                                            );
+                                            resolve();
                                         }
-
-                                        const response = searchResult.value;
-
-                                        if (!response.success || !response.building) {
-                                            const errorMsg =
-                                                response.error_details ||
-                                                response.error ||
-                                                "Building not found";
-                                            reject(new Error(errorMsg));
-                                            return;
-                                        }
-
-                                        // 1件の建物を配列に変換
-                                        buildings = [response.building];
-
-                                        console.log(
-                                            `[PLATEAU] Found building: ${response.building.gml_id} in ${response.municipality_name}`,
-                                        );
-                                        resolve();
                                     } else {
                                         // 住所/施設名検索モード
                                         console.log("[PLATEAU] Searching for buildings:", {

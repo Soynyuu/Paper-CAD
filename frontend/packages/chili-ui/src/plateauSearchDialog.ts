@@ -14,6 +14,7 @@ export interface PlateauSearchOptions {
     searchMode: "distance" | "name" | "hybrid" | "buildingId";
     nameFilter?: string;
     buildingId?: string; // 建物ID直接検索用
+    meshCode?: string; // メッシュコード（8桁、3次メッシュ）
 }
 
 export class PlateauSearchDialog {
@@ -28,6 +29,7 @@ export class PlateauSearchDialog {
 
         // State for form inputs
         let query = "";
+        let meshCode = ""; // メッシュコード（建物IDモード用）
         let searchType: "facility" | "address" | "buildingId" = "facility"; // 検索タイプ
         let radiusMeters = 100; // ~100m default (in meters)
         let radius = 0.001; // degrees
@@ -48,6 +50,27 @@ export class PlateauSearchDialog {
             },
             oninput: (e) => {
                 query = (e.target as HTMLInputElement).value;
+                // エラー表示をクリア
+                if (errorContainer) {
+                    errorContainer.style.display = "none";
+                }
+            },
+        });
+
+        // メッシュコード入力フィールド（建物IDモード専用）
+        const meshCodeInput = input({
+            type: "text",
+            placeholder: "例: 53394511（8桁、3次メッシュ）",
+            style: {
+                width: "100%",
+                padding: "8px",
+                marginTop: "8px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--font-size-sm)",
+            },
+            oninput: (e) => {
+                meshCode = (e.target as HTMLInputElement).value;
                 // エラー表示をクリア
                 if (errorContainer) {
                     errorContainer.style.display = "none";
@@ -89,6 +112,9 @@ export class PlateauSearchDialog {
             }, 5000);
         }
 
+        // メッシュコードコンテナ（後で定義するが、ここで先行宣言）
+        let meshCodeContainer: HTMLElement;
+
         // 検索タイプラジオボタン
         const facilityRadio = input({
             type: "radio",
@@ -101,6 +127,7 @@ export class PlateauSearchDialog {
                 queryInput.placeholder = '例: "東京駅", "渋谷スクランブルスクエア"';
                 hintText.textContent = "💡 ヒント: 施設名で検索すると、建物名マッチングで精度が向上します";
                 radiusContainer.style.display = "block"; // 検索半径スライダーを表示
+                if (meshCodeContainer) meshCodeContainer.style.display = "none"; // メッシュコード入力を非表示
             },
         });
 
@@ -114,6 +141,7 @@ export class PlateauSearchDialog {
                 queryInput.placeholder = '例: "東京都千代田区丸の内1-9-1"';
                 hintText.textContent = "💡 ヒント: 住所検索では、最も近い建物を距離で判定します";
                 radiusContainer.style.display = "block"; // 検索半径スライダーを表示
+                if (meshCodeContainer) meshCodeContainer.style.display = "none"; // メッシュコード入力を非表示
             },
         });
 
@@ -125,8 +153,9 @@ export class PlateauSearchDialog {
             onchange: () => {
                 searchType = "buildingId";
                 queryInput.placeholder = '例: "13101-bldg-2287"';
-                hintText.textContent = "💡 ヒント: 建物IDは {市区町村コード}-bldg-{番号} の形式です";
+                hintText.textContent = "💡 ヒント: 建物IDとメッシュコードの両方が必要です";
                 radiusContainer.style.display = "none"; // 検索半径スライダーを非表示
+                meshCodeContainer.style.display = "block"; // メッシュコード入力を表示
             },
         });
 
@@ -266,6 +295,36 @@ export class PlateauSearchDialog {
                     },
                     "建物パーツを結合（詳細保持優先: OFF推奨）",
                 ),
+            ),
+        );
+
+        // メッシュコードコンテナ（建物IDモード専用、初期は非表示）
+        meshCodeContainer = div(
+            {
+                style: {
+                    display: "none", // 初期は非表示
+                },
+            },
+            label(
+                {
+                    style: {
+                        fontWeight: "var(--font-weight-medium)",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--foreground-color)",
+                    },
+                },
+                "メッシュコード（3次メッシュ） *",
+            ),
+            meshCodeInput,
+            div(
+                {
+                    style: {
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--neutral-600)",
+                        marginTop: "4px",
+                    },
+                },
+                "💡 ヒント: 8桁の数字（例: 53394511）。地図から確認できます",
             ),
         );
 
@@ -513,6 +572,8 @@ export class PlateauSearchDialog {
                 hintText,
                 errorContainer,
             ),
+            // メッシュコード入力（建物IDモード専用）
+            meshCodeContainer,
             // 検索半径スライダー（建物IDモードでは非表示）
             radiusContainer,
             // 詳細設定
@@ -537,6 +598,21 @@ export class PlateauSearchDialog {
                     const buildingIdPattern = /^\d{5}-bldg-\d+$/;
                     if (!buildingIdPattern.test(query.trim())) {
                         showInlineError("建物IDの形式が正しくありません（例: 13101-bldg-2287）");
+                        return;
+                    }
+
+                    // メッシュコードの入力チェック
+                    if (!meshCode.trim()) {
+                        showInlineError("メッシュコードを入力してください");
+                        return;
+                    }
+
+                    // メッシュコードの形式チェック（8桁の数字）
+                    const meshCodePattern = /^\d{8}$/;
+                    if (!meshCodePattern.test(meshCode.trim())) {
+                        showInlineError(
+                            "メッシュコードの形式が正しくありません（8桁の数字を入力してください）",
+                        );
                         return;
                     }
                 }
@@ -566,6 +642,7 @@ export class PlateauSearchDialog {
                                 searchMode: "buildingId" as const,
                                 nameFilter: undefined,
                                 buildingId: query.trim(), // ✅ 建物IDを設定
+                                meshCode: meshCode.trim(), // ✅ メッシュコードを設定
                             }),
                 };
 

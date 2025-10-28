@@ -126,6 +126,19 @@ class PlateauBuildingIdRequest(BaseModel):
     debug: Optional[bool] = False  # Debug mode
 
 
+class PlateauBuildingIdWithMeshRequest(BaseModel):
+    """Request to fetch PLATEAU building by building ID + mesh code (optimized)"""
+    building_id: str  # Building ID (e.g., "13101-bldg-2287")
+    mesh_code: str  # 3rd mesh code (8 digits, 1km area, e.g., "53394511")
+    # Conversion options
+    merge_building_parts: Optional[bool] = False  # Merge BuildingPart into main building
+    precision_mode: Optional[str] = "ultra"  # Precision mode: standard, high, maximum, ultra
+    shape_fix_level: Optional[str] = "minimal"  # Shape fixing: minimal, standard, aggressive, ultra
+    method: Optional[str] = "solid"  # Conversion method
+    auto_reproject: Optional[bool] = True  # Auto-reproject to planar CRS
+    debug: Optional[bool] = False  # Debug mode
+
+
 class PlateauBuildingIdSearchResponse(BaseModel):
     """Response from building ID search"""
     success: bool

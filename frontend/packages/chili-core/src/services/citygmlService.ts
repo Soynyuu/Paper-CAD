@@ -27,6 +27,11 @@ export interface ICityGMLService extends IService {
         buildingId: string,
         options?: PlateauBuildingIdSearchOptions,
     ): Promise<Result<PlateauBuildingIdSearchResponse>>;
+    searchByBuildingIdAndMesh(
+        buildingId: string,
+        meshCode: string,
+        options?: PlateauBuildingIdWithMeshSearchOptions,
+    ): Promise<Result<PlateauBuildingIdSearchResponse>>;
 }
 
 export interface ValidationResponse {
@@ -90,6 +95,11 @@ export interface PlateauFetchAndConvertOptions extends PlateauSearchOptions {
 
 export interface PlateauBuildingIdSearchOptions {
     debug?: boolean;
+}
+
+export interface PlateauBuildingIdWithMeshSearchOptions {
+    debug?: boolean;
+    mergeBuildingParts?: boolean;
 }
 
 export interface PlateauBuildingIdSearchResponse {
@@ -397,6 +407,60 @@ export class CityGMLService implements ICityGMLService {
                 return Result.err(error.message);
             }
             return Result.err("Unknown error during PLATEAU building ID search");
+        }
+    }
+
+    async searchByBuildingIdAndMesh(
+        buildingId: string,
+        meshCode: string,
+        options?: PlateauBuildingIdWithMeshSearchOptions,
+    ): Promise<Result<PlateauBuildingIdSearchResponse>> {
+        try {
+            const requestBody = {
+                building_id: buildingId,
+                mesh_code: meshCode,
+                debug: options?.debug ?? false,
+                merge_building_parts: options?.mergeBuildingParts ?? false,
+            };
+
+            const response = await fetch(`${this.baseUrl}/plateau/search-by-id-and-mesh`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 404) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Building not found in mesh area";
+                } else if (response.status === 400) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Invalid building ID or mesh code format";
+                } else if (response.status === 500) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.error_details || "Search failed due to server error";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            const data: PlateauBuildingIdSearchResponse = await response.json();
+            return Result.ok(data);
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("fetch")) {
+                    return Result.err(
+                        "Cannot connect to PLATEAU building ID + mesh code search service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
+                }
+                return Result.err(error.message);
+            }
+            return Result.err("Unknown error during PLATEAU building ID + mesh code search");
         }
     }
 

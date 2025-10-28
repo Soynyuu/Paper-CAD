@@ -1529,13 +1529,14 @@ def search_building_by_id_and_mesh(
     mesh_code: str,
     debug: bool = False
 ) -> dict:
-    """Search for a specific building by building ID + mesh code (optimized).
+    """Search for a specific building by GML ID + mesh code (optimized).
 
     This function is much faster than search_building_by_id() because it only
     downloads 1km² area instead of the entire municipality.
 
     Args:
-        building_id: Building ID (e.g., "13101-bldg-2287")
+        building_id: GML ID (e.g., "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86")
+                     or legacy building ID (e.g., "13101-bldg-2287")
         mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
         debug: Enable debug logging
 
@@ -1552,7 +1553,7 @@ def search_building_by_id_and_mesh(
         }
 
     Example:
-        >>> result = search_building_by_id_and_mesh("13101-bldg-2287", "53394511")
+        >>> result = search_building_by_id_and_mesh("bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86", "53394511")
         >>> if result["success"]:
         ...     print(f"Found: {result['building'].name}")
     """
@@ -1572,8 +1573,10 @@ def search_building_by_id_and_mesh(
             "error_details": f"Expected 8-digit number, got: {mesh_code}"
         }
 
-    # Step 2: Validate building ID format
-    if not building_id or "-bldg-" not in building_id:
+    # Step 2: Validate building ID format (accept both building ID and GML ID)
+    # GML ID format: bldg_uuid (e.g., bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86)
+    # Building ID format: 13101-bldg-2287 (legacy, rarely exists in actual data)
+    if not building_id or not (building_id.startswith("bldg_") or "-bldg-" in building_id):
         return {
             "success": False,
             "building": None,
@@ -1581,7 +1584,7 @@ def search_building_by_id_and_mesh(
             "citygml_xml": None,
             "total_buildings_in_mesh": None,
             "error": "Invalid building ID format",
-            "error_details": f"Expected format: {{municipality}}-bldg-{{number}}, got: {building_id}"
+            "error_details": f"Expected GML ID (bldg_...) or building ID (xxxxx-bldg-nnn), got: {building_id}"
         }
 
     # Step 3: Fetch CityGML for the specified mesh code
@@ -1613,11 +1616,19 @@ def search_building_by_id_and_mesh(
     total_buildings = len(buildings)
     print(f"[BUILDING SEARCH] Found {total_buildings} building(s) in mesh {mesh_code}")
 
+    # Debug: Show sample of extracted building IDs
+    print(f"[BUILDING SEARCH] Searching for building_id: '{building_id}'")
+    print(f"[BUILDING SEARCH] Sample building IDs from mesh (first 5):")
+    for i, b in enumerate(buildings[:5], 1):
+        print(f"[BUILDING SEARCH]   {i}. gml_id: {b.gml_id}")
+        print(f"[BUILDING SEARCH]      building_id: {b.building_id or 'None'}")
+
     # Step 5: Find building by ID (exact match on gml_id or building_id)
     target_building = None
     for building in buildings:
         if building.gml_id == building_id or (building.building_id and building.building_id == building_id):
             target_building = building
+            print(f"[BUILDING SEARCH] ✓ Match found: {building.building_id or building.gml_id}")
             break
 
     # Fallback: Try fuzzy match (case-insensitive, strip whitespace)
@@ -1632,8 +1643,18 @@ def search_building_by_id_and_mesh(
                 break
 
     if not target_building:
-        # Collect similar IDs for error message
-        similar_ids = [b.gml_id for b in buildings[:5]]
+        # Collect similar IDs for error message (show both gml_id and building_id)
+        similar_ids = []
+        for b in buildings[:5]:
+            if b.building_id:
+                similar_ids.append(f"{b.building_id} (gml:{b.gml_id[:30]}...)")
+            else:
+                similar_ids.append(f"gml:{b.gml_id[:50]}")
+
+        print(f"[BUILDING SEARCH] ❌ Building not found!")
+        print(f"[BUILDING SEARCH] Searched: '{building_id}'")
+        print(f"[BUILDING SEARCH] Example IDs: {similar_ids[:3]}")
+
         return {
             "success": False,
             "building": None,

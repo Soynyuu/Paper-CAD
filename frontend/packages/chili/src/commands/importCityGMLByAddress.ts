@@ -10,6 +10,7 @@ import {
     IApplication,
     ICommand,
     PubSub,
+    Result,
     Transaction,
 } from "chili-core";
 import {
@@ -259,19 +260,54 @@ export class ImportCityGMLByAddress implements ICommand {
                                         query,
                                         buildingIds: selectedIds,
                                         count: selectedIds.length,
+                                        searchMode: options.searchMode,
                                     });
 
-                                    // Fetch and convert with specific building IDs
-                                    const stepResult = await this.cityGMLService.fetchAndConvertByAddress(
-                                        query,
-                                        {
-                                            radius: options.radius,
-                                            buildingIds: selectedIds, // Use selected IDs
-                                            autoReproject: options.autoReproject,
-                                            method: "solid",
-                                            mergeBuildingParts: options.mergeBuildingParts,
-                                        },
-                                    );
+                                    let stepResult;
+
+                                    // GML ID検索の場合は、fetch-by-id-and-meshエンドポイントを使用
+                                    if (options.searchMode === "buildingId" && options.meshCode) {
+                                        // 複数の建物を順次変換してマージ
+                                        const stepBlobs: Blob[] = [];
+                                        for (const buildingId of selectedIds) {
+                                            console.log(`[PLATEAU] Converting building: ${buildingId}`);
+                                            const result =
+                                                await this.cityGMLService.fetchAndConvertByBuildingIdAndMesh(
+                                                    buildingId,
+                                                    options.meshCode,
+                                                    {
+                                                        debug: false,
+                                                        mergeBuildingParts: options.mergeBuildingParts,
+                                                    },
+                                                );
+
+                                            if (!result.isOk) {
+                                                PubSub.default.pub(
+                                                    "showToast",
+                                                    "error.plateau.conversionFailed:{0}",
+                                                    result.error,
+                                                );
+                                                return;
+                                            }
+
+                                            stepBlobs.push(result.value);
+                                        }
+
+                                        // 複数のSTEPファイルをマージ（最初のファイルのみ使用、または将来的に結合）
+                                        stepResult = Result.ok(stepBlobs[0]);
+                                    } else {
+                                        // 住所/施設名検索の場合は、従来のエンドポイントを使用
+                                        stepResult = await this.cityGMLService.fetchAndConvertByAddress(
+                                            query,
+                                            {
+                                                radius: options.radius,
+                                                buildingIds: selectedIds, // Use selected IDs
+                                                autoReproject: options.autoReproject,
+                                                method: "solid",
+                                                mergeBuildingParts: options.mergeBuildingParts,
+                                            },
+                                        );
+                                    }
 
                                     if (!stepResult.isOk) {
                                         PubSub.default.pub(

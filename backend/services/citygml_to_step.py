@@ -3226,6 +3226,78 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
     return sewn
 
 
+def _compute_bounding_box(shape: "TopoDS_Shape") -> Tuple[float, float, float, float, float, float]:
+    """Compute bounding box of a shape.
+
+    Args:
+        shape: TopoDS_Shape to analyze
+
+    Returns:
+        Tuple of (xmin, ymin, zmin, xmax, ymax, zmax)
+    """
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+
+    bbox = Bnd_Box()
+    brepbndlib.Add(shape, bbox)
+
+    if bbox.IsVoid():
+        return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+    return (xmin, ymin, zmin, xmax, ymax, zmax)
+
+
+def _log_geometry_diagnostics(shapes: List["TopoDS_Shape"], debug: bool = False) -> None:
+    """Log detailed geometry diagnostics including bounding boxes and positions.
+
+    Args:
+        shapes: List of shapes to analyze
+        debug: Enable debug output
+    """
+    if not shapes or not debug:
+        return
+
+    log(f"\n{'='*80}")
+    log(f"[DIAGNOSTICS] GEOMETRY ANALYSIS")
+    log(f"{'='*80}")
+
+    for i, shape in enumerate(shapes):
+        xmin, ymin, zmin, xmax, ymax, zmax = _compute_bounding_box(shape)
+
+        # Calculate size and center
+        width = xmax - xmin
+        height = zmax - zmin
+        depth = ymax - ymin
+        center_x = (xmin + xmax) / 2
+        center_y = (ymin + ymax) / 2
+        center_z = (zmin + zmax) / 2
+
+        # Distance from origin
+        distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+
+        log(f"\n[SHAPE {i+1}/{len(shapes)}] Bounding box analysis:")
+        log(f"  Position (center): ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"  Size: {width:.3f} × {depth:.3f} × {height:.3f} (W×D×H)")
+        log(f"  Range X: [{xmin:.3f}, {xmax:.3f}]")
+        log(f"  Range Y: [{ymin:.3f}, {ymax:.3f}]")
+        log(f"  Range Z: [{zmin:.3f}, {zmax:.3f}]")
+        log(f"  Distance from origin: {distance_from_origin:.3f}")
+
+        # Diagnostic warnings
+        if distance_from_origin > 100000:  # > 100km from origin
+            log(f"  ⚠ WARNING: Geometry is very far from origin ({distance_from_origin/1000:.1f} km)")
+            log(f"    This may indicate coordinate transformation issues")
+
+        if max(width, depth, height) < 1:  # < 1 meter
+            log(f"  ⚠ WARNING: Geometry is very small (< 1 unit)")
+            log(f"    This may indicate scale issues (e.g., using degrees instead of meters)")
+
+        if max(width, depth, height) > 1000000:  # > 1000 km
+            log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
+            log(f"    This may indicate coordinate transformation issues")
+
+
 def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, debug: bool = False) -> Tuple[bool, str]:
     """Optimized STEP export with proper configuration.
 
@@ -3286,16 +3358,37 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, deb
             log(f"Warning: STEP writer configuration failed: {e}")
         # Continue with default settings
 
+    log(f"[STEP EXPORT] Using local STEP writer...")
+    log(f"[STEP EXPORT] Configuration: AP214CD schema, MM units, 1e-6 precision")
+
     writer = STEPControl_Writer()
+
+    log(f"[STEP EXPORT] Transferring geometry to STEP format...")
     tr = writer.Transfer(compound, STEPControl_AsIs)
     if tr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Transfer failed with status: {tr}")
         return False, f"STEP transfer failed: {tr}"
+    log(f"[STEP EXPORT] ✓ Transfer successful")
+
+    log(f"[STEP EXPORT] Writing to file: {out_step}")
     wr = writer.Write(out_step)
     if wr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Write failed with status: {wr}")
         return False, f"STEP write failed: {wr}"
 
-    if debug:
-        log(f"STEP file written successfully: {out_step}")
+    # Verify file was created and get size
+    if os.path.exists(out_step):
+        file_size = os.path.getsize(out_step)
+        log(f"[STEP EXPORT] ✓ File written successfully")
+        log(f"  - File: {out_step}")
+        log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+
+        if file_size == 0:
+            log(f"[STEP EXPORT] ⚠ WARNING: File size is 0 bytes (empty file)")
+            return False, "STEP file created but is empty"
+    else:
+        log(f"[STEP EXPORT] ⚠ WARNING: Write reported success but file not found")
+        return False, "STEP write completed but file not found"
 
     return True, out_step
 
@@ -3610,34 +3703,64 @@ def export_step_from_citygml(
             log(f"  Sample of actual IDs in index: {sample_ids}")
 
     # Detect source CRS and sample coordinates
+    log(f"\n{'='*80}")
+    log(f"[PHASE:1.5] COORDINATE SYSTEM DETECTION")
+    log(f"{'='*80}")
+
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)
     src = source_crs or detected_crs or "EPSG:6697"
-    
+
+    if debug:
+        src_info = get_crs_info(src) if src else {}
+        log(f"[CRS] Source coordinate system:")
+        log(f"  - CRS code: {src}")
+        log(f"  - CRS name: {src_info.get('name', 'Unknown')}")
+        if sample_lat is not None and sample_lon is not None:
+            log(f"  - Sample coordinates: lat={sample_lat:.6f}°, lon={sample_lon:.6f}°")
+        else:
+            log(f"  - Sample coordinates: Not available")
+        log(f"  - Is geographic CRS: {is_geographic_crs(src)}")
+
     # Auto-select projection if needed
     if not reproject_to and auto_reproject:
         if is_geographic_crs(src):
             reproject_to = recommend_projected_crs(src, sample_lat, sample_lon)
-            if debug and reproject_to:
-                src_info = get_crs_info(src)
-                tgt_info = get_crs_info(reproject_to)
-                log(f"Auto-reprojection: Detected geographic CRS {src} ({src_info['name']})")
-                log(f"  Sample coordinates: lat={sample_lat:.6f}, lon={sample_lon:.6f}" if sample_lat else "")
-                log(f"  Auto-selected projection: {reproject_to} ({tgt_info['name']})")
-                if 'regions' in tgt_info:
-                    log(f"  Coverage area: {tgt_info['regions']}")
+            if debug:
+                if reproject_to:
+                    tgt_info = get_crs_info(reproject_to)
+                    log(f"\n[CRS] Auto-reprojection selected:")
+                    log(f"  - Target CRS: {reproject_to}")
+                    log(f"  - Target name: {tgt_info.get('name', 'Unknown')}")
+                    if 'regions' in tgt_info:
+                        log(f"  - Coverage area: {tgt_info['regions']}")
+                else:
+                    log(f"\n[CRS] ⚠ WARNING: Geographic CRS detected but no suitable projection found")
+                    log(f"  - Geometry will use raw geographic coordinates (degrees)")
+                    log(f"  - This may cause scale/position issues in STEP output")
     
     # Build transformers if requested
     xy_transform = None
     xyz_transform = None
     if reproject_to:
-        if debug:
-            log(f"Reprojecting from {src} to {reproject_to}")
+        log(f"\n[CRS] Setting up coordinate transformation:")
+        log(f"  - From: {src}")
+        log(f"  - To: {reproject_to}")
         try:
             xy_transform = _make_xy_transformer(src, reproject_to)
             xyz_transform = _make_xyz_transformer(src, reproject_to)
+            log(f"  - ✓ Transformation setup successful")
         except Exception as e:
+            log(f"  - ✗ Transformation setup failed: {e}")
             close_log_file()  # Close log before returning (Issue #96)
             return False, f"Reprojection setup failed: {e}"
+    else:
+        if debug:
+            log(f"\n[CRS] ⚠ WARNING: No coordinate transformation will be applied")
+            log(f"  - Using source CRS as-is: {src}")
+            if is_geographic_crs(src):
+                log(f"  - ⚠ CRITICAL: Geographic coordinates (lat/lon degrees) will be used directly")
+                log(f"  - This will likely cause severe scale/position issues in STEP output")
+                log(f"  - Recommendation: Enable auto_reproject or specify a projected CRS")
 
     shapes: List[TopoDS_Shape] = []
     tried_solid = False
@@ -3824,6 +3947,9 @@ def export_step_from_citygml(
     for shape_type, count in sorted(shape_type_counts.items()):
         log(f"    - Type {shape_type}: {count} shape(s)")
 
+    # Log geometry diagnostics (bounding boxes, positions, sizes)
+    _log_geometry_diagnostics(shapes, debug=debug)
+
     if valid_count == 0:
         log(f"\n[ERROR] ✗ All extracted shapes are topologically invalid")
         log(f"[ERROR] STEP export will likely fail")
@@ -3835,21 +3961,34 @@ def export_step_from_citygml(
         log(f"⚠ WARNING: STEP export may partially fail or produce incorrect geometry")
 
     log(f"\n[INFO] Proceeding to STEP export with {len(shapes)} shape(s)...")
+    log(f"[INFO] Target file: {out_step}")
     log(f"")
 
     # Prefer core STEPExporter if importable, else fallback local
     if STEPExporter is not None:
         try:
+            log(f"[STEP EXPORT] Using core STEPExporter...")
             exporter = STEPExporter()
             res = exporter.export_compound(shapes, out_step)
             if not res.success:
+                log(f"[STEP EXPORT] ✗ Export failed: {res.error_message}")
                 close_log_file()  # Close log before returning (Issue #96)
                 return False, f"STEP export failed: {res.error_message}"
+
+            # Verify file was created
+            if os.path.exists(out_step):
+                file_size = os.path.getsize(out_step)
+                log(f"[STEP EXPORT] ✓ Export successful")
+                log(f"  - File: {out_step}")
+                log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+            else:
+                log(f"[STEP EXPORT] ⚠ WARNING: Export reported success but file not found")
+
             close_log_file()  # Close log after successful export (Issue #96)
             return True, out_step
         except Exception as e:
-            if debug:
-                log(f"STEPExporter failed, falling back to local writer: {e}")
+            log(f"[STEP EXPORT] ✗ STEPExporter exception: {e}")
+            log(f"[STEP EXPORT] Falling back to local writer...")
             # continue to fallback
 
     result = _export_step_compound_local(shapes, out_step, debug=debug)

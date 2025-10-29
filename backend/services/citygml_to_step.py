@@ -2345,6 +2345,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     log(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
                 if exterior_faces_solid:
+                    # Re-center faces to prevent numerical precision loss
+                    exterior_faces_solid, offset = _recenter_faces(exterior_faces_solid, debug=debug)
+                    # Re-center interior shells as well
+                    recentered_interior = []
+                    for int_faces in interior_shells_faces:
+                        int_faces_recentered, _ = _recenter_faces(int_faces, debug=False)
+                        recentered_interior.append(int_faces_recentered)
+                    interior_shells_faces = recentered_interior
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
@@ -2388,6 +2397,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Re-center faces to prevent numerical precision loss
+                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
+
                 # Build solid from collected faces
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
@@ -2431,6 +2443,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Re-center faces to prevent numerical precision loss
+                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
@@ -2480,6 +2495,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     log(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
                 if exterior_faces_solid:
+                    # Re-center faces to prevent numerical precision loss
+                    exterior_faces_solid, offset = _recenter_faces(exterior_faces_solid, debug=debug)
+                    # Re-center interior shells as well
+                    recentered_interior = []
+                    for int_faces in interior_shells_faces:
+                        int_faces_recentered, _ = _recenter_faces(int_faces, debug=False)  # Don't log for each interior
+                        recentered_interior.append(int_faces_recentered)
+                    interior_shells_faces = recentered_interior
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
@@ -2594,6 +2618,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Re-center faces to prevent numerical precision loss
+                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
+
                 # Build solid from collected faces
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
@@ -2641,6 +2668,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Re-center faces to prevent numerical precision loss
+                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
@@ -2775,6 +2805,9 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
 
             if exterior_faces:
+                # Re-center faces to prevent numerical precision loss (critical for PLATEAU coordinates)
+                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
@@ -2816,6 +2849,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 )
 
                 if exterior_faces_lod1:
+                    # Re-center faces to prevent numerical precision loss
+                    exterior_faces_lod1, offset = _recenter_faces(exterior_faces_lod1, debug=debug)
+                    # Re-center interior shells as well
+                    recentered_interior = []
+                    for int_faces in interior_shells_lod1:
+                        int_faces_recentered, _ = _recenter_faces(int_faces, debug=False)
+                        recentered_interior.append(int_faces_recentered)
+                    interior_shells_lod1 = recentered_interior
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
@@ -3296,6 +3338,87 @@ def _log_geometry_diagnostics(shapes: List["TopoDS_Shape"], debug: bool = False)
         if max(width, depth, height) > 1000000:  # > 1000 km
             log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
             log(f"    This may indicate coordinate transformation issues")
+
+
+def _recenter_faces(faces: List["TopoDS_Face"], debug: bool = False) -> Tuple[List["TopoDS_Face"], Tuple[float, float, float]]:
+    """Re-center faces by translating them to place bounding box center at origin.
+
+    This prevents numerical precision loss when face coordinates are far from origin
+    (e.g., PLATEAU projected plane coordinates ~10-100km from origin).
+
+    Args:
+        faces: List of TopoDS_Face objects to re-center
+        debug: Enable debug output
+
+    Returns:
+        Tuple of (re-centered faces, offset (cx, cy, cz))
+    """
+    if not faces:
+        return faces, (0.0, 0.0, 0.0)
+
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+    from OCC.Core.gp import gp_Trsf, gp_Vec
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+    # Calculate combined bounding box of all faces
+    combined_bbox = Bnd_Box()
+    for face in faces:
+        if face is not None and not face.IsNull():
+            brepbndlib.Add(face, combined_bbox)
+
+    if combined_bbox.IsVoid():
+        if debug:
+            log("[RECENTER] ⚠ Bounding box is void, skipping re-centering")
+        return faces, (0.0, 0.0, 0.0)
+
+    # Get bounding box extents
+    xmin, ymin, zmin, xmax, ymax, zmax = combined_bbox.Get()
+
+    # Calculate center
+    center_x = (xmin + xmax) / 2.0
+    center_y = (ymin + ymax) / 2.0
+    center_z = (zmin + zmax) / 2.0
+
+    # Only re-center if significantly far from origin (> 1 meter)
+    distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+    if distance_from_origin < 1.0:
+        if debug:
+            log(f"[RECENTER] Geometry already near origin ({distance_from_origin:.3f} mm), skipping re-centering")
+        return faces, (0.0, 0.0, 0.0)
+
+    if debug:
+        log(f"\n{'='*80}")
+        log(f"[RECENTER] RE-CENTERING GEOMETRY TO ORIGIN")
+        log(f"{'='*80}")
+        log(f"[RECENTER] Original bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"[RECENTER] Distance from origin: {distance_from_origin:.3f} mm ({distance_from_origin/1000:.3f} m)")
+        log(f"[RECENTER] Re-centering {len(faces)} faces by translating by (-{center_x:.3f}, -{center_y:.3f}, -{center_z:.3f})")
+
+    # Create translation transformation
+    transformation = gp_Trsf()
+    transformation.SetTranslation(gp_Vec(-center_x, -center_y, -center_z))
+
+    # Transform all faces
+    recentered_faces = []
+    for face in faces:
+        if face is not None and not face.IsNull():
+            transformer = BRepBuilderAPI_Transform(face, transformation, False)  # False = don't copy
+            transformed_face = transformer.Shape()
+            if not transformed_face.IsNull():
+                from OCC.Core.TopoDS import topods
+                recentered_faces.append(topods.Face(transformed_face))
+            else:
+                # If transformation failed, keep original
+                recentered_faces.append(face)
+        else:
+            recentered_faces.append(face)
+
+    if debug:
+        log(f"[RECENTER] ✓ Successfully re-centered {len(recentered_faces)} faces")
+        log(f"[RECENTER] Offset applied: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+
+    return recentered_faces, (center_x, center_y, center_z)
 
 
 def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, debug: bool = False) -> Tuple[bool, str]:

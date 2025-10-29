@@ -2235,60 +2235,74 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     exterior_faces: List[TopoDS_Face] = []
     prefer_bounded_by = False  # Flag to skip intermediate strategies if boundedBy is preferred
 
-    # Always create log file for conversion tracking (not just in debug mode)
+    # Check if log file is already open (from parent call or previous Building/BuildingPart)
+    # If so, reuse it instead of creating a new one
+    existing_log_file = getattr(_thread_local, 'log_file', None)
+    log_file_created_here = False  # Track whether this function created the log file
+
+    # Create log file only if one doesn't already exist
     log_file = None
-    log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
-    os.makedirs(log_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
-    log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
-    try:
-        log_file = open(log_path, "w", encoding="utf-8")
-        # Write comprehensive log header with legend for LLM analysis
-        log_file.write(f"{'='*80}\n")
-        log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
-        log_file.write(f"{'='*80}\n")
-        log_file.write(f"Building ID: {elem_id}\n")
-        log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
-        log_file.write(f"Precision mode: {precision_mode}\n")
-        log_file.write(f"Shape fix level: {shape_fix_level}\n")
-        log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
-        log_file.write(f"{'='*80}\n\n")
+    if existing_log_file is None:
+        # Always create log file for conversion tracking (not just in debug mode)
+        log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
+        log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+        try:
+            log_file = open(log_path, "w", encoding="utf-8")
+            log_file_created_here = True  # Mark that we created the log file
+            # Write comprehensive log header with legend for LLM analysis
+            log_file.write(f"{'='*80}\n")
+            log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
+            log_file.write(f"{'='*80}\n")
+            log_file.write(f"Building ID: {elem_id}\n")
+            log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            log_file.write(f"Precision mode: {precision_mode}\n")
+            log_file.write(f"Shape fix level: {shape_fix_level}\n")
+            log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
+            log_file.write(f"{'='*80}\n\n")
 
-        # Log Legend for LLM Analysis (凡例)
-        log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
-        log_file.write(f"{'-'*80}\n")
-        log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
-        log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
-        log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
-        log_file.write(f"  ✗ FAILED        = Operation failed\n")
-        log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
-        log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
-        log_file.write(f"  ├─              = Child operation (subprocess)\n")
-        log_file.write(f"  └─              = Final result of operation\n")
-        log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
-        log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
-        log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
-        log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
-        log_file.write(f"  [INFO]          = Informational message\n")
-        log_file.write(f"{'-'*80}\n\n")
+            # Log Legend for LLM Analysis (凡例)
+            log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
+            log_file.write(f"{'-'*80}\n")
+            log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
+            log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
+            log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
+            log_file.write(f"  ✗ FAILED        = Operation failed\n")
+            log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
+            log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
+            log_file.write(f"  ├─              = Child operation (subprocess)\n")
+            log_file.write(f"  └─              = Final result of operation\n")
+            log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
+            log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
+            log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
+            log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
+            log_file.write(f"  [INFO]          = Informational message\n")
+            log_file.write(f"{'-'*80}\n\n")
 
-        log_file.write(f"PROCESSING PHASES:\n")
-        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
-        log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
-        log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
-        log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
-        log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
-        log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
-        log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
-        log_file.write(f"{'='*80}\n\n")
-        log(f"[CONVERSION] Logging to: {log_path}")
-        # Set log file for this thread (now all functions can use global log())
-        set_log_file(log_file)
-    except Exception as e:
-        log(f"[CONVERSION] Warning: Failed to create log file: {e}")
-        log_file = None
-        set_log_file(None)
+            log_file.write(f"PROCESSING PHASES:\n")
+            log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+            log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
+            log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
+            log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
+            log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
+            log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
+            log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
+            log_file.write(f"{'='*80}\n\n")
+            log(f"[CONVERSION] Logging to: {log_path}")
+            # Set log file for this thread (now all functions can use global log())
+            set_log_file(log_file)
+        except Exception as e:
+            log(f"[CONVERSION] Warning: Failed to create log file: {e}")
+            log_file = None
+            log_file_created_here = False
+            set_log_file(None)
+    else:
+        # Reuse existing log file from parent call
+        if debug:
+            log(f"[CONVERSION] Reusing existing log file for element: {elem_id}")
+        log_file = existing_log_file
 
     # Wrap entire conversion in try-finally to ensure log cleanup on exception
     try:
@@ -2768,9 +2782,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 if result is not None and _is_valid_solid(result):
                     if debug:
                         log(f"[LOD2] boundedBy processing successful with valid solid, returning shape")
-                    if log_file:
                         log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
-                        set_log_file(None)
                     return result
                 else:
                     if debug:
@@ -2824,8 +2836,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             return None
 
     finally:
-        # Ensure log file is always closed, even on exception (Issue #48: robust logging)
-        close_log_file()
+        # Don't close log file here - let the top-level function (export_step_from_citygml) close it
+        # after all phases (PHASE:1-7) are complete. This ensures PHASE:6-7 logs are captured.
+        # (Issue #96: Log file was being closed prematurely before STEP export phase)
+        pass
 
 
 def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
@@ -3622,6 +3636,7 @@ def export_step_from_citygml(
             xy_transform = _make_xy_transformer(src, reproject_to)
             xyz_transform = _make_xyz_transformer(src, reproject_to)
         except Exception as e:
+            close_log_file()  # Close log before returning (Issue #96)
             return False, f"Reprojection setup failed: {e}"
 
     shapes: List[TopoDS_Shape] = []
@@ -3774,6 +3789,7 @@ def export_step_from_citygml(
         log(f"[ERROR] Tried solid method: {tried_solid}")
         log(f"[ERROR] Tried sew method: {tried_sew}")
 
+        close_log_file()  # Close log before returning (Issue #96)
         if method == "auto":
             return False, "No shapes created via solid extraction, sewing, or extrusion."
         elif method == "solid":
@@ -3811,6 +3827,7 @@ def export_step_from_citygml(
     if valid_count == 0:
         log(f"\n[ERROR] ✗ All extracted shapes are topologically invalid")
         log(f"[ERROR] STEP export will likely fail")
+        close_log_file()  # Close log before returning (Issue #96)
         return False, f"All {len(shapes)} extracted shapes are topologically invalid. Try using shape_fix_level='standard' or higher."
 
     if invalid_count > 0:
@@ -3826,14 +3843,21 @@ def export_step_from_citygml(
             exporter = STEPExporter()
             res = exporter.export_compound(shapes, out_step)
             if not res.success:
+                close_log_file()  # Close log before returning (Issue #96)
                 return False, f"STEP export failed: {res.error_message}"
+            close_log_file()  # Close log after successful export (Issue #96)
             return True, out_step
         except Exception as e:
             if debug:
                 log(f"STEPExporter failed, falling back to local writer: {e}")
             # continue to fallback
 
-    return _export_step_compound_local(shapes, out_step, debug=debug)
+    result = _export_step_compound_local(shapes, out_step, debug=debug)
+
+    # Close log file after all phases complete (Issue #96)
+    close_log_file()
+
+    return result
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:

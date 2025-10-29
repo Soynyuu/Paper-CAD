@@ -3387,35 +3387,69 @@ def _recenter_faces(faces: List["TopoDS_Face"], debug: bool = False) -> Tuple[Li
             log(f"[RECENTER] Geometry already near origin ({distance_from_origin:.3f} mm), skipping re-centering")
         return faces, (0.0, 0.0, 0.0)
 
+    # Calculate translation vector (negate center to move to origin)
+    translation_x = -center_x
+    translation_y = -center_y
+    translation_z = -center_z
+
     if debug:
         log(f"\n{'='*80}")
         log(f"[RECENTER] RE-CENTERING GEOMETRY TO ORIGIN")
         log(f"{'='*80}")
         log(f"[RECENTER] Original bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
         log(f"[RECENTER] Distance from origin: {distance_from_origin:.3f} mm ({distance_from_origin/1000:.3f} m)")
-        log(f"[RECENTER] Re-centering {len(faces)} faces by translating by (-{center_x:.3f}, -{center_y:.3f}, -{center_z:.3f})")
+        log(f"[RECENTER] Translation vector: ({translation_x:.3f}, {translation_y:.3f}, {translation_z:.3f})")
+        log(f"[RECENTER] Re-centering {len(faces)} faces...")
 
     # Create translation transformation
     transformation = gp_Trsf()
-    transformation.SetTranslation(gp_Vec(-center_x, -center_y, -center_z))
+    transformation.SetTranslation(gp_Vec(translation_x, translation_y, translation_z))
 
-    # Transform all faces
+    # Transform all faces (must use copy=True to avoid corrupting original geometry)
     recentered_faces = []
-    for face in faces:
+    failed_count = 0
+    for i, face in enumerate(faces):
         if face is not None and not face.IsNull():
-            transformer = BRepBuilderAPI_Transform(face, transformation, False)  # False = don't copy
-            transformed_face = transformer.Shape()
-            if not transformed_face.IsNull():
-                from OCC.Core.TopoDS import topods
-                recentered_faces.append(topods.Face(transformed_face))
-            else:
-                # If transformation failed, keep original
+            try:
+                # Use BRepBuilderAPI_Transform with copy=True to ensure clean transformation
+                transformer = BRepBuilderAPI_Transform(face, transformation, True)
+                transformer.Build()
+
+                if transformer.IsDone():
+                    transformed_shape = transformer.Shape()
+                    if not transformed_shape.IsNull():
+                        from OCC.Core.TopoDS import topods
+                        # Safely downcast to Face
+                        try:
+                            transformed_face = topods.Face(transformed_shape)
+                            recentered_faces.append(transformed_face)
+                        except Exception as e:
+                            if debug:
+                                log(f"[RECENTER] ⚠ Face {i+1}: downcast failed ({e}), keeping original")
+                            recentered_faces.append(face)
+                            failed_count += 1
+                    else:
+                        if debug:
+                            log(f"[RECENTER] ⚠ Face {i+1}: transformed shape is null, keeping original")
+                        recentered_faces.append(face)
+                        failed_count += 1
+                else:
+                    if debug:
+                        log(f"[RECENTER] ⚠ Face {i+1}: transformation not done, keeping original")
+                    recentered_faces.append(face)
+                    failed_count += 1
+            except Exception as e:
+                if debug:
+                    log(f"[RECENTER] ⚠ Face {i+1}: transformation failed with exception ({e}), keeping original")
                 recentered_faces.append(face)
+                failed_count += 1
         else:
             recentered_faces.append(face)
 
     if debug:
-        log(f"[RECENTER] ✓ Successfully re-centered {len(recentered_faces)} faces")
+        if failed_count > 0:
+            log(f"[RECENTER] ⚠ {failed_count}/{len(faces)} faces failed to transform, kept originals")
+        log(f"[RECENTER] ✓ Successfully processed {len(recentered_faces)} faces ({len(faces) - failed_count} transformed, {failed_count} kept original)")
         log(f"[RECENTER] Offset applied: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
 
     return recentered_faces, (center_x, center_y, center_z)

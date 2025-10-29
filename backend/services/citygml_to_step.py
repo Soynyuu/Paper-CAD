@@ -438,11 +438,23 @@ def _extract_polygon_xy(poly: ET.Element) -> Tuple[List[Tuple[float, float]], Li
     return ext_coords_xy, holes_xy, all_z
 
 
-def _extract_polygon_xyz(poly: ET.Element) -> Tuple[List[Tuple[float, float, float]], List[List[Tuple[float, float, float]]]]:
+def _extract_polygon_xyz(poly: ET.Element, coord_offset: Optional[Tuple[float, float, float]] = None) -> Tuple[List[Tuple[float, float, float]], List[List[Tuple[float, float, float]]]]:
     """Extract exterior and interior rings as XYZ lists from a gml:Polygon.
 
     If Z is missing, treat it as 0.
+
+    Args:
+        poly: gml:Polygon element
+        coord_offset: Optional (offset_x, offset_y, offset_z) to apply to coordinates.
+                      This allows pre-translation of coordinates before unit conversion,
+                      which is more reliable than post-transformation of faces.
+
+    Returns:
+        Tuple of (exterior coords, list of interior coords)
     """
+    # Default offset is (0, 0, 0) if not provided
+    offset_x, offset_y, offset_z = coord_offset if coord_offset else (0.0, 0.0, 0.0)
+
     # Exterior
     ext_xyz: List[Tuple[float, float, float]] = []
     ext_poslist = poly.find(".//gml:exterior/gml:LinearRing/gml:posList", NS)
@@ -453,7 +465,8 @@ def _extract_polygon_xyz(poly: ET.Element) -> Tuple[List[Tuple[float, float, flo
         for p in poly.findall(".//gml:exterior//gml:pos", NS):
             coords += _parse_poslist(p)
     for x, y, z in coords:
-        ext_xyz.append((float(x), float(y), float(z if z is not None else 0.0)))
+        # Apply offset before adding to list (coordinate-level translation)
+        ext_xyz.append((float(x) + offset_x, float(y) + offset_y, float(z if z is not None else 0.0) + offset_z))
 
     # Interiors
     holes_xyz: List[List[Tuple[float, float, float]]] = []
@@ -465,7 +478,8 @@ def _extract_polygon_xyz(poly: ET.Element) -> Tuple[List[Tuple[float, float, flo
             for rp in ring.findall(".//gml:pos", NS):
                 rcoords += _parse_poslist(rp)
         for x, y, z in rcoords:
-            ring_xyz.append((float(x), float(y), float(z if z is not None else 0.0)))
+            # Apply offset before adding to list (coordinate-level translation)
+            ring_xyz.append((float(x) + offset_x, float(y) + offset_y, float(z if z is not None else 0.0) + offset_z))
         if ring_xyz:
             holes_xyz.append(ring_xyz)
     return ext_xyz, holes_xyz
@@ -2740,6 +2754,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     "OuterCeilingSurface": 0, "OuterFloorSurface": 0, "ClosureSurface": 0
                 }
 
+            # Calculate coordinate offset BEFORE extracting faces
+            # This allows us to translate coordinates at parse-time instead of transforming faces later
+            coord_offset = _calculate_polygon_bbox_offset(bounded_surfaces, debug=debug)
+
             for surf in bounded_surfaces:
                 # Get surface type for debugging
                 surf_type = surf.tag.split("}")[-1] if "}" in surf.tag else surf.tag
@@ -2786,7 +2804,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 if not found_geometry:
                     faces_method3_before = len(exterior_faces)
                     for poly in surf.findall(".//gml:Polygon", NS):
-                        ext, holes = _extract_polygon_xyz(poly)
+                        # Apply coordinate offset during extraction (coordinate-level translation)
+                        ext, holes = _extract_polygon_xyz(poly, coord_offset=coord_offset)
                         if len(ext) < 3:
                             continue
 
@@ -2829,9 +2848,8 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
 
             if exterior_faces:
-                # Re-center faces to prevent numerical precision loss (critical for PLATEAU coordinates)
-                exterior_faces, offset = _recenter_faces(exterior_faces, debug=debug)
-
+                # Coordinate offset was already applied during polygon extraction
+                # No need for face-level re-centering (Issue #96)
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
@@ -3362,6 +3380,76 @@ def _log_geometry_diagnostics(shapes: List["TopoDS_Shape"], debug: bool = False)
         if max(width, depth, height) > 1000000:  # > 1000 km
             log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
             log(f"    This may indicate coordinate transformation issues")
+
+
+def _calculate_polygon_bbox_offset(bounded_surfaces: List[ET.Element], debug: bool = False) -> Optional[Tuple[float, float, float]]:
+    """Calculate bounding box offset for polygon coordinates from boundedBy surfaces.
+
+    This scans all polygon coordinates in bounded surfaces to determine the center,
+    then returns an offset that will translate the center to the origin.
+
+    Args:
+        bounded_surfaces: List of boundedBy surface elements (WallSurface, RoofSurface, etc.)
+        debug: Enable debug logging
+
+    Returns:
+        Tuple of (offset_x, offset_y, offset_z) to apply to coordinates, or None if no polygons found
+    """
+    if not bounded_surfaces:
+        return None
+
+    # Scan all polygons to find coordinate ranges
+    all_coords = []
+    for surf in bounded_surfaces:
+        for poly in surf.findall(".//gml:Polygon", NS):
+            ext, holes = _extract_polygon_xyz(poly)  # Don't apply offset yet
+            all_coords.extend(ext)
+            for hole in holes:
+                all_coords.extend(hole)
+
+    if not all_coords:
+        if debug:
+            log("[OFFSET CALC] No polygon coordinates found in boundedBy surfaces")
+        return None
+
+    # Calculate bounding box
+    xs = [x for x, y, z in all_coords]
+    ys = [y for x, y, z in all_coords]
+    zs = [z for x, y, z in all_coords]
+
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    zmin, zmax = min(zs), max(zs)
+
+    # Calculate center
+    center_x = (xmin + xmax) / 2.0
+    center_y = (ymin + ymax) / 2.0
+    center_z = (zmin + zmax) / 2.0
+
+    distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+
+    # Only apply offset if significantly far from origin (> 1 meter)
+    if distance_from_origin < 1.0:
+        if debug:
+            log(f"[OFFSET CALC] Coordinates already near origin ({distance_from_origin:.3f} m), no offset needed")
+        return None
+
+    # Calculate offset (negate center to move to origin)
+    offset_x = -center_x
+    offset_y = -center_y
+    offset_z = -center_z
+
+    if debug:
+        log(f"\n{'='*80}")
+        log(f"[OFFSET CALC] COORDINATE-LEVEL RE-CENTERING")
+        log(f"{'='*80}")
+        log(f"[OFFSET CALC] Scanned {len(all_coords)} coordinates from {len(bounded_surfaces)} boundedBy surfaces")
+        log(f"[OFFSET CALC] Original bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"[OFFSET CALC] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin/1000:.3f} km)")
+        log(f"[OFFSET CALC] Offset to apply: ({offset_x:.3f}, {offset_y:.3f}, {offset_z:.3f})")
+        log(f"[OFFSET CALC] This offset will be applied to coordinates BEFORE unit conversion")
+
+    return (offset_x, offset_y, offset_z)
 
 
 def _recenter_faces(faces: List["TopoDS_Face"], debug: bool = False) -> Tuple[List["TopoDS_Face"], Tuple[float, float, float]]:

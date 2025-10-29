@@ -3294,11 +3294,12 @@ def _log_geometry_diagnostics(shapes: List["TopoDS_Shape"], debug: bool = False)
 
     Args:
         shapes: List of shapes to analyze
-        debug: Enable debug output
+        debug: Enable debug output (unused, diagnostics always shown)
     """
-    if not shapes or not debug:
+    if not shapes:
         return
 
+    # Always log diagnostics (critical for debugging coordinate issues)
     log(f"\n{'='*80}")
     log(f"[DIAGNOSTICS] GEOMETRY ANALYSIS")
     log(f"{'='*80}")

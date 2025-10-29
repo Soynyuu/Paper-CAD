@@ -1811,9 +1811,66 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     if debug:
         log("Stage 6: Extracting and validating shell...")
 
-    exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
-    if exp.More():
-        shell = topods.Shell(exp.Current())
+    # First, count how many shells exist in sewn shape
+    shell_count = 0
+    shell_exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
+    shells = []
+    while shell_exp.More():
+        shells.append(topods.Shell(shell_exp.Current()))
+        shell_count += 1
+        shell_exp.Next()
+
+    if debug:
+        log(f"[SHELL DIAGNOSTIC] Found {shell_count} shell(s) in sewn shape")
+
+    # If multiple disconnected shells exist, collect all faces and rebuild single shell
+    if shell_count > 1:
+        if debug:
+            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, collecting all faces...")
+
+        all_faces_from_shells = []
+        for i, sh in enumerate(shells):
+            face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+            face_count_in_shell = 0
+            while face_exp.More():
+                all_faces_from_shells.append(topods.Face(face_exp.Current()))
+                face_count_in_shell += 1
+                face_exp.Next()
+            if debug:
+                log(f"  Shell {i+1}: {face_count_in_shell} faces")
+
+        if debug:
+            log(f"[SHELL DIAGNOSTIC] Collected {len(all_faces_from_shells)} faces from all shells")
+
+        # Build single shell from all collected faces
+        if all_faces_from_shells:
+            sewing_multi = BRepBuilderAPI_Sewing(tolerance * 10.0, True, True, True, False)
+            for fc in all_faces_from_shells:
+                sewing_multi.Add(fc)
+            sewing_multi.Perform()
+            multi_sewn = sewing_multi.SewedShape()
+
+            # Extract shell from multi-sewn result
+            multi_exp = TopExp_Explorer(multi_sewn, TopAbs_SHELL)
+            if multi_exp.More():
+                shell = topods.Shell(multi_exp.Current())
+                if debug:
+                    shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                    shell_face_count = 0
+                    while shell_face_exp.More():
+                        shell_face_count += 1
+                        shell_face_exp.Next()
+                    log(f"[SHELL DIAGNOSTIC] Rebuilt shell contains {shell_face_count} faces")
+            else:
+                # Fallback: use largest shell if multi-sewing failed
+                if debug:
+                    log("[SHELL DIAGNOSTIC] Multi-sewing failed, using largest shell as fallback")
+                shell = shells[0]
+        else:
+            shell = shells[0]
+    elif shell_count == 1:
+        # Single shell - use it directly
+        shell = shells[0]
 
         # DEBUG: Count faces in extracted shell
         if debug:
@@ -1823,6 +1880,13 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                 shell_face_count += 1
                 shell_face_exp.Next()
             log(f"[SHELL DIAGNOSTIC] Extracted shell contains {shell_face_count} faces")
+    else:
+        # No shells found
+        if debug:
+            log("[SHELL DIAGNOSTIC] No shells found in sewn shape")
+        return None
+
+    if shell:
 
         # Validate shell
         try:

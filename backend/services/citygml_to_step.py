@@ -584,14 +584,27 @@ def parse_citygml_footprints(
 
 
 def _wire_from_coords_xy(coords: List[Tuple[float, float]]) -> "TopoDS_Shape":
+    """Create a wire from 2D coordinates.
+
+    Args:
+        coords: List of (x, y) tuples in METERS (CityGML standard)
+
+    Returns:
+        TopoDS_Wire
+
+    Note:
+        CityGML coordinates are in meters, but OpenCASCADE/STEP expects millimeters.
+        This function automatically converts by multiplying by 1000.
+    """
     poly = BRepBuilderAPI_MakePolygon()
     # Ensure closed polygon; avoid duplicate closing point
     if coords and coords[0] == coords[-1]:
         pts = coords[:-1]
     else:
         pts = coords
+    # Convert from meters (CityGML) to millimeters (OpenCASCADE/STEP)
     for x, y in pts:
-        poly.Add(gp_Pnt(float(x), float(y), 0.0))
+        poly.Add(gp_Pnt(float(x) * 1000.0, float(y) * 1000.0, 0.0))
     poly.Close()
     return poly.Wire()
 
@@ -600,11 +613,15 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
     """Create a wire from 3D coordinates.
 
     Args:
-        coords: List of (x, y, z) tuples
+        coords: List of (x, y, z) tuples in METERS (CityGML standard)
         debug: Enable debug output
 
     Returns:
         TopoDS_Wire or None if creation fails
+
+    Note:
+        CityGML coordinates are in meters, but OpenCASCADE/STEP expects millimeters.
+        This function automatically converts by multiplying by 1000.
     """
     try:
         poly = BRepBuilderAPI_MakePolygon()
@@ -618,8 +635,9 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
                 log(f"Wire creation failed: insufficient points ({len(pts)} < 2)")
             return None
 
+        # Convert from meters (CityGML) to millimeters (OpenCASCADE/STEP)
         for x, y, z in pts:
-            poly.Add(gp_Pnt(float(x), float(y), float(z)))
+            poly.Add(gp_Pnt(float(x) * 1000.0, float(y) * 1000.0, float(z) * 1000.0))
         poly.Close()
 
         if not poly.IsDone():
@@ -635,7 +653,12 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
 
 
 def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
-    """Create a prism solid from a 2D footprint using OCCT."""
+    """Create a prism solid from a 2D footprint using OCCT.
+
+    Note:
+        Footprint coordinates are in meters (CityGML standard), but OpenCASCADE/STEP
+        expects millimeters. Height is also converted from meters to millimeters.
+    """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for extrusion")
 
@@ -647,7 +670,8 @@ def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
             face_maker.Add(_wire_from_coords_xy(hole))
     face = face_maker.Face()
 
-    vec = gp_Vec(0.0, 0.0, float(fp.height))
+    # Convert height from meters to millimeters (fp.height is in meters)
+    vec = gp_Vec(0.0, 0.0, float(fp.height) * 1000.0)
     prism = BRepPrimAPI_MakePrism(face, vec, True).Shape()
     return prism
 
@@ -1707,6 +1731,17 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             if sewn_shape is not None and not sewn_shape.IsNull():
                 if debug:
                     log(f"  Pass {i+1} successful")
+
+                # DEBUG: Check face count after this pass
+                if debug:
+                    from OCC.Core.TopAbs import TopAbs_FACE
+                    face_exp_count = TopExp_Explorer(sewn_shape, TopAbs_FACE)
+                    pass_face_count = 0
+                    while face_exp_count.More():
+                        pass_face_count += 1
+                        face_exp_count.Next()
+                    log(f"  [SEWING PASS {i+1}] {len(faces)} input → {pass_face_count} output faces")
+
                 # Use this result as input for next pass
                 # Extract faces from sewn shape for next iteration
                 if i < len(tolerances_to_try) - 1:
@@ -1728,6 +1763,20 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             sewing.Add(fc)
         sewing.Perform()
         sewn_shape = sewing.SewedShape()
+
+    # DEBUG: Check how many faces survived sewing
+    if debug:
+        from OCC.Core.TopAbs import TopAbs_FACE
+        face_exp = TopExp_Explorer(sewn_shape, TopAbs_FACE)
+        sewn_face_count = 0
+        while face_exp.More():
+            sewn_face_count += 1
+            face_exp.Next()
+        log(f"[SEWING DIAGNOSTIC] Input: {len(faces)} faces → Output: {sewn_face_count} faces in sewn shape")
+        if sewn_face_count < len(faces):
+            lost_faces = len(faces) - sewn_face_count
+            loss_percentage = (lost_faces / len(faces)) * 100
+            log(f"[SEWING DIAGNOSTIC] ⚠ WARNING: {lost_faces} faces lost ({loss_percentage:.1f}%)")
 
     # Stage 5: Apply shape fixing based on level
     if shape_fix_level != "minimal":
@@ -1762,13 +1811,330 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     if debug:
         log("Stage 6: Extracting and validating shell...")
 
-    exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
-    if exp.More():
-        shell = topods.Shell(exp.Current())
+    # First, count how many shells exist in sewn shape
+    shell_count = 0
+    shell_exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
+    shells = []
+    while shell_exp.More():
+        shells.append(topods.Shell(shell_exp.Current()))
+        shell_count += 1
+        shell_exp.Next()
+
+    if debug:
+        log(f"[SHELL DIAGNOSTIC] Found {shell_count} shell(s) in sewn shape")
+
+    # If multiple disconnected shells exist, select the largest valid shell
+    # instead of trying to re-sew (which often fails for disconnected geometry)
+    if shell_count > 1:
+        if debug:
+            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, validating each shell...")
+
+        # Validate each shell and count faces
+        from OCC.Core.BRepCheck import BRepCheck_Analyzer
+
+        shell_info = []
+        for i, sh in enumerate(shells):
+            face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+            face_count = 0
+            while face_exp.More():
+                face_count += 1
+                face_exp.Next()
+
+            # Check shell validity and count invalid faces
+            try:
+                analyzer = BRepCheck_Analyzer(sh)
+                is_valid = analyzer.IsValid()
+
+                # If shell is invalid, count how many faces are invalid
+                invalid_face_count = 0
+                if not is_valid:
+                    face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
+                    while face_exp2.More():
+                        face = topods.Face(face_exp2.Current())
+                        face_analyzer = BRepCheck_Analyzer(face)
+                        if not face_analyzer.IsValid():
+                            invalid_face_count += 1
+                        face_exp2.Next()
+
+            except Exception as e:
+                is_valid = False
+                invalid_face_count = face_count  # Assume all invalid on error
+                if debug:
+                    log(f"  Shell {i+1} validation error: {e}")
+
+            # Calculate invalid face ratio
+            invalid_ratio = invalid_face_count / face_count if face_count > 0 else 1.0
+
+            shell_info.append({
+                'index': i + 1,
+                'shell': sh,
+                'face_count': face_count,
+                'is_valid': is_valid,
+                'invalid_face_count': invalid_face_count,
+                'invalid_ratio': invalid_ratio
+            })
+
+            if debug:
+                if is_valid:
+                    status = "✓ valid"
+                elif invalid_ratio < 0.05:  # Less than 5% invalid
+                    status = f"⚠ mostly valid ({invalid_face_count}/{face_count} invalid, {invalid_ratio*100:.1f}%)"
+                else:
+                    status = f"✗ invalid ({invalid_face_count}/{face_count} invalid, {invalid_ratio*100:.1f}%)"
+                log(f"  Shell {i+1}: {face_count} faces ({status})")
+
+        # Find shells that are valid or mostly valid (< 5% invalid faces)
+        INVALID_THRESHOLD = 0.05  # 5% tolerance for invalid faces
+        acceptable_shells = [s for s in shell_info if s['is_valid'] or s['invalid_ratio'] < INVALID_THRESHOLD]
+
+        if acceptable_shells:
+            # Collect valid faces from ALL acceptable shells (not just the largest)
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Found {len(acceptable_shells)} acceptable shell(s), collecting all valid faces...")
+
+            all_valid_faces_from_acceptable_shells = []
+            total_invalid_removed = 0
+
+            for shell_info in acceptable_shells:
+                shell_idx = shell_info['index']
+                shell_obj = shell_info['shell']
+                shell_face_count = shell_info['face_count']
+                shell_is_valid = shell_info['is_valid']
+                shell_invalid_count = shell_info['invalid_face_count']
+
+                if debug:
+                    status = "✓ valid" if shell_is_valid else f"⚠ mostly valid ({shell_invalid_count} invalid)"
+                    log(f"  Processing Shell {shell_idx}: {shell_face_count} faces ({status})")
+
+                # Extract valid faces from this shell
+                face_exp = TopExp_Explorer(shell_obj, TopAbs_FACE)
+                valid_count = 0
+                invalid_count = 0
+
+                while face_exp.More():
+                    face = topods.Face(face_exp.Current())
+
+                    # If shell is fully valid, skip validation check for efficiency
+                    if shell_is_valid:
+                        all_valid_faces_from_acceptable_shells.append(face)
+                        valid_count += 1
+                    else:
+                        # Shell has some invalid faces - validate each face
+                        face_analyzer = BRepCheck_Analyzer(face)
+                        if face_analyzer.IsValid():
+                            all_valid_faces_from_acceptable_shells.append(face)
+                            valid_count += 1
+                        else:
+                            invalid_count += 1
+
+                    face_exp.Next()
+
+                if debug and invalid_count > 0:
+                    log(f"    → Kept {valid_count} valid faces, removed {invalid_count} invalid faces")
+                    total_invalid_removed += invalid_count
+
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Collected {len(all_valid_faces_from_acceptable_shells)} valid faces from {len(acceptable_shells)} shells")
+                if total_invalid_removed > 0:
+                    log(f"[SHELL DIAGNOSTIC] Removed {total_invalid_removed} invalid faces total")
+
+            # Re-sew all collected valid faces into a unified shell
+            if len(all_valid_faces_from_acceptable_shells) > 0:
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Re-sewing {len(all_valid_faces_from_acceptable_shells)} faces into unified shell...")
+
+                sewing_unified = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+                for fc in all_valid_faces_from_acceptable_shells:
+                    sewing_unified.Add(fc)
+                sewing_unified.Perform()
+                unified_sewn = sewing_unified.SewedShape()
+
+                # Extract all shells from unified result
+                unified_exp = TopExp_Explorer(unified_sewn, TopAbs_SHELL)
+                unified_shells = []
+                while unified_exp.More():
+                    unified_shells.append(topods.Shell(unified_exp.Current()))
+                    unified_exp.Next()
+
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Unified re-sewing produced {len(unified_shells)} shell(s)")
+
+                if len(unified_shells) > 0:
+                    # If multiple shells, create a Compound to preserve all geometry
+                    if len(unified_shells) > 1:
+                        from OCC.Core.TopoDS import TopoDS_Compound
+                        from OCC.Core.BRep import BRep_Builder
+
+                        if debug:
+                            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, creating Compound to preserve all geometry...")
+
+                        # Log face counts for each shell
+                        shell_face_counts = []
+                        for i, sh in enumerate(unified_shells):
+                            face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
+                            face_count = 0
+                            while face_exp2.More():
+                                face_count += 1
+                                face_exp2.Next()
+                            shell_face_counts.append(face_count)
+
+                            if debug:
+                                log(f"  Unified shell {i+1}: {face_count} faces")
+
+                        # Create Compound containing all shells
+                        compound = TopoDS_Compound()
+                        builder = BRep_Builder()
+                        builder.MakeCompound(compound)
+
+                        for sh in unified_shells:
+                            builder.Add(compound, sh)
+
+                        total_faces_in_compound = sum(shell_face_counts)
+
+                        if debug:
+                            log(f"[SHELL DIAGNOSTIC] Created Compound with {len(unified_shells)} shells ({total_faces_in_compound} total faces)")
+
+                        # Return Compound instead of Shell
+                        shell = compound
+                    else:
+                        shell = unified_shells[0]
+                        if debug:
+                            unified_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                            unified_face_count = 0
+                            while unified_face_exp.More():
+                                unified_face_count += 1
+                                unified_face_exp.Next()
+                            log(f"[SHELL DIAGNOSTIC] Unified shell contains {unified_face_count} faces")
+                else:
+                    # Fallback: use largest acceptable shell if unification failed
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Unified re-sewing produced no shells, using largest acceptable shell as fallback")
+                    largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
+                    shell = largest_acceptable['shell']
+            else:
+                # No valid faces collected - fallback to largest acceptable shell
+                largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
+                shell = largest_acceptable['shell']
+
+        else:
+            # No valid shells found, try re-sewing approach as fallback
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] No valid shells found, attempting re-sewing as fallback...")
+
+            all_faces_from_shells = []
+            for info in shell_info:
+                sh = info['shell']
+                face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                while face_exp.More():
+                    all_faces_from_shells.append(topods.Face(face_exp.Current()))
+                    face_exp.Next()
+
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Collected {len(all_faces_from_shells)} faces from all shells for re-sewing")
+
+            # Build single shell from all collected faces
+            if all_faces_from_shells:
+                sewing_multi = BRepBuilderAPI_Sewing(tolerance * 10.0, True, True, True, False)
+                for fc in all_faces_from_shells:
+                    sewing_multi.Add(fc)
+                sewing_multi.Perform()
+                multi_sewn = sewing_multi.SewedShape()
+
+                # Extract all shells from multi-sewn result
+                multi_exp = TopExp_Explorer(multi_sewn, TopAbs_SHELL)
+                resewn_shells = []
+                while multi_exp.More():
+                    resewn_shells.append(topods.Shell(multi_exp.Current()))
+                    multi_exp.Next()
+
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Re-sewing produced {len(resewn_shells)} shell(s)")
+
+                # If re-sewing created multiple shells again, find the largest one
+                if len(resewn_shells) > 1:
+                    if debug:
+                        log("[SHELL DIAGNOSTIC] Re-sewing still created multiple shells, selecting largest...")
+
+                    largest_shell = None
+                    largest_face_count = 0
+
+                    for i, sh in enumerate(resewn_shells):
+                        face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                        face_count = 0
+                        while face_exp.More():
+                            face_count += 1
+                            face_exp.Next()
+
+                        if debug:
+                            log(f"  Re-sewn shell {i+1}: {face_count} faces")
+
+                        if face_count > largest_face_count:
+                            largest_face_count = face_count
+                            largest_shell = sh
+
+                    shell = largest_shell
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Selected largest re-sewn shell with {largest_face_count} faces")
+
+                elif len(resewn_shells) == 1:
+                    shell = resewn_shells[0]
+                    if debug:
+                        shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                        shell_face_count = 0
+                        while shell_face_exp.More():
+                            shell_face_count += 1
+                            shell_face_exp.Next()
+                        log(f"[SHELL DIAGNOSTIC] Rebuilt shell contains {shell_face_count} faces")
+                else:
+                    # Fallback: use largest original shell if re-sewing failed completely
+                    if debug:
+                        log("[SHELL DIAGNOSTIC] Re-sewing failed, selecting largest original shell as fallback")
+
+                    largest_shell = None
+                    largest_face_count = 0
+
+                    for i, sh in enumerate(shells):
+                        face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                        face_count = 0
+                        while face_exp.More():
+                            face_count += 1
+                            face_exp.Next()
+
+                        if face_count > largest_face_count:
+                            largest_face_count = face_count
+                            largest_shell = sh
+
+                    shell = largest_shell
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Selected largest original shell with {largest_face_count} faces")
+            else:
+                # No faces collected, use first shell as fallback
+                shell = shells[0]
+
+    elif shell_count == 1:
+        # Single shell - use it directly
+        shell = shells[0]
+
+        # DEBUG: Count faces in extracted shell
+        if debug:
+            shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+            shell_face_count = 0
+            while shell_face_exp.More():
+                shell_face_count += 1
+                shell_face_exp.Next()
+            log(f"[SHELL DIAGNOSTIC] Extracted shell contains {shell_face_count} faces")
+    else:
+        # No shells found
+        if debug:
+            log("[SHELL DIAGNOSTIC] No shells found in sewn shape")
+        return None
+
+    if shell:
 
         # Validate shell
         try:
             from OCC.Core.BRep import BRep_Tool
+            from OCC.Core.BRepCheck import BRepCheck_Analyzer
             analyzer = BRepCheck_Analyzer(shell)
             if not analyzer.IsValid():
                 if debug:
@@ -1824,31 +2190,117 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     return None
 
 
-def _is_valid_solid(shape) -> bool:
-    """Check if a shape is a valid solid (not just any shape or invalid shell).
+def _diagnose_shape_errors(shape, debug: bool = False) -> dict:
+    """Diagnose detailed errors in a shape using BRepCheck_Analyzer.
+
+    Args:
+        shape: TopoDS_Shape to diagnose
+        debug: Enable debug logging
+
+    Returns:
+        Dictionary with error information
+    """
+    from OCC.Core.BRepCheck import BRepCheck_Analyzer
+    from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SHELL
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopoDS import topods
+    from OCC.Core.BRep import BRep_Tool
+
+    errors = {
+        'is_valid': False,
+        'free_edges_count': 0,
+        'invalid_faces': [],
+        'shell_closed': None,
+        'error_summary': {}
+    }
+
+    try:
+        analyzer = BRepCheck_Analyzer(shape)
+        errors['is_valid'] = analyzer.IsValid()
+
+        if not errors['is_valid']:
+            # Count free edges (edges not fully connected)
+            edge_exp = TopExp_Explorer(shape, TopAbs_EDGE)
+            edge_count = 0
+            free_edge_count = 0
+            while edge_exp.More():
+                edge = topods.Edge(edge_exp.Current())
+                # Free edges are not closed (not shared by 2 faces)
+                try:
+                    if not BRep_Tool.IsClosed(edge, shape):
+                        free_edge_count += 1
+                except:
+                    pass
+                edge_count += 1
+                edge_exp.Next()
+            errors['free_edges_count'] = free_edge_count
+
+            # Check faces
+            face_exp = TopExp_Explorer(shape, TopAbs_FACE)
+            face_count = 0
+            while face_exp.More():
+                face = topods.Face(face_exp.Current())
+                face_analyzer = BRepCheck_Analyzer(face)
+                if not face_analyzer.IsValid():
+                    errors['invalid_faces'].append(face_count)
+                face_count += 1
+                face_exp.Next()
+
+            # Check shell closure
+            shell_exp = TopExp_Explorer(shape, TopAbs_SHELL)
+            if shell_exp.More():
+                shell = topods.Shell(shell_exp.Current())
+                errors['shell_closed'] = BRep_Tool.IsClosed(shell)
+
+            errors['error_summary'] = {
+                'total_edges': edge_count,
+                'free_edges': free_edge_count,
+                'total_faces': face_count,
+                'invalid_faces_count': len(errors['invalid_faces']),
+                'shell_closed': errors['shell_closed']
+            }
+
+            if debug:
+                log(f"[DIAGNOSTICS] Shape validation failed:")
+                log(f"  - Total edges: {edge_count}, Free edges: {free_edge_count}")
+                log(f"  - Total faces: {face_count}, Invalid faces: {len(errors['invalid_faces'])}")
+                log(f"  - Shell closed: {errors['shell_closed']}")
+    except Exception as e:
+        errors['exception'] = str(e)
+        if debug:
+            log(f"[DIAGNOSTICS] Exception during diagnosis: {e}")
+
+    return errors
+
+
+def _is_valid_shape(shape) -> bool:
+    """Check if a shape is a valid solid, shell, or compound.
 
     This is used to validate results from _make_solid_with_cavities(), which can return
-    invalid shells when solid construction fails. Without this check, invalid shells
-    are returned to callers, preventing fallback to alternative strategies.
+    solids, shells, or compounds depending on the geometry. All three types are acceptable
+    for STEP export.
 
     Args:
         shape: TopoDS_Shape to validate
 
     Returns:
-        True if shape is a valid solid, False otherwise
+        True if shape is a valid solid, shell, or compound, False otherwise
     """
     from OCC.Core.BRepCheck import BRepCheck_Analyzer
-    from OCC.Core.TopAbs import TopAbs_SOLID
+    from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_COMPOUND
 
     if shape is None:
         return False
 
     try:
-        # Check if it's actually a solid (not a shell, face, etc.)
-        if shape.ShapeType() != TopAbs_SOLID:
+        shape_type = shape.ShapeType()
+
+        # Accept SOLID, SHELL, and COMPOUND (but not face, edge, etc.)
+        if shape_type not in (TopAbs_SOLID, TopAbs_SHELL, TopAbs_COMPOUND):
             return False
 
-        # Check if the solid is topologically valid
+        # Check if the shape is topologically valid
+        # Note: Compounds may contain multiple disconnected parts, which is valid
         analyzer = BRepCheck_Analyzer(shape)
         return analyzer.IsValid()
     except Exception:
@@ -1947,6 +2399,23 @@ def _make_solid_with_cavities(exterior_faces: List["TopoDS_Face"],
                 return solid
             else:
                 log(f"[VALIDATION] ✗ Initial solid validation failed")
+
+                # Diagnose the specific errors
+                if debug:
+                    log(f"\n[PHASE:4.5] ERROR DIAGNOSIS")
+                    diag = _diagnose_shape_errors(solid, debug=True)
+                    if 'exception' not in diag:
+                        log(f"[DIAGNOSIS] Root cause analysis:")
+                        summary = diag.get('error_summary', {})
+                        if summary.get('free_edges', 0) > 0:
+                            log(f"  ⚠ {summary['free_edges']}/{summary['total_edges']} edges are not fully connected (FREE EDGES)")
+                            log(f"     → This means some faces don't share edges properly")
+                        if summary.get('invalid_faces_count', 0) > 0:
+                            log(f"  ⚠ {summary['invalid_faces_count']}/{summary['total_faces']} faces are invalid")
+                        if summary.get('shell_closed') == False:
+                            log(f"  ⚠ Shell is not closed (has gaps or holes)")
+                        log(f"[DIAGNOSIS] This geometry has fundamental topology issues that may not be repairable")
+
                 log(f"\n[PHASE:5] AUTOMATIC REPAIR WITH AUTO-ESCALATION")
 
                 # Define escalation levels (minimal → standard → aggressive → ultra)
@@ -2135,60 +2604,74 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
     exterior_faces: List[TopoDS_Face] = []
     prefer_bounded_by = False  # Flag to skip intermediate strategies if boundedBy is preferred
 
-    # Always create log file for conversion tracking (not just in debug mode)
+    # Check if log file is already open (from parent call or previous Building/BuildingPart)
+    # If so, reuse it instead of creating a new one
+    existing_log_file = getattr(_thread_local, 'log_file', None)
+    log_file_created_here = False  # Track whether this function created the log file
+
+    # Create log file only if one doesn't already exist
     log_file = None
-    log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
-    os.makedirs(log_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
-    log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
-    try:
-        log_file = open(log_path, "w", encoding="utf-8")
-        # Write comprehensive log header with legend for LLM analysis
-        log_file.write(f"{'='*80}\n")
-        log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
-        log_file.write(f"{'='*80}\n")
-        log_file.write(f"Building ID: {elem_id}\n")
-        log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
-        log_file.write(f"Precision mode: {precision_mode}\n")
-        log_file.write(f"Shape fix level: {shape_fix_level}\n")
-        log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
-        log_file.write(f"{'='*80}\n\n")
+    if existing_log_file is None:
+        # Always create log file for conversion tracking (not just in debug mode)
+        log_dir = os.path.join(os.path.dirname(__file__), "..", "debug_logs")
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_id = elem_id.replace(":", "_").replace("/", "_")[:50]
+        log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+        try:
+            log_file = open(log_path, "w", encoding="utf-8")
+            log_file_created_here = True  # Mark that we created the log file
+            # Write comprehensive log header with legend for LLM analysis
+            log_file.write(f"{'='*80}\n")
+            log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
+            log_file.write(f"{'='*80}\n")
+            log_file.write(f"Building ID: {elem_id}\n")
+            log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            log_file.write(f"Precision mode: {precision_mode}\n")
+            log_file.write(f"Shape fix level: {shape_fix_level}\n")
+            log_file.write(f"Debug mode: Always enabled for detailed diagnostics\n")
+            log_file.write(f"{'='*80}\n\n")
 
-        # Log Legend for LLM Analysis (凡例)
-        log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
-        log_file.write(f"{'-'*80}\n")
-        log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
-        log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
-        log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
-        log_file.write(f"  ✗ FAILED        = Operation failed\n")
-        log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
-        log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
-        log_file.write(f"  ├─              = Child operation (subprocess)\n")
-        log_file.write(f"  └─              = Final result of operation\n")
-        log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
-        log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
-        log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
-        log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
-        log_file.write(f"  [INFO]          = Informational message\n")
-        log_file.write(f"{'-'*80}\n\n")
+            # Log Legend for LLM Analysis (凡例)
+            log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
+            log_file.write(f"{'-'*80}\n")
+            log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
+            log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
+            log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
+            log_file.write(f"  ✗ FAILED        = Operation failed\n")
+            log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
+            log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
+            log_file.write(f"  ├─              = Child operation (subprocess)\n")
+            log_file.write(f"  └─              = Final result of operation\n")
+            log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
+            log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
+            log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
+            log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
+            log_file.write(f"  [INFO]          = Informational message\n")
+            log_file.write(f"{'-'*80}\n\n")
 
-        log_file.write(f"PROCESSING PHASES:\n")
-        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
-        log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
-        log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
-        log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
-        log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
-        log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
-        log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
-        log_file.write(f"{'='*80}\n\n")
-        log(f"[CONVERSION] Logging to: {log_path}")
-        # Set log file for this thread (now all functions can use global log())
-        set_log_file(log_file)
-    except Exception as e:
-        log(f"[CONVERSION] Warning: Failed to create log file: {e}")
-        log_file = None
-        set_log_file(None)
+            log_file.write(f"PROCESSING PHASES:\n")
+            log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+            log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
+            log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
+            log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
+            log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
+            log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
+            log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
+            log_file.write(f"{'='*80}\n\n")
+            log(f"[CONVERSION] Logging to: {log_path}")
+            # Set log file for this thread (now all functions can use global log())
+            set_log_file(log_file)
+        except Exception as e:
+            log(f"[CONVERSION] Warning: Failed to create log file: {e}")
+            log_file = None
+            log_file_created_here = False
+            set_log_file(None)
+    else:
+        # Reuse existing log file from parent call
+        if debug:
+            log(f"[CONVERSION] Reusing existing log file for element: {elem_id}")
+        log_file = existing_log_file
 
     # Wrap entire conversion in try-finally to ensure log cleanup on exception
     try:
@@ -2231,12 +2714,15 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     log(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
                 if exterior_faces_solid:
+                    # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+                    # No face-level re-centering needed
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         log(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED with valid solid - Returning detailed LOD3 model")
                         if debug:
                             log(f"[LOD3] Solid processing successful, returning shape")
@@ -2274,12 +2760,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                 # Build solid from collected faces
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD3] MultiSurface processing successful with valid solid, returning shape")
                     return result
@@ -2317,11 +2805,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD3] Geometry processing successful with valid solid, returning shape")
                     return result
@@ -2366,12 +2856,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     log(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
 
                 if exterior_faces_solid:
+                    # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 1 (lod2Solid) SUCCEEDED with valid solid ({len(exterior_faces_solid)} faces)")
                         if debug:
                             log(f"[LOD2] Solid processing successful")
@@ -2480,12 +2972,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                 # Build solid from collected faces
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] MultiSurface processing successful with valid solid, returning shape")
                     return result
@@ -2527,11 +3021,13 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
 
             if exterior_faces:
+                # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] Geometry processing successful with valid solid, returning shape")
                     return result
@@ -2661,16 +3157,16 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 log(f"  - Total faces extracted: {len(exterior_faces)} (Wall: {faces_by_type.get('WallSurface', 0)}, Roof: {faces_by_type.get('RoofSurface', 0)}, Ground: {faces_by_type.get('GroundSurface', 0)}, OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, Closure: {faces_by_type.get('ClosureSurface', 0)})")
 
             if exterior_faces:
+                # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                 result = _make_solid_with_cavities(
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] boundedBy processing successful with valid solid, returning shape")
-                    if log_file:
                         log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
-                        set_log_file(None)
                     return result
                 else:
                     if debug:
@@ -2704,12 +3200,14 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                 )
 
                 if exterior_faces_lod1:
+                    # Coordinates already re-centered by xyz_transform wrapper (PHASE:0)
+
                     # Build solid with cavities (adaptive tolerance)
                     result = _make_solid_with_cavities(
                         exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         if debug:
                             log(f"[LOD1] Processing successful with valid solid, returning shape")
                         return result
@@ -2724,8 +3222,10 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
             return None
 
     finally:
-        # Ensure log file is always closed, even on exception (Issue #48: robust logging)
-        close_log_file()
+        # Don't close log file here - let the top-level function (export_step_from_citygml) close it
+        # after all phases (PHASE:1-7) are complete. This ensures PHASE:6-7 logs are captured.
+        # (Issue #96: Log file was being closed prematurely before STEP export phase)
+        pass
 
 
 def extract_building_and_parts(building: ET.Element, xyz_transform: Optional[Callable] = None,
@@ -3112,6 +3612,194 @@ def build_sewn_shape_from_building(building: ET.Element, sew_tolerance: Optional
     return sewn
 
 
+def _compute_bounding_box(shape: "TopoDS_Shape") -> Tuple[float, float, float, float, float, float]:
+    """Compute bounding box of a shape.
+
+    Args:
+        shape: TopoDS_Shape to analyze
+
+    Returns:
+        Tuple of (xmin, ymin, zmin, xmax, ymax, zmax)
+    """
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+
+    bbox = Bnd_Box()
+    brepbndlib.Add(shape, bbox)
+
+    if bbox.IsVoid():
+        return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+    return (xmin, ymin, zmin, xmax, ymax, zmax)
+
+
+def _log_geometry_diagnostics(shapes: List["TopoDS_Shape"], debug: bool = False) -> None:
+    """Log detailed geometry diagnostics including bounding boxes and positions.
+
+    Args:
+        shapes: List of shapes to analyze
+        debug: Enable debug output (unused, diagnostics always shown)
+    """
+    if not shapes:
+        return
+
+    # Always log diagnostics (critical for debugging coordinate issues)
+    log(f"\n{'='*80}")
+    log(f"[DIAGNOSTICS] GEOMETRY ANALYSIS")
+    log(f"{'='*80}")
+
+    for i, shape in enumerate(shapes):
+        xmin, ymin, zmin, xmax, ymax, zmax = _compute_bounding_box(shape)
+
+        # Calculate size and center
+        width = xmax - xmin
+        height = zmax - zmin
+        depth = ymax - ymin
+        center_x = (xmin + xmax) / 2
+        center_y = (ymin + ymax) / 2
+        center_z = (zmin + zmax) / 2
+
+        # Distance from origin
+        distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+
+        log(f"\n[SHAPE {i+1}/{len(shapes)}] Bounding box analysis:")
+        log(f"  Position (center): ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"  Size: {width:.3f} × {depth:.3f} × {height:.3f} (W×D×H)")
+        log(f"  Range X: [{xmin:.3f}, {xmax:.3f}]")
+        log(f"  Range Y: [{ymin:.3f}, {ymax:.3f}]")
+        log(f"  Range Z: [{zmin:.3f}, {zmax:.3f}]")
+        log(f"  Distance from origin: {distance_from_origin:.3f}")
+
+        # Diagnostic warnings
+        if distance_from_origin > 100000:  # > 100km from origin
+            log(f"  ⚠ WARNING: Geometry is very far from origin ({distance_from_origin/1000:.1f} km)")
+            log(f"    This may indicate coordinate transformation issues")
+
+        if max(width, depth, height) < 1:  # < 1 meter
+            log(f"  ⚠ WARNING: Geometry is very small (< 1 unit)")
+            log(f"    This may indicate scale issues (e.g., using degrees instead of meters)")
+
+        if max(width, depth, height) > 1000000:  # > 1000 km
+            log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
+            log(f"    This may indicate coordinate transformation issues")
+
+
+def _recenter_faces(faces: List["TopoDS_Face"], debug: bool = False) -> Tuple[List["TopoDS_Face"], Tuple[float, float, float]]:
+    """Re-center faces by translating them to place bounding box center at origin.
+
+    This prevents numerical precision loss when face coordinates are far from origin
+    (e.g., PLATEAU projected plane coordinates ~10-100km from origin).
+
+    Args:
+        faces: List of TopoDS_Face objects to re-center
+        debug: Enable debug output
+
+    Returns:
+        Tuple of (re-centered faces, offset (cx, cy, cz))
+    """
+    if not faces:
+        return faces, (0.0, 0.0, 0.0)
+
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+    from OCC.Core.gp import gp_Trsf, gp_Vec
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+    # Calculate combined bounding box of all faces
+    combined_bbox = Bnd_Box()
+    for face in faces:
+        if face is not None and not face.IsNull():
+            brepbndlib.Add(face, combined_bbox)
+
+    if combined_bbox.IsVoid():
+        if debug:
+            log("[RECENTER] ⚠ Bounding box is void, skipping re-centering")
+        return faces, (0.0, 0.0, 0.0)
+
+    # Get bounding box extents
+    xmin, ymin, zmin, xmax, ymax, zmax = combined_bbox.Get()
+
+    # Calculate center
+    center_x = (xmin + xmax) / 2.0
+    center_y = (ymin + ymax) / 2.0
+    center_z = (zmin + zmax) / 2.0
+
+    # Only re-center if significantly far from origin (> 1 meter)
+    distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+    if distance_from_origin < 1.0:
+        if debug:
+            log(f"[RECENTER] Geometry already near origin ({distance_from_origin:.3f} mm), skipping re-centering")
+        return faces, (0.0, 0.0, 0.0)
+
+    # Calculate translation vector (negate center to move to origin)
+    translation_x = -center_x
+    translation_y = -center_y
+    translation_z = -center_z
+
+    if debug:
+        log(f"\n{'='*80}")
+        log(f"[RECENTER] RE-CENTERING GEOMETRY TO ORIGIN")
+        log(f"{'='*80}")
+        log(f"[RECENTER] Original bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"[RECENTER] Distance from origin: {distance_from_origin:.3f} mm ({distance_from_origin/1000:.3f} m)")
+        log(f"[RECENTER] Translation vector: ({translation_x:.3f}, {translation_y:.3f}, {translation_z:.3f})")
+        log(f"[RECENTER] Re-centering {len(faces)} faces...")
+
+    # Create translation transformation
+    transformation = gp_Trsf()
+    transformation.SetTranslation(gp_Vec(translation_x, translation_y, translation_z))
+
+    # Transform all faces (must use copy=True to avoid corrupting original geometry)
+    recentered_faces = []
+    failed_count = 0
+    for i, face in enumerate(faces):
+        if face is not None and not face.IsNull():
+            try:
+                # Use BRepBuilderAPI_Transform with copy=True to ensure clean transformation
+                transformer = BRepBuilderAPI_Transform(face, transformation, True)
+                transformer.Build()
+
+                if transformer.IsDone():
+                    transformed_shape = transformer.Shape()
+                    if not transformed_shape.IsNull():
+                        from OCC.Core.TopoDS import topods
+                        # Safely downcast to Face
+                        try:
+                            transformed_face = topods.Face(transformed_shape)
+                            recentered_faces.append(transformed_face)
+                        except Exception as e:
+                            if debug:
+                                log(f"[RECENTER] ⚠ Face {i+1}: downcast failed ({e}), keeping original")
+                            recentered_faces.append(face)
+                            failed_count += 1
+                    else:
+                        if debug:
+                            log(f"[RECENTER] ⚠ Face {i+1}: transformed shape is null, keeping original")
+                        recentered_faces.append(face)
+                        failed_count += 1
+                else:
+                    if debug:
+                        log(f"[RECENTER] ⚠ Face {i+1}: transformation not done, keeping original")
+                    recentered_faces.append(face)
+                    failed_count += 1
+            except Exception as e:
+                if debug:
+                    log(f"[RECENTER] ⚠ Face {i+1}: transformation failed with exception ({e}), keeping original")
+                recentered_faces.append(face)
+                failed_count += 1
+        else:
+            recentered_faces.append(face)
+
+    if debug:
+        if failed_count > 0:
+            log(f"[RECENTER] ⚠ {failed_count}/{len(faces)} faces failed to transform, kept originals")
+        log(f"[RECENTER] ✓ Successfully processed {len(recentered_faces)} faces ({len(faces) - failed_count} transformed, {failed_count} kept original)")
+        log(f"[RECENTER] Offset applied: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+
+    return recentered_faces, (center_x, center_y, center_z)
+
+
 def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, debug: bool = False) -> Tuple[bool, str]:
     """Optimized STEP export with proper configuration.
 
@@ -3172,16 +3860,37 @@ def _export_step_compound_local(shapes: List["TopoDS_Shape"], out_step: str, deb
             log(f"Warning: STEP writer configuration failed: {e}")
         # Continue with default settings
 
+    log(f"[STEP EXPORT] Using local STEP writer...")
+    log(f"[STEP EXPORT] Configuration: AP214CD schema, MM units, 1e-6 precision")
+
     writer = STEPControl_Writer()
+
+    log(f"[STEP EXPORT] Transferring geometry to STEP format...")
     tr = writer.Transfer(compound, STEPControl_AsIs)
     if tr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Transfer failed with status: {tr}")
         return False, f"STEP transfer failed: {tr}"
+    log(f"[STEP EXPORT] ✓ Transfer successful")
+
+    log(f"[STEP EXPORT] Writing to file: {out_step}")
     wr = writer.Write(out_step)
     if wr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Write failed with status: {wr}")
         return False, f"STEP write failed: {wr}"
 
-    if debug:
-        log(f"STEP file written successfully: {out_step}")
+    # Verify file was created and get size
+    if os.path.exists(out_step):
+        file_size = os.path.getsize(out_step)
+        log(f"[STEP EXPORT] ✓ File written successfully")
+        log(f"  - File: {out_step}")
+        log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+
+        if file_size == 0:
+            log(f"[STEP EXPORT] ⚠ WARNING: File size is 0 bytes (empty file)")
+            return False, "STEP file created but is empty"
+    else:
+        log(f"[STEP EXPORT] ⚠ WARNING: Write reported success but file not found")
+        return False, "STEP write completed but file not found"
 
     return True, out_step
 
@@ -3480,6 +4189,64 @@ def export_step_from_citygml(
         if not bldgs:
             return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
 
+    # Check for buildings before initializing log file
+    if not bldgs:
+        return False, "No buildings found in CityGML file"
+
+    first_building_id = bldgs[0].get("{http://www.opengis.net/gml}id", "building_0")
+    log_dir = "debug_logs"
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Sanitize building ID for filename (replace invalid characters)
+    safe_id = first_building_id.replace(":", "_").replace("/", "_").replace("\\", "_")
+    log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+
+    try:
+        log_file = open(log_path, "w", encoding="utf-8")
+        # Write log header
+        log_file.write(f"{'='*80}\n")
+        log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
+        log_file.write(f"{'='*80}\n")
+        log_file.write(f"Building ID: {first_building_id}\n")
+        log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
+        log_file.write(f"Precision mode: {precision_mode}\n")
+        log_file.write(f"Shape fix level: {shape_fix_level}\n")
+        log_file.write(f"Debug mode: {'Enabled' if debug else 'Always enabled for detailed diagnostics'}\n")
+        log_file.write(f"{'='*80}\n\n")
+
+        # Write LOG LEGEND and PROCESSING PHASES
+        log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
+        log_file.write(f"{'-'*80}\n")
+        log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
+        log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
+        log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
+        log_file.write(f"  ✗ FAILED        = Operation failed\n")
+        log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
+        log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
+        log_file.write(f"  ├─              = Child operation (subprocess)\n")
+        log_file.write(f"  └─              = Final result of operation\n")
+        log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
+        log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
+        log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
+        log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
+        log_file.write(f"  [INFO]          = Informational message\n")
+        log_file.write(f"{'-'*80}\n\n")
+        log_file.write(f"PROCESSING PHASES:\n")
+        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+        log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
+        log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
+        log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
+        log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
+        log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
+        log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
+        log_file.write(f"{'='*80}\n\n")
+
+        # Set as global log file so all subsequent log() calls write to it
+        set_log_file(log_file)
+    except Exception as e:
+        print(f"Warning: Failed to create log file: {e}")
+        log_file = None
+
     # Build XLink resolution index
     id_index = _build_id_index(root)
     if debug and id_index:
@@ -3496,33 +4263,157 @@ def export_step_from_citygml(
             log(f"  Sample of actual IDs in index: {sample_ids}")
 
     # Detect source CRS and sample coordinates
+    log(f"\n{'='*80}")
+    log(f"[PHASE:1.5] COORDINATE SYSTEM DETECTION")
+    log(f"{'='*80}")
+
     detected_crs, sample_lat, sample_lon = _detect_source_crs(root)
     src = source_crs or detected_crs or "EPSG:6697"
-    
+
+    if debug:
+        src_info = get_crs_info(src) if src else {}
+        log(f"[CRS] Source coordinate system:")
+        log(f"  - CRS code: {src}")
+        log(f"  - CRS name: {src_info.get('name', 'Unknown')}")
+        if sample_lat is not None and sample_lon is not None:
+            log(f"  - Sample coordinates: lat={sample_lat:.6f}°, lon={sample_lon:.6f}°")
+        else:
+            log(f"  - Sample coordinates: Not available")
+        log(f"  - Is geographic CRS: {is_geographic_crs(src)}")
+
     # Auto-select projection if needed
     if not reproject_to and auto_reproject:
         if is_geographic_crs(src):
             reproject_to = recommend_projected_crs(src, sample_lat, sample_lon)
-            if debug and reproject_to:
-                src_info = get_crs_info(src)
-                tgt_info = get_crs_info(reproject_to)
-                log(f"Auto-reprojection: Detected geographic CRS {src} ({src_info['name']})")
-                log(f"  Sample coordinates: lat={sample_lat:.6f}, lon={sample_lon:.6f}" if sample_lat else "")
-                log(f"  Auto-selected projection: {reproject_to} ({tgt_info['name']})")
-                if 'regions' in tgt_info:
-                    log(f"  Coverage area: {tgt_info['regions']}")
+            if debug:
+                if reproject_to:
+                    tgt_info = get_crs_info(reproject_to)
+                    log(f"\n[CRS] Auto-reprojection selected:")
+                    log(f"  - Target CRS: {reproject_to}")
+                    log(f"  - Target name: {tgt_info.get('name', 'Unknown')}")
+                    if 'regions' in tgt_info:
+                        log(f"  - Coverage area: {tgt_info['regions']}")
+                else:
+                    log(f"\n[CRS] ⚠ WARNING: Geographic CRS detected but no suitable projection found")
+                    log(f"  - Geometry will use raw geographic coordinates (degrees)")
+                    log(f"  - This may cause scale/position issues in STEP output")
     
     # Build transformers if requested
     xy_transform = None
     xyz_transform = None
     if reproject_to:
-        if debug:
-            log(f"Reprojecting from {src} to {reproject_to}")
+        log(f"\n[CRS] Setting up coordinate transformation:")
+        log(f"  - From: {src}")
+        log(f"  - To: {reproject_to}")
         try:
             xy_transform = _make_xy_transformer(src, reproject_to)
             xyz_transform = _make_xyz_transformer(src, reproject_to)
+            log(f"  - ✓ Transformation setup successful")
         except Exception as e:
+            log(f"  - ✗ Transformation setup failed: {e}")
+            close_log_file()  # Close log before returning
             return False, f"Reprojection setup failed: {e}"
+    else:
+        if debug:
+            log(f"\n[CRS] ⚠ WARNING: No coordinate transformation will be applied")
+            log(f"  - Using source CRS as-is: {src}")
+            if is_geographic_crs(src):
+                log(f"  - ⚠ CRITICAL: Geographic coordinates (lat/lon degrees) will be used directly")
+                log(f"  - This will likely cause severe scale/position issues in STEP output")
+                log(f"  - Recommendation: Enable auto_reproject or specify a projected CRS")
+
+    # =========================================================================
+    # PHASE 0: PRE-SCAN COORDINATES FOR RE-CENTERING
+    # =========================================================================
+    # Scan all polygon coordinates to calculate offset for numerical precision
+    # This prevents OpenCASCADE precision loss when coordinates are far from origin
+    # (e.g., PLATEAU data at ~40km from origin causing geometry collapse)
+
+    coord_offset = None
+    if xyz_transform or True:  # Always apply re-centering if coordinates available
+        # Always log PHASE:0 header (critical for debugging coordinate issues)
+        log(f"\n{'='*80}")
+        log(f"[PHASE:0] PRE-SCAN FOR COORDINATE RE-CENTERING")
+        log(f"{'='*80}")
+
+        # Scan all polygon coordinates from buildings
+        raw_coords = []
+        for b in bldgs:
+            for poly in b.findall(".//gml:Polygon", NS):
+                ext, holes = _extract_polygon_xyz(poly)
+                raw_coords.extend(ext)
+                for hole in holes:
+                    raw_coords.extend(hole)
+
+        if raw_coords:
+            log(f"[PRESCAN] Scanned {len(raw_coords)} coordinates from {len(bldgs)} buildings")
+
+            # Apply xyz_transform to get planar coordinates (meters)
+            if xyz_transform:
+                try:
+                    planar_coords = []
+                    for x, y, z in raw_coords:
+                        tx, ty, tz = xyz_transform(x, y, z)
+                        planar_coords.append((tx, ty, tz))
+
+                    log(f"[PRESCAN] ✓ Applied xyz_transform to get planar coordinates")
+                except Exception as e:
+                    log(f"[PRESCAN] ✗ xyz_transform failed: {e}, using raw coordinates")
+                    planar_coords = raw_coords
+            else:
+                planar_coords = raw_coords
+
+            # Calculate bounding box center in meters (planar coordinates)
+            xs = [x for x, y, z in planar_coords]
+            ys = [y for x, y, z in planar_coords]
+            zs = [z for x, y, z in planar_coords]
+
+            if xs and ys and zs:
+                center_x = (min(xs) + max(xs)) / 2.0
+                center_y = (min(ys) + max(ys)) / 2.0
+                center_z = (min(zs) + max(zs)) / 2.0
+
+                distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+
+                # Always log bounding box info (critical for diagnosing precision issues)
+                log(f"[PRESCAN] Bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f}) meters")
+                log(f"[PRESCAN] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin/1000:.3f} km)")
+
+                # Apply offset if significantly far from origin (> 1 meter)
+                if distance_from_origin > 1.0:
+                    coord_offset = (-center_x, -center_y, -center_z)
+
+                    log(f"[PRESCAN] ✓ Offset calculated: ({coord_offset[0]:.3f}, {coord_offset[1]:.3f}, {coord_offset[2]:.3f}) meters")
+                    log(f"[PRESCAN] This will re-center geometry to origin for numerical precision")
+
+                    # Wrap xyz_transform with offset
+                    if xyz_transform:
+                        original_transform = xyz_transform
+                        def wrapped_transform(x, y, z):
+                            tx, ty, tz = original_transform(x, y, z)
+                            return (tx + coord_offset[0], ty + coord_offset[1], tz + coord_offset[2])
+                        xyz_transform = wrapped_transform
+
+                        log(f"[PRESCAN] ✓ Wrapped xyz_transform with offset")
+                        # Test the wrapped transform with a sample coordinate
+                        if raw_coords:
+                            test_x, test_y, test_z = raw_coords[0]
+                            orig_result = original_transform(test_x, test_y, test_z)
+                            wrapped_result = xyz_transform(test_x, test_y, test_z)
+                            log(f"[PRESCAN] DEBUG: Sample coordinate ({test_x:.3f}, {test_y:.3f}, {test_z:.3f})")
+                            log(f"[PRESCAN] DEBUG: Original transform → ({orig_result[0]:.3f}, {orig_result[1]:.3f}, {orig_result[2]:.3f})")
+                            log(f"[PRESCAN] DEBUG: Wrapped transform → ({wrapped_result[0]:.3f}, {wrapped_result[1]:.3f}, {wrapped_result[2]:.3f})")
+                    else:
+                        # No xyz_transform, create offset-only transform
+                        def offset_transform(x, y, z):
+                            return (x + coord_offset[0], y + coord_offset[1], z + coord_offset[2])
+                        xyz_transform = offset_transform
+
+                        log(f"[PRESCAN] ✓ Created offset-only transform (no xyz_transform)")
+                else:
+                    log(f"[PRESCAN] Coordinates already near origin, no offset needed")
+        else:
+            log(f"[PRESCAN] ⚠ No polygon coordinates found, skipping re-centering")
 
     shapes: List[TopoDS_Shape] = []
     tried_solid = False
@@ -3674,6 +4565,7 @@ def export_step_from_citygml(
         log(f"[ERROR] Tried solid method: {tried_solid}")
         log(f"[ERROR] Tried sew method: {tried_sew}")
 
+        close_log_file()  # Close log before returning (Issue #96)
         if method == "auto":
             return False, "No shapes created via solid extraction, sewing, or extrusion."
         elif method == "solid":
@@ -3708,9 +4600,13 @@ def export_step_from_citygml(
     for shape_type, count in sorted(shape_type_counts.items()):
         log(f"    - Type {shape_type}: {count} shape(s)")
 
+    # Log geometry diagnostics (bounding boxes, positions, sizes)
+    _log_geometry_diagnostics(shapes, debug=debug)
+
     if valid_count == 0:
         log(f"\n[ERROR] ✗ All extracted shapes are topologically invalid")
         log(f"[ERROR] STEP export will likely fail")
+        close_log_file()  # Close log before returning (Issue #96)
         return False, f"All {len(shapes)} extracted shapes are topologically invalid. Try using shape_fix_level='standard' or higher."
 
     if invalid_count > 0:
@@ -3718,22 +4614,42 @@ def export_step_from_citygml(
         log(f"⚠ WARNING: STEP export may partially fail or produce incorrect geometry")
 
     log(f"\n[INFO] Proceeding to STEP export with {len(shapes)} shape(s)...")
+    log(f"[INFO] Target file: {out_step}")
     log(f"")
 
     # Prefer core STEPExporter if importable, else fallback local
     if STEPExporter is not None:
         try:
+            log(f"[STEP EXPORT] Using core STEPExporter...")
             exporter = STEPExporter()
             res = exporter.export_compound(shapes, out_step)
             if not res.success:
+                log(f"[STEP EXPORT] ✗ Export failed: {res.error_message}")
+                close_log_file()  # Close log before returning (Issue #96)
                 return False, f"STEP export failed: {res.error_message}"
+
+            # Verify file was created
+            if os.path.exists(out_step):
+                file_size = os.path.getsize(out_step)
+                log(f"[STEP EXPORT] ✓ Export successful")
+                log(f"  - File: {out_step}")
+                log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+            else:
+                log(f"[STEP EXPORT] ⚠ WARNING: Export reported success but file not found")
+
+            close_log_file()  # Close log after successful export (Issue #96)
             return True, out_step
         except Exception as e:
-            if debug:
-                log(f"STEPExporter failed, falling back to local writer: {e}")
+            log(f"[STEP EXPORT] ✗ STEPExporter exception: {e}")
+            log(f"[STEP EXPORT] Falling back to local writer...")
             # continue to fallback
 
-    return _export_step_compound_local(shapes, out_step, debug=debug)
+    result = _export_step_compound_local(shapes, out_step, debug=debug)
+
+    # Close log file after all phases complete (Issue #96)
+    close_log_file()
+
+    return result
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:

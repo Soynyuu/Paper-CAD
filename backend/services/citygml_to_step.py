@@ -1830,6 +1830,8 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, validating each shell...")
 
         # Validate each shell and count faces
+        from OCC.Core.BRepCheck import BRepCheck_Analyzer
+
         shell_info = []
         for i, sh in enumerate(shells):
             face_exp = TopExp_Explorer(sh, TopAbs_FACE)
@@ -1838,35 +1840,63 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                 face_count += 1
                 face_exp.Next()
 
-            # Check shell validity
+            # Check shell validity and count invalid faces
             try:
-                from OCC.Core.BRepCheck import BRepCheck_Analyzer
                 analyzer = BRepCheck_Analyzer(sh)
                 is_valid = analyzer.IsValid()
-            except:
+
+                # If shell is invalid, count how many faces are invalid
+                invalid_face_count = 0
+                if not is_valid:
+                    face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
+                    while face_exp2.More():
+                        face = topods.Face(face_exp2.Current())
+                        face_analyzer = BRepCheck_Analyzer(face)
+                        if not face_analyzer.IsValid():
+                            invalid_face_count += 1
+                        face_exp2.Next()
+
+            except Exception as e:
                 is_valid = False
+                invalid_face_count = face_count  # Assume all invalid on error
+                if debug:
+                    log(f"  Shell {i+1} validation error: {e}")
+
+            # Calculate invalid face ratio
+            invalid_ratio = invalid_face_count / face_count if face_count > 0 else 1.0
 
             shell_info.append({
                 'index': i + 1,
                 'shell': sh,
                 'face_count': face_count,
-                'is_valid': is_valid
+                'is_valid': is_valid,
+                'invalid_face_count': invalid_face_count,
+                'invalid_ratio': invalid_ratio
             })
 
             if debug:
-                status = "✓ valid" if is_valid else "✗ invalid"
+                if is_valid:
+                    status = "✓ valid"
+                elif invalid_ratio < 0.05:  # Less than 5% invalid
+                    status = f"⚠ mostly valid ({invalid_face_count}/{face_count} invalid, {invalid_ratio*100:.1f}%)"
+                else:
+                    status = f"✗ invalid ({invalid_face_count}/{face_count} invalid, {invalid_ratio*100:.1f}%)"
                 log(f"  Shell {i+1}: {face_count} faces ({status})")
 
-        # Find the largest valid shell
-        valid_shells = [s for s in shell_info if s['is_valid']]
+        # Find shells that are valid or mostly valid (< 5% invalid faces)
+        INVALID_THRESHOLD = 0.05  # 5% tolerance for invalid faces
+        acceptable_shells = [s for s in shell_info if s['is_valid'] or s['invalid_ratio'] < INVALID_THRESHOLD]
 
-        if valid_shells:
-            # Found valid shells - select the largest one and skip re-sewing
-            largest_valid = max(valid_shells, key=lambda s: s['face_count'])
-            shell = largest_valid['shell']
+        if acceptable_shells:
+            # Found acceptable shells - select the largest one and skip re-sewing
+            largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
+            shell = largest_acceptable['shell']
 
             if debug:
-                log(f"[SHELL DIAGNOSTIC] Selected largest valid shell (Shell {largest_valid['index']}) with {largest_valid['face_count']} faces")
+                if largest_acceptable['is_valid']:
+                    log(f"[SHELL DIAGNOSTIC] Selected largest valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces")
+                else:
+                    log(f"[SHELL DIAGNOSTIC] Selected largest mostly-valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces ({largest_acceptable['invalid_face_count']} invalid faces, {largest_acceptable['invalid_ratio']*100:.1f}%)")
 
         else:
             # No valid shells found, try re-sewing approach as fallback

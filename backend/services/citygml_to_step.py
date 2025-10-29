@@ -1960,28 +1960,42 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
                     log(f"[SHELL DIAGNOSTIC] Unified re-sewing produced {len(unified_shells)} shell(s)")
 
                 if len(unified_shells) > 0:
-                    # If multiple shells, select the largest one
+                    # If multiple shells, create a Compound to preserve all geometry
                     if len(unified_shells) > 1:
-                        largest_unified = None
-                        largest_unified_face_count = 0
+                        from OCC.Core.TopoDS import TopoDS_Compound
+                        from OCC.Core.BRep import BRep_Builder
 
+                        if debug:
+                            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, creating Compound to preserve all geometry...")
+
+                        # Log face counts for each shell
+                        shell_face_counts = []
                         for i, sh in enumerate(unified_shells):
                             face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
                             face_count = 0
                             while face_exp2.More():
                                 face_count += 1
                                 face_exp2.Next()
+                            shell_face_counts.append(face_count)
 
                             if debug:
                                 log(f"  Unified shell {i+1}: {face_count} faces")
 
-                            if face_count > largest_unified_face_count:
-                                largest_unified_face_count = face_count
-                                largest_unified = sh
+                        # Create Compound containing all shells
+                        compound = TopoDS_Compound()
+                        builder = BRep_Builder()
+                        builder.MakeCompound(compound)
 
-                        shell = largest_unified
+                        for sh in unified_shells:
+                            builder.Add(compound, sh)
+
+                        total_faces_in_compound = sum(shell_face_counts)
+
                         if debug:
-                            log(f"[SHELL DIAGNOSTIC] Selected largest unified shell with {largest_unified_face_count} faces")
+                            log(f"[SHELL DIAGNOSTIC] Created Compound with {len(unified_shells)} shells ({total_faces_in_compound} total faces)")
+
+                        # Return Compound instead of Shell
+                        shell = compound
                     else:
                         shell = unified_shells[0]
                         if debug:
@@ -2260,20 +2274,20 @@ def _diagnose_shape_errors(shape, debug: bool = False) -> dict:
 
 
 def _is_valid_shape(shape) -> bool:
-    """Check if a shape is a valid solid or shell.
+    """Check if a shape is a valid solid, shell, or compound.
 
     This is used to validate results from _make_solid_with_cavities(), which can return
-    either solids or shells depending on whether solid construction succeeded. Both valid
-    solids and valid shells are acceptable for STEP export.
+    solids, shells, or compounds depending on the geometry. All three types are acceptable
+    for STEP export.
 
     Args:
         shape: TopoDS_Shape to validate
 
     Returns:
-        True if shape is a valid solid or shell, False otherwise
+        True if shape is a valid solid, shell, or compound, False otherwise
     """
     from OCC.Core.BRepCheck import BRepCheck_Analyzer
-    from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL
+    from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_COMPOUND
 
     if shape is None:
         return False
@@ -2281,11 +2295,12 @@ def _is_valid_shape(shape) -> bool:
     try:
         shape_type = shape.ShapeType()
 
-        # Accept both SOLID and SHELL (but not face, edge, etc.)
-        if shape_type not in (TopAbs_SOLID, TopAbs_SHELL):
+        # Accept SOLID, SHELL, and COMPOUND (but not face, edge, etc.)
+        if shape_type not in (TopAbs_SOLID, TopAbs_SHELL, TopAbs_COMPOUND):
             return False
 
         # Check if the shape is topologically valid
+        # Note: Compounds may contain multiple disconnected parts, which is valid
         analyzer = BRepCheck_Analyzer(shape)
         return analyzer.IsValid()
     except Exception:

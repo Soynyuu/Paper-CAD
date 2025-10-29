@@ -1823,102 +1823,146 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     if debug:
         log(f"[SHELL DIAGNOSTIC] Found {shell_count} shell(s) in sewn shape")
 
-    # If multiple disconnected shells exist, collect all faces and rebuild single shell
+    # If multiple disconnected shells exist, select the largest valid shell
+    # instead of trying to re-sew (which often fails for disconnected geometry)
     if shell_count > 1:
         if debug:
-            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, collecting all faces...")
+            log(f"[SHELL DIAGNOSTIC] Multiple disconnected shells detected, validating each shell...")
 
-        all_faces_from_shells = []
+        # Validate each shell and count faces
+        shell_info = []
         for i, sh in enumerate(shells):
             face_exp = TopExp_Explorer(sh, TopAbs_FACE)
-            face_count_in_shell = 0
+            face_count = 0
             while face_exp.More():
-                all_faces_from_shells.append(topods.Face(face_exp.Current()))
-                face_count_in_shell += 1
+                face_count += 1
                 face_exp.Next()
-            if debug:
-                log(f"  Shell {i+1}: {face_count_in_shell} faces")
 
-        if debug:
-            log(f"[SHELL DIAGNOSTIC] Collected {len(all_faces_from_shells)} faces from all shells")
+            # Check shell validity
+            try:
+                from OCC.Core.BRepCheck import BRepCheck_Analyzer
+                analyzer = BRepCheck_Analyzer(sh)
+                is_valid = analyzer.IsValid()
+            except:
+                is_valid = False
 
-        # Build single shell from all collected faces
-        if all_faces_from_shells:
-            sewing_multi = BRepBuilderAPI_Sewing(tolerance * 10.0, True, True, True, False)
-            for fc in all_faces_from_shells:
-                sewing_multi.Add(fc)
-            sewing_multi.Perform()
-            multi_sewn = sewing_multi.SewedShape()
-
-            # Extract all shells from multi-sewn result
-            multi_exp = TopExp_Explorer(multi_sewn, TopAbs_SHELL)
-            resewn_shells = []
-            while multi_exp.More():
-                resewn_shells.append(topods.Shell(multi_exp.Current()))
-                multi_exp.Next()
+            shell_info.append({
+                'index': i + 1,
+                'shell': sh,
+                'face_count': face_count,
+                'is_valid': is_valid
+            })
 
             if debug:
-                log(f"[SHELL DIAGNOSTIC] Re-sewing produced {len(resewn_shells)} shell(s)")
+                status = "✓ valid" if is_valid else "✗ invalid"
+                log(f"  Shell {i+1}: {face_count} faces ({status})")
 
-            # If re-sewing created multiple shells again, find the largest one
-            if len(resewn_shells) > 1:
-                if debug:
-                    log("[SHELL DIAGNOSTIC] Re-sewing still created multiple shells, selecting largest...")
+        # Find the largest valid shell
+        valid_shells = [s for s in shell_info if s['is_valid']]
 
-                largest_shell = None
-                largest_face_count = 0
+        if valid_shells:
+            # Found valid shells - select the largest one and skip re-sewing
+            largest_valid = max(valid_shells, key=lambda s: s['face_count'])
+            shell = largest_valid['shell']
 
-                for i, sh in enumerate(resewn_shells):
-                    face_exp = TopExp_Explorer(sh, TopAbs_FACE)
-                    face_count = 0
-                    while face_exp.More():
-                        face_count += 1
-                        face_exp.Next()
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Selected largest valid shell (Shell {largest_valid['index']}) with {largest_valid['face_count']} faces")
 
-                    if debug:
-                        log(f"  Re-sewn shell {i+1}: {face_count} faces")
-
-                    if face_count > largest_face_count:
-                        largest_face_count = face_count
-                        largest_shell = sh
-
-                shell = largest_shell
-                if debug:
-                    log(f"[SHELL DIAGNOSTIC] Selected largest re-sewn shell with {largest_face_count} faces")
-
-            elif len(resewn_shells) == 1:
-                shell = resewn_shells[0]
-                if debug:
-                    shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
-                    shell_face_count = 0
-                    while shell_face_exp.More():
-                        shell_face_count += 1
-                        shell_face_exp.Next()
-                    log(f"[SHELL DIAGNOSTIC] Rebuilt shell contains {shell_face_count} faces")
-            else:
-                # Fallback: use largest original shell if re-sewing failed completely
-                if debug:
-                    log("[SHELL DIAGNOSTIC] Re-sewing failed, selecting largest original shell as fallback")
-
-                largest_shell = None
-                largest_face_count = 0
-
-                for i, sh in enumerate(shells):
-                    face_exp = TopExp_Explorer(sh, TopAbs_FACE)
-                    face_count = 0
-                    while face_exp.More():
-                        face_count += 1
-                        face_exp.Next()
-
-                    if face_count > largest_face_count:
-                        largest_face_count = face_count
-                        largest_shell = sh
-
-                shell = largest_shell
-                if debug:
-                    log(f"[SHELL DIAGNOSTIC] Selected largest original shell with {largest_face_count} faces")
         else:
-            shell = shells[0]
+            # No valid shells found, try re-sewing approach as fallback
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] No valid shells found, attempting re-sewing as fallback...")
+
+            all_faces_from_shells = []
+            for info in shell_info:
+                sh = info['shell']
+                face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                while face_exp.More():
+                    all_faces_from_shells.append(topods.Face(face_exp.Current()))
+                    face_exp.Next()
+
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Collected {len(all_faces_from_shells)} faces from all shells for re-sewing")
+
+            # Build single shell from all collected faces
+            if all_faces_from_shells:
+                sewing_multi = BRepBuilderAPI_Sewing(tolerance * 10.0, True, True, True, False)
+                for fc in all_faces_from_shells:
+                    sewing_multi.Add(fc)
+                sewing_multi.Perform()
+                multi_sewn = sewing_multi.SewedShape()
+
+                # Extract all shells from multi-sewn result
+                multi_exp = TopExp_Explorer(multi_sewn, TopAbs_SHELL)
+                resewn_shells = []
+                while multi_exp.More():
+                    resewn_shells.append(topods.Shell(multi_exp.Current()))
+                    multi_exp.Next()
+
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Re-sewing produced {len(resewn_shells)} shell(s)")
+
+                # If re-sewing created multiple shells again, find the largest one
+                if len(resewn_shells) > 1:
+                    if debug:
+                        log("[SHELL DIAGNOSTIC] Re-sewing still created multiple shells, selecting largest...")
+
+                    largest_shell = None
+                    largest_face_count = 0
+
+                    for i, sh in enumerate(resewn_shells):
+                        face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                        face_count = 0
+                        while face_exp.More():
+                            face_count += 1
+                            face_exp.Next()
+
+                        if debug:
+                            log(f"  Re-sewn shell {i+1}: {face_count} faces")
+
+                        if face_count > largest_face_count:
+                            largest_face_count = face_count
+                            largest_shell = sh
+
+                    shell = largest_shell
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Selected largest re-sewn shell with {largest_face_count} faces")
+
+                elif len(resewn_shells) == 1:
+                    shell = resewn_shells[0]
+                    if debug:
+                        shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                        shell_face_count = 0
+                        while shell_face_exp.More():
+                            shell_face_count += 1
+                            shell_face_exp.Next()
+                        log(f"[SHELL DIAGNOSTIC] Rebuilt shell contains {shell_face_count} faces")
+                else:
+                    # Fallback: use largest original shell if re-sewing failed completely
+                    if debug:
+                        log("[SHELL DIAGNOSTIC] Re-sewing failed, selecting largest original shell as fallback")
+
+                    largest_shell = None
+                    largest_face_count = 0
+
+                    for i, sh in enumerate(shells):
+                        face_exp = TopExp_Explorer(sh, TopAbs_FACE)
+                        face_count = 0
+                        while face_exp.More():
+                            face_count += 1
+                            face_exp.Next()
+
+                        if face_count > largest_face_count:
+                            largest_face_count = face_count
+                            largest_shell = sh
+
+                    shell = largest_shell
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Selected largest original shell with {largest_face_count} faces")
+            else:
+                # No faces collected, use first shell as fallback
+                shell = shells[0]
+
     elif shell_count == 1:
         # Single shell - use it directly
         shell = shells[0]

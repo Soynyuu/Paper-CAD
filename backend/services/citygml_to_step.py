@@ -3927,10 +3927,10 @@ def export_step_from_citygml(
 
     coord_offset = None
     if xyz_transform or True:  # Always apply re-centering if coordinates available
-        if debug:
-            log(f"\n{'='*80}")
-            log(f"[PHASE:0] PRE-SCAN FOR COORDINATE RE-CENTERING")
-            log(f"{'='*80}")
+        # Always log PHASE:0 header (critical for debugging coordinate issues)
+        log(f"\n{'='*80}")
+        log(f"[PHASE:0] PRE-SCAN FOR COORDINATE RE-CENTERING")
+        log(f"{'='*80}")
 
         # Scan all polygon coordinates from buildings
         raw_coords = []
@@ -3942,8 +3942,7 @@ def export_step_from_citygml(
                     raw_coords.extend(hole)
 
         if raw_coords:
-            if debug:
-                log(f"[PRESCAN] Scanned {len(raw_coords)} coordinates from {len(bldgs)} buildings")
+            log(f"[PRESCAN] Scanned {len(raw_coords)} coordinates from {len(bldgs)} buildings")
 
             # Apply xyz_transform to get planar coordinates (meters)
             if xyz_transform:
@@ -3953,11 +3952,9 @@ def export_step_from_citygml(
                         tx, ty, tz = xyz_transform(x, y, z)
                         planar_coords.append((tx, ty, tz))
 
-                    if debug:
-                        log(f"[PRESCAN] ✓ Applied xyz_transform to get planar coordinates")
+                    log(f"[PRESCAN] ✓ Applied xyz_transform to get planar coordinates")
                 except Exception as e:
-                    if debug:
-                        log(f"[PRESCAN] ✗ xyz_transform failed: {e}, using raw coordinates")
+                    log(f"[PRESCAN] ✗ xyz_transform failed: {e}, using raw coordinates")
                     planar_coords = raw_coords
             else:
                 planar_coords = raw_coords
@@ -3974,17 +3971,16 @@ def export_step_from_citygml(
 
                 distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
 
-                if debug:
-                    log(f"[PRESCAN] Bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f}) meters")
-                    log(f"[PRESCAN] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin/1000:.3f} km)")
+                # Always log bounding box info (critical for diagnosing precision issues)
+                log(f"[PRESCAN] Bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f}) meters")
+                log(f"[PRESCAN] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin/1000:.3f} km)")
 
                 # Apply offset if significantly far from origin (> 1 meter)
                 if distance_from_origin > 1.0:
                     coord_offset = (-center_x, -center_y, -center_z)
 
-                    if debug:
-                        log(f"[PRESCAN] ✓ Offset calculated: ({coord_offset[0]:.3f}, {coord_offset[1]:.3f}, {coord_offset[2]:.3f}) meters")
-                        log(f"[PRESCAN] This will re-center geometry to origin for numerical precision")
+                    log(f"[PRESCAN] ✓ Offset calculated: ({coord_offset[0]:.3f}, {coord_offset[1]:.3f}, {coord_offset[2]:.3f}) meters")
+                    log(f"[PRESCAN] This will re-center geometry to origin for numerical precision")
 
                     # Wrap xyz_transform with offset
                     if xyz_transform:
@@ -3994,22 +3990,18 @@ def export_step_from_citygml(
                             return (tx + coord_offset[0], ty + coord_offset[1], tz + coord_offset[2])
                         xyz_transform = wrapped_transform
 
-                        if debug:
-                            log(f"[PRESCAN] ✓ Wrapped xyz_transform with offset")
+                        log(f"[PRESCAN] ✓ Wrapped xyz_transform with offset")
                     else:
                         # No xyz_transform, create offset-only transform
                         def offset_transform(x, y, z):
                             return (x + coord_offset[0], y + coord_offset[1], z + coord_offset[2])
                         xyz_transform = offset_transform
 
-                        if debug:
-                            log(f"[PRESCAN] ✓ Created offset-only transform (no xyz_transform)")
+                        log(f"[PRESCAN] ✓ Created offset-only transform (no xyz_transform)")
                 else:
-                    if debug:
-                        log(f"[PRESCAN] Coordinates already near origin, no offset needed")
+                    log(f"[PRESCAN] Coordinates already near origin, no offset needed")
         else:
-            if debug:
-                log(f"[PRESCAN] ⚠ No polygon coordinates found, skipping re-centering")
+            log(f"[PRESCAN] ⚠ No polygon coordinates found, skipping re-centering")
 
     shapes: List[TopoDS_Shape] = []
     tried_solid = False

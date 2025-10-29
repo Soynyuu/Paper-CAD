@@ -1731,6 +1731,17 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             if sewn_shape is not None and not sewn_shape.IsNull():
                 if debug:
                     log(f"  Pass {i+1} successful")
+
+                # DEBUG: Check face count after this pass
+                if debug:
+                    from OCC.Core.TopAbs import TopAbs_FACE
+                    face_exp_count = TopExp_Explorer(sewn_shape, TopAbs_FACE)
+                    pass_face_count = 0
+                    while face_exp_count.More():
+                        pass_face_count += 1
+                        face_exp_count.Next()
+                    log(f"  [SEWING PASS {i+1}] {len(faces)} input → {pass_face_count} output faces")
+
                 # Use this result as input for next pass
                 # Extract faces from sewn shape for next iteration
                 if i < len(tolerances_to_try) - 1:
@@ -1752,6 +1763,20 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
             sewing.Add(fc)
         sewing.Perform()
         sewn_shape = sewing.SewedShape()
+
+    # DEBUG: Check how many faces survived sewing
+    if debug:
+        from OCC.Core.TopAbs import TopAbs_FACE
+        face_exp = TopExp_Explorer(sewn_shape, TopAbs_FACE)
+        sewn_face_count = 0
+        while face_exp.More():
+            sewn_face_count += 1
+            face_exp.Next()
+        log(f"[SEWING DIAGNOSTIC] Input: {len(faces)} faces → Output: {sewn_face_count} faces in sewn shape")
+        if sewn_face_count < len(faces):
+            lost_faces = len(faces) - sewn_face_count
+            loss_percentage = (lost_faces / len(faces)) * 100
+            log(f"[SEWING DIAGNOSTIC] ⚠ WARNING: {lost_faces} faces lost ({loss_percentage:.1f}%)")
 
     # Stage 5: Apply shape fixing based on level
     if shape_fix_level != "minimal":
@@ -1789,6 +1814,15 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
     exp = TopExp_Explorer(sewn_shape, TopAbs_SHELL)
     if exp.More():
         shell = topods.Shell(exp.Current())
+
+        # DEBUG: Count faces in extracted shell
+        if debug:
+            shell_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+            shell_face_count = 0
+            while shell_face_exp.More():
+                shell_face_count += 1
+                shell_face_exp.Next()
+            log(f"[SHELL DIAGNOSTIC] Extracted shell contains {shell_face_count} faces")
 
         # Validate shell
         try:

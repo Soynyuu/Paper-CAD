@@ -1888,15 +1888,93 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
         acceptable_shells = [s for s in shell_info if s['is_valid'] or s['invalid_ratio'] < INVALID_THRESHOLD]
 
         if acceptable_shells:
-            # Found acceptable shells - select the largest one and skip re-sewing
+            # Found acceptable shells - select the largest one
             largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
-            shell = largest_acceptable['shell']
 
             if debug:
                 if largest_acceptable['is_valid']:
                     log(f"[SHELL DIAGNOSTIC] Selected largest valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces")
                 else:
                     log(f"[SHELL DIAGNOSTIC] Selected largest mostly-valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces ({largest_acceptable['invalid_face_count']} invalid faces, {largest_acceptable['invalid_ratio']*100:.1f}%)")
+
+            # If shell has invalid faces, remove them and rebuild
+            if not largest_acceptable['is_valid'] and largest_acceptable['invalid_face_count'] > 0:
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Removing {largest_acceptable['invalid_face_count']} invalid faces and rebuilding shell...")
+
+                # Extract only valid faces from the shell
+                valid_faces_only = []
+                face_exp = TopExp_Explorer(largest_acceptable['shell'], TopAbs_FACE)
+                while face_exp.More():
+                    face = topods.Face(face_exp.Current())
+                    face_analyzer = BRepCheck_Analyzer(face)
+                    if face_analyzer.IsValid():
+                        valid_faces_only.append(face)
+                    face_exp.Next()
+
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Extracted {len(valid_faces_only)} valid faces, re-sewing...")
+
+                # Re-sew only the valid faces
+                if len(valid_faces_only) > 0:
+                    sewing_valid = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+                    for fc in valid_faces_only:
+                        sewing_valid.Add(fc)
+                    sewing_valid.Perform()
+                    cleaned_sewn = sewing_valid.SewedShape()
+
+                    # Extract all shells from cleaned result
+                    cleaned_exp = TopExp_Explorer(cleaned_sewn, TopAbs_SHELL)
+                    cleaned_shells = []
+                    while cleaned_exp.More():
+                        cleaned_shells.append(topods.Shell(cleaned_exp.Current()))
+                        cleaned_exp.Next()
+
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Re-sewing produced {len(cleaned_shells)} shell(s)")
+
+                    if len(cleaned_shells) > 0:
+                        # If multiple shells, select the largest one
+                        if len(cleaned_shells) > 1:
+                            largest_cleaned = None
+                            largest_cleaned_face_count = 0
+
+                            for i, sh in enumerate(cleaned_shells):
+                                face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
+                                face_count = 0
+                                while face_exp2.More():
+                                    face_count += 1
+                                    face_exp2.Next()
+
+                                if debug:
+                                    log(f"  Cleaned shell {i+1}: {face_count} faces")
+
+                                if face_count > largest_cleaned_face_count:
+                                    largest_cleaned_face_count = face_count
+                                    largest_cleaned = sh
+
+                            shell = largest_cleaned
+                            if debug:
+                                log(f"[SHELL DIAGNOSTIC] Selected largest cleaned shell with {largest_cleaned_face_count} faces")
+                        else:
+                            shell = cleaned_shells[0]
+                            if debug:
+                                cleaned_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                                cleaned_face_count = 0
+                                while cleaned_face_exp.More():
+                                    cleaned_face_count += 1
+                                    cleaned_face_exp.Next()
+                                log(f"[SHELL DIAGNOSTIC] Rebuilt shell from valid faces contains {cleaned_face_count} faces")
+                    else:
+                        # Fallback to original shell if cleaning failed
+                        shell = largest_acceptable['shell']
+                        if debug:
+                            log(f"[SHELL DIAGNOSTIC] Re-sewing valid faces produced no shells, using original shell")
+                else:
+                    shell = largest_acceptable['shell']
+            else:
+                # Shell is fully valid, use as-is
+                shell = largest_acceptable['shell']
 
         else:
             # No valid shells found, try re-sewing approach as fallback
@@ -2016,6 +2094,7 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
         # Validate shell
         try:
             from OCC.Core.BRep import BRep_Tool
+            from OCC.Core.BRepCheck import BRepCheck_Analyzer
             analyzer = BRepCheck_Analyzer(shell)
             if not analyzer.IsValid():
                 if debug:

@@ -3850,7 +3850,7 @@ def export_step_from_citygml(
     first_building_id = bldgs[0].get("{http://www.opengis.net/gml}id", "building_0")
     log_dir = "debug_logs"
     os.makedirs(log_dir, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Sanitize building ID for filename (replace invalid characters)
     safe_id = first_building_id.replace(":", "_").replace("/", "_").replace("\\", "_")
     log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
@@ -3862,7 +3862,7 @@ def export_step_from_citygml(
         log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
         log_file.write(f"{'='*80}\n")
         log_file.write(f"Building ID: {first_building_id}\n")
-        log_file.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
+        log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
         log_file.write(f"Precision mode: {precision_mode}\n")
         log_file.write(f"Shape fix level: {shape_fix_level}\n")
         log_file.write(f"Debug mode: {'Enabled' if debug else 'Always enabled for detailed diagnostics'}\n")

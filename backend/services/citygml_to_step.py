@@ -2233,31 +2233,33 @@ def _diagnose_shape_errors(shape, debug: bool = False) -> dict:
     return errors
 
 
-def _is_valid_solid(shape) -> bool:
-    """Check if a shape is a valid solid (not just any shape or invalid shell).
+def _is_valid_shape(shape) -> bool:
+    """Check if a shape is a valid solid or shell.
 
     This is used to validate results from _make_solid_with_cavities(), which can return
-    invalid shells when solid construction fails. Without this check, invalid shells
-    are returned to callers, preventing fallback to alternative strategies.
+    either solids or shells depending on whether solid construction succeeded. Both valid
+    solids and valid shells are acceptable for STEP export.
 
     Args:
         shape: TopoDS_Shape to validate
 
     Returns:
-        True if shape is a valid solid, False otherwise
+        True if shape is a valid solid or shell, False otherwise
     """
     from OCC.Core.BRepCheck import BRepCheck_Analyzer
-    from OCC.Core.TopAbs import TopAbs_SOLID
+    from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL
 
     if shape is None:
         return False
 
     try:
-        # Check if it's actually a solid (not a shell, face, etc.)
-        if shape.ShapeType() != TopAbs_SOLID:
+        shape_type = shape.ShapeType()
+
+        # Accept both SOLID and SHELL (but not face, edge, etc.)
+        if shape_type not in (TopAbs_SOLID, TopAbs_SHELL):
             return False
 
-        # Check if the solid is topologically valid
+        # Check if the shape is topologically valid
         analyzer = BRepCheck_Analyzer(shape)
         return analyzer.IsValid()
     except Exception:
@@ -2679,7 +2681,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         log(f"[CONVERSION DEBUG]   ✓✓ LOD3 Strategy 1 SUCCEEDED with valid solid - Returning detailed LOD3 model")
                         if debug:
                             log(f"[LOD3] Solid processing successful, returning shape")
@@ -2724,7 +2726,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD3] MultiSurface processing successful with valid solid, returning shape")
                     return result
@@ -2768,7 +2770,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD3] Geometry processing successful with valid solid, returning shape")
                     return result
@@ -2820,7 +2822,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_solid, interior_shells_faces, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 1 (lod2Solid) SUCCEEDED with valid solid ({len(exterior_faces_solid)} faces)")
                         if debug:
                             log(f"[LOD2] Solid processing successful")
@@ -2936,7 +2938,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] MultiSurface processing successful with valid solid, returning shape")
                     return result
@@ -2984,7 +2986,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] Geometry processing successful with valid solid, returning shape")
                     return result
@@ -3120,7 +3122,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                     exterior_faces, [], tolerance=None, debug=debug,
                     precision_mode=precision_mode, shape_fix_level=shape_fix_level
                 )
-                if result is not None and _is_valid_solid(result):
+                if result is not None and _is_valid_shape(result):
                     if debug:
                         log(f"[LOD2] boundedBy processing successful with valid solid, returning shape")
                         log(f"[CONVERSION DEBUG] ═══ Conversion successful via boundedBy strategy ═══")
@@ -3164,7 +3166,7 @@ def _extract_single_solid(elem: ET.Element, xyz_transform: Optional[Callable] = 
                         exterior_faces_lod1, interior_shells_lod1, tolerance=None, debug=debug,
                         precision_mode=precision_mode, shape_fix_level=shape_fix_level
                     )
-                    if result is not None and _is_valid_solid(result):
+                    if result is not None and _is_valid_shape(result):
                         if debug:
                             log(f"[LOD1] Processing successful with valid solid, returning shape")
                         return result

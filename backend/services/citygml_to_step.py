@@ -3843,6 +3843,64 @@ def export_step_from_citygml(
         if not bldgs:
             return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
 
+    # Check for buildings before initializing log file
+    if not bldgs:
+        return False, "No buildings found in CityGML file"
+
+    first_building_id = bldgs[0].get("{http://www.opengis.net/gml}id", "building_0")
+    log_dir = "debug_logs"
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Sanitize building ID for filename (replace invalid characters)
+    safe_id = first_building_id.replace(":", "_").replace("/", "_").replace("\\", "_")
+    log_path = os.path.join(log_dir, f"conversion_{safe_id}_{timestamp}.log")
+
+    try:
+        log_file = open(log_path, "w", encoding="utf-8")
+        # Write log header
+        log_file.write(f"{'='*80}\n")
+        log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
+        log_file.write(f"{'='*80}\n")
+        log_file.write(f"Building ID: {first_building_id}\n")
+        log_file.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
+        log_file.write(f"Precision mode: {precision_mode}\n")
+        log_file.write(f"Shape fix level: {shape_fix_level}\n")
+        log_file.write(f"Debug mode: {'Enabled' if debug else 'Always enabled for detailed diagnostics'}\n")
+        log_file.write(f"{'='*80}\n\n")
+
+        # Write LOG LEGEND and PROCESSING PHASES
+        log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
+        log_file.write(f"{'-'*80}\n")
+        log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
+        log_file.write(f"  [STEP X/Y]      = Step number within current phase\n")
+        log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
+        log_file.write(f"  ✗ FAILED        = Operation failed\n")
+        log_file.write(f"  ⚠ WARNING       = Potential issue detected (may not be critical)\n")
+        log_file.write(f"  → DECISION      = Decision point (which strategy/fallback to use)\n")
+        log_file.write(f"  ├─              = Child operation (subprocess)\n")
+        log_file.write(f"  └─              = Final result of operation\n")
+        log_file.write(f"  [GEOMETRY]      = Geometry extraction/construction operation\n")
+        log_file.write(f"  [VALIDATION]    = Topology/geometry validation check\n")
+        log_file.write(f"  [REPAIR]        = Automatic repair attempt\n")
+        log_file.write(f"  [ERROR CODE]    = OpenCASCADE error code/type\n")
+        log_file.write(f"  [INFO]          = Informational message\n")
+        log_file.write(f"{'-'*80}\n\n")
+        log_file.write(f"PROCESSING PHASES:\n")
+        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+        log_file.write(f"  [PHASE:2] Geometry Extraction (faces from gml:Solid)\n")
+        log_file.write(f"  [PHASE:3] Shell Construction (sewing faces)\n")
+        log_file.write(f"  [PHASE:4] Solid Validation (topology check)\n")
+        log_file.write(f"  [PHASE:5] Automatic Repair (ShapeFix_Solid, tolerance adjustment)\n")
+        log_file.write(f"  [PHASE:6] BuildingPart Merging (Boolean fusion if multiple parts)\n")
+        log_file.write(f"  [PHASE:7] STEP Export (final output generation)\n")
+        log_file.write(f"{'='*80}\n\n")
+
+        # Set as global log file so all subsequent log() calls write to it
+        set_log_file(log_file)
+    except Exception as e:
+        print(f"Warning: Failed to create log file: {e}")
+        log_file = None
+
     # Build XLink resolution index
     id_index = _build_id_index(root)
     if debug and id_index:
@@ -3907,7 +3965,7 @@ def export_step_from_citygml(
             log(f"  - ✓ Transformation setup successful")
         except Exception as e:
             log(f"  - ✗ Transformation setup failed: {e}")
-            close_log_file()  # Close log before returning (Issue #96)
+            close_log_file()  # Close log before returning
             return False, f"Reprojection setup failed: {e}"
     else:
         if debug:

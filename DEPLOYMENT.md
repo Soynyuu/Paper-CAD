@@ -1,5 +1,5 @@
 # Paper-CAD デプロイメントガイド
-
+ssh rocky@153.126.191.72 ps RgpQShQWYP5Zq=sA
 このドキュメントでは、Paper-CADを本番環境にデプロイする手順を説明します。
 
 ## 目次

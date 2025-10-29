@@ -1888,92 +1888,118 @@ def _build_shell_from_faces(faces: List["TopoDS_Face"], tolerance: float = 0.1,
         acceptable_shells = [s for s in shell_info if s['is_valid'] or s['invalid_ratio'] < INVALID_THRESHOLD]
 
         if acceptable_shells:
-            # Found acceptable shells - select the largest one
-            largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
-
+            # Collect valid faces from ALL acceptable shells (not just the largest)
             if debug:
-                if largest_acceptable['is_valid']:
-                    log(f"[SHELL DIAGNOSTIC] Selected largest valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces")
-                else:
-                    log(f"[SHELL DIAGNOSTIC] Selected largest mostly-valid shell (Shell {largest_acceptable['index']}) with {largest_acceptable['face_count']} faces ({largest_acceptable['invalid_face_count']} invalid faces, {largest_acceptable['invalid_ratio']*100:.1f}%)")
+                log(f"[SHELL DIAGNOSTIC] Found {len(acceptable_shells)} acceptable shell(s), collecting all valid faces...")
 
-            # If shell has invalid faces, remove them and rebuild
-            if not largest_acceptable['is_valid'] and largest_acceptable['invalid_face_count'] > 0:
+            all_valid_faces_from_acceptable_shells = []
+            total_invalid_removed = 0
+
+            for shell_info in acceptable_shells:
+                shell_idx = shell_info['index']
+                shell_obj = shell_info['shell']
+                shell_face_count = shell_info['face_count']
+                shell_is_valid = shell_info['is_valid']
+                shell_invalid_count = shell_info['invalid_face_count']
+
                 if debug:
-                    log(f"[SHELL DIAGNOSTIC] Removing {largest_acceptable['invalid_face_count']} invalid faces and rebuilding shell...")
+                    status = "✓ valid" if shell_is_valid else f"⚠ mostly valid ({shell_invalid_count} invalid)"
+                    log(f"  Processing Shell {shell_idx}: {shell_face_count} faces ({status})")
 
-                # Extract only valid faces from the shell
-                valid_faces_only = []
-                face_exp = TopExp_Explorer(largest_acceptable['shell'], TopAbs_FACE)
+                # Extract valid faces from this shell
+                face_exp = TopExp_Explorer(shell_obj, TopAbs_FACE)
+                valid_count = 0
+                invalid_count = 0
+
                 while face_exp.More():
                     face = topods.Face(face_exp.Current())
-                    face_analyzer = BRepCheck_Analyzer(face)
-                    if face_analyzer.IsValid():
-                        valid_faces_only.append(face)
+
+                    # If shell is fully valid, skip validation check for efficiency
+                    if shell_is_valid:
+                        all_valid_faces_from_acceptable_shells.append(face)
+                        valid_count += 1
+                    else:
+                        # Shell has some invalid faces - validate each face
+                        face_analyzer = BRepCheck_Analyzer(face)
+                        if face_analyzer.IsValid():
+                            all_valid_faces_from_acceptable_shells.append(face)
+                            valid_count += 1
+                        else:
+                            invalid_count += 1
+
                     face_exp.Next()
 
+                if debug and invalid_count > 0:
+                    log(f"    → Kept {valid_count} valid faces, removed {invalid_count} invalid faces")
+                    total_invalid_removed += invalid_count
+
+            if debug:
+                log(f"[SHELL DIAGNOSTIC] Collected {len(all_valid_faces_from_acceptable_shells)} valid faces from {len(acceptable_shells)} shells")
+                if total_invalid_removed > 0:
+                    log(f"[SHELL DIAGNOSTIC] Removed {total_invalid_removed} invalid faces total")
+
+            # Re-sew all collected valid faces into a unified shell
+            if len(all_valid_faces_from_acceptable_shells) > 0:
                 if debug:
-                    log(f"[SHELL DIAGNOSTIC] Extracted {len(valid_faces_only)} valid faces, re-sewing...")
+                    log(f"[SHELL DIAGNOSTIC] Re-sewing {len(all_valid_faces_from_acceptable_shells)} faces into unified shell...")
 
-                # Re-sew only the valid faces
-                if len(valid_faces_only) > 0:
-                    sewing_valid = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
-                    for fc in valid_faces_only:
-                        sewing_valid.Add(fc)
-                    sewing_valid.Perform()
-                    cleaned_sewn = sewing_valid.SewedShape()
+                sewing_unified = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+                for fc in all_valid_faces_from_acceptable_shells:
+                    sewing_unified.Add(fc)
+                sewing_unified.Perform()
+                unified_sewn = sewing_unified.SewedShape()
 
-                    # Extract all shells from cleaned result
-                    cleaned_exp = TopExp_Explorer(cleaned_sewn, TopAbs_SHELL)
-                    cleaned_shells = []
-                    while cleaned_exp.More():
-                        cleaned_shells.append(topods.Shell(cleaned_exp.Current()))
-                        cleaned_exp.Next()
+                # Extract all shells from unified result
+                unified_exp = TopExp_Explorer(unified_sewn, TopAbs_SHELL)
+                unified_shells = []
+                while unified_exp.More():
+                    unified_shells.append(topods.Shell(unified_exp.Current()))
+                    unified_exp.Next()
 
-                    if debug:
-                        log(f"[SHELL DIAGNOSTIC] Re-sewing produced {len(cleaned_shells)} shell(s)")
+                if debug:
+                    log(f"[SHELL DIAGNOSTIC] Unified re-sewing produced {len(unified_shells)} shell(s)")
 
-                    if len(cleaned_shells) > 0:
-                        # If multiple shells, select the largest one
-                        if len(cleaned_shells) > 1:
-                            largest_cleaned = None
-                            largest_cleaned_face_count = 0
+                if len(unified_shells) > 0:
+                    # If multiple shells, select the largest one
+                    if len(unified_shells) > 1:
+                        largest_unified = None
+                        largest_unified_face_count = 0
 
-                            for i, sh in enumerate(cleaned_shells):
-                                face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
-                                face_count = 0
-                                while face_exp2.More():
-                                    face_count += 1
-                                    face_exp2.Next()
+                        for i, sh in enumerate(unified_shells):
+                            face_exp2 = TopExp_Explorer(sh, TopAbs_FACE)
+                            face_count = 0
+                            while face_exp2.More():
+                                face_count += 1
+                                face_exp2.Next()
 
-                                if debug:
-                                    log(f"  Cleaned shell {i+1}: {face_count} faces")
-
-                                if face_count > largest_cleaned_face_count:
-                                    largest_cleaned_face_count = face_count
-                                    largest_cleaned = sh
-
-                            shell = largest_cleaned
                             if debug:
-                                log(f"[SHELL DIAGNOSTIC] Selected largest cleaned shell with {largest_cleaned_face_count} faces")
-                        else:
-                            shell = cleaned_shells[0]
-                            if debug:
-                                cleaned_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
-                                cleaned_face_count = 0
-                                while cleaned_face_exp.More():
-                                    cleaned_face_count += 1
-                                    cleaned_face_exp.Next()
-                                log(f"[SHELL DIAGNOSTIC] Rebuilt shell from valid faces contains {cleaned_face_count} faces")
-                    else:
-                        # Fallback to original shell if cleaning failed
-                        shell = largest_acceptable['shell']
+                                log(f"  Unified shell {i+1}: {face_count} faces")
+
+                            if face_count > largest_unified_face_count:
+                                largest_unified_face_count = face_count
+                                largest_unified = sh
+
+                        shell = largest_unified
                         if debug:
-                            log(f"[SHELL DIAGNOSTIC] Re-sewing valid faces produced no shells, using original shell")
+                            log(f"[SHELL DIAGNOSTIC] Selected largest unified shell with {largest_unified_face_count} faces")
+                    else:
+                        shell = unified_shells[0]
+                        if debug:
+                            unified_face_exp = TopExp_Explorer(shell, TopAbs_FACE)
+                            unified_face_count = 0
+                            while unified_face_exp.More():
+                                unified_face_count += 1
+                                unified_face_exp.Next()
+                            log(f"[SHELL DIAGNOSTIC] Unified shell contains {unified_face_count} faces")
                 else:
+                    # Fallback: use largest acceptable shell if unification failed
+                    if debug:
+                        log(f"[SHELL DIAGNOSTIC] Unified re-sewing produced no shells, using largest acceptable shell as fallback")
+                    largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
                     shell = largest_acceptable['shell']
             else:
-                # Shell is fully valid, use as-is
+                # No valid faces collected - fallback to largest acceptable shell
+                largest_acceptable = max(acceptable_shells, key=lambda s: s['face_count'])
                 shell = largest_acceptable['shell']
 
         else:

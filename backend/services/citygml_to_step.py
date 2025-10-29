@@ -4050,6 +4050,14 @@ def export_step_from_citygml(
                         xyz_transform = wrapped_transform
 
                         log(f"[PRESCAN] ✓ Wrapped xyz_transform with offset")
+                        # Test the wrapped transform with a sample coordinate
+                        if raw_coords:
+                            test_x, test_y, test_z = raw_coords[0]
+                            orig_result = original_transform(test_x, test_y, test_z)
+                            wrapped_result = xyz_transform(test_x, test_y, test_z)
+                            log(f"[PRESCAN] DEBUG: Sample coordinate ({test_x:.3f}, {test_y:.3f}, {test_z:.3f})")
+                            log(f"[PRESCAN] DEBUG: Original transform → ({orig_result[0]:.3f}, {orig_result[1]:.3f}, {orig_result[2]:.3f})")
+                            log(f"[PRESCAN] DEBUG: Wrapped transform → ({wrapped_result[0]:.3f}, {wrapped_result[1]:.3f}, {wrapped_result[2]:.3f})")
                     else:
                         # No xyz_transform, create offset-only transform
                         def offset_transform(x, y, z):

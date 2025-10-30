@@ -1,6 +1,11 @@
-# Systemd service file for paper-cad
+# Systemd service file for paper-cad (Production Environment)
+# This file is configured for ENV=production
 # Place this file in /etc/systemd/system/paper-cad.service
 # For Rootless Podman, place in ~/.config/systemd/user/paper-cad.service
+#
+# To generate a service file for different environments, use:
+#   ENV=production bash podman-deploy.sh systemd  # Production
+#   ENV=development bash podman-deploy.sh systemd # Development
 
 [Unit]
 Description=Paper-CAD Backend Service (Podman)
@@ -16,6 +21,7 @@ TimeoutStartSec=300
 
 # Environment variables
 Environment="PODMAN_SYSTEMD_UNIT=%n"
+Environment="ENV=production"
 Environment="PORT=8001"
 
 # Pre-start commands
@@ -32,6 +38,10 @@ ExecStart=/usr/bin/podman run \
     --sdnotify=conmon \
     -p 8001:8001 \
     -v %h/paper-cad/core/debug_files:/app/core/debug_files:Z \
+    -e ENV=production \
+    -e FRONTEND_URL=https://app-paper-cad.soynyuu.com \
+    -e CORS_ALLOW_ALL=false \
+    -e PORT=8001 \
     --health-cmd="python -c 'import requests; requests.get(\"http://localhost:8001/api/health\")'" \
     --health-interval=30s \
     --health-timeout=10s \

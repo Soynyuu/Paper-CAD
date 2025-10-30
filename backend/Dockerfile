@@ -32,9 +32,8 @@ EXPOSE 8001
 # Conda環境をアクティベートしてアプリケーションを起動
 SHELL ["conda", "run", "-n", "paper-cad", "/bin/bash", "-c"]
 
-# ヘルスチェック設定
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD conda run -n paper-cad python -c "import requests; requests.get('http://localhost:8001/api/health')" || exit 1
+# ヘルスチェックは docker-compose.yml / podman-deploy.sh で定義
+# Dockerfileでの定義は削除（conda runの繰り返し実行によるロック問題を回避）
 
 # アプリケーション起動
 CMD ["conda", "run", "--no-capture-output", "-n", "paper-cad", "python", "main.py"]

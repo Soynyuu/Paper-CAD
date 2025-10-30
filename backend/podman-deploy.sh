@@ -60,14 +60,18 @@ case $ACTION in
         
         # debug_filesディレクトリの作成
         mkdir -p core/debug_files
-        
+
         # コンテナ実行（Rootlessモード）
         # 本番環境用の環境変数を明示的に設定
+        # ロック問題対策:
+        # - :Z → :z に変更（共有ボリューム、SELinux競合を回避）
+        # - --events-backend=file（journaldのロック問題を回避）
+        # - --storage-opt overlay.mount_program=/usr/bin/fuse-overlayfs（overlayfsのロック問題を回避）
         podman run -d \
             --name ${CONTAINER_NAME} \
             --restart always \
             -p ${PORT}:8001 \
-            -v ${DEBUG_VOLUME}:Z \
+            -v ${DEBUG_VOLUME}:z \
             -e FRONTEND_URL=https://app-paper-cad.soynyuu.com \
             -e CORS_ALLOW_ALL=false \
             -e PORT=8001 \
@@ -75,7 +79,8 @@ case $ACTION in
             -e WORKERS=2 \
             --memory=2g \
             --cpus=2.0 \
-            --security-opt label=disable \
+            --events-backend=file \
+            --storage-opt overlay.mount_program=/usr/bin/fuse-overlayfs \
             ${IMAGE_NAME}:latest
         
         echo -e "${GREEN}Container started on port ${PORT}${NC}"

@@ -75,6 +75,10 @@ case $ACTION in
             -e FRONTEND_URL=https://app-paper-cad.soynyuu.com \
             -e CORS_ALLOW_ALL=false \
             -e PORT=8001 \
+            -e ENV=production \
+            -e WORKERS=2 \
+            --memory=2g \
+            --cpus=2.0 \
             --security-opt label=disable \
             ${IMAGE_NAME}:latest
 

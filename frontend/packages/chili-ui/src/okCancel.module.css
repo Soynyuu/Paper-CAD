@@ -51,4 +51,11 @@
         background-color: var(--border-color);
         margin: 6px 0px;
     }
+
+    .selectionCount {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary-color);
+        margin-left: var(--spacing-xs);
+        font-weight: 500;
+    }
 }

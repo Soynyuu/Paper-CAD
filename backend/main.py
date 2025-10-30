@@ -44,14 +44,30 @@ def main():
     """サーバーを起動する"""
     if not OCCT_AVAILABLE:
         print("警告: OpenCASCADE が利用できないため、一部機能が制限されます。")
-    
+
+    # 環境変数から設定を取得
     port = int(os.getenv("PORT", 8001))
-    print(f"サーバーをポート {port} で起動します。")
+    env = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
+    is_production = env == "production"
+
+    # 本番環境ではreloadを無効化、ワーカー数を設定
+    reload_enabled = not is_production
+    workers = int(os.getenv("WORKERS", 1 if not is_production else 2))
+
+    print(f"\n{'='*60}")
+    print(f"[SERVER] 環境: {env}")
+    print(f"[SERVER] ポート: {port}")
+    print(f"[SERVER] リロード: {reload_enabled}")
+    print(f"[SERVER] ワーカー数: {workers}")
+    print(f"[SERVER] OpenCASCADE: {'利用可能' if OCCT_AVAILABLE else '利用不可'}")
+    print(f"{'='*60}\n")
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
+        reload=reload_enabled,
+        workers=workers if not reload_enabled else None,  # reloadモードではworkersは使えない
         access_log=True,
         log_level="info",
     )

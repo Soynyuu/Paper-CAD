@@ -57,6 +57,9 @@ async def unfold_step_to_svg(
     """
     if not OCCT_AVAILABLE:
         raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
+
+    tmpdir = None
+    output_tmpdir = None
     try:
         # ファイル拡張子チェック
         if not (file.filename.lower().endswith('.step') or file.filename.lower().endswith('.stp')):
@@ -95,7 +98,8 @@ async def unfold_step_to_svg(
         # 一時保存したファイルからロード
         if not step_unfold_generator.load_from_file(in_path):
             raise HTTPException(status_code=400, detail="STEPファイルの読み込みに失敗しました。")
-        output_path = os.path.join(tempfile.mkdtemp(), f"step_unfold_{uuid.uuid4()}.svg")
+        output_tmpdir = tempfile.mkdtemp()
+        output_path = os.path.join(output_tmpdir, f"step_unfold_{uuid.uuid4()}.svg")
 
         # レイアウトオプションを含むBrepPapercraftRequestを作成
         request = BrepPapercraftRequest(
@@ -151,13 +155,27 @@ async def unfold_step_to_svg(
                     "X-Page-Count": str(stats.get("page_count", 1)) if layout_mode == "paged" else "1"
                 }
             )
-        
+
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+    finally:
+        # 一時ディレクトリのクリーンアップ
+        import shutil
+        if tmpdir and os.path.exists(tmpdir):
+            try:
+                shutil.rmtree(tmpdir)
+            except Exception as e:
+                print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {e}")
+        if output_tmpdir and os.path.exists(output_tmpdir):
+            try:
+                shutil.rmtree(output_tmpdir)
+            except Exception as e:
+                print(f"[CLEANUP] Failed to remove output_tmpdir {output_tmpdir}: {e}")
 
 # --- STEP → PDF 展開図エンドポイント ---
 @router.post("/api/step/unfold-pdf")
@@ -186,6 +204,7 @@ async def unfold_step_to_pdf(
     if not OCCT_AVAILABLE:
         raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
 
+    tmpdir = None
     try:
         # ファイル拡張子チェック
         if not (file.filename.lower().endswith('.step') or file.filename.lower().endswith('.stp')):
@@ -305,6 +324,14 @@ async def unfold_step_to_pdf(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"PDFエクスポートエラー: {str(e)}")
+    finally:
+        # 一時ディレクトリのクリーンアップ
+        import shutil
+        if tmpdir and os.path.exists(tmpdir):
+            try:
+                shutil.rmtree(tmpdir)
+            except Exception as e:
+                print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {e}")
 
 # --- CityGML → STEP 変換エンドポイント ---
 @router.post(
@@ -418,6 +445,8 @@ async def citygml_to_step(
       * gml:id (デフォルト): 標準のGML識別子で照合
       * 汎用属性名: gen:genericAttributeの値で照合（例: "buildingID"）
     """
+    tmpdir = None
+    out_dir = None
     try:
         # Normalize limit parameter (handle empty string from form)
         normalized_limit: Optional[int] = None
@@ -476,11 +505,11 @@ async def citygml_to_step(
             if not file.filename.lower().endswith((".gml", ".xml")):
                 raise HTTPException(status_code=400, detail="CityGML (.gml/.xml) に対応しています。")
             
-            # ファイルサイズチェック（500MB制限）
-            if hasattr(file, 'size') and file.size and file.size > 500 * 1024 * 1024:
+            # ファイルサイズチェック（100MB制限）
+            if hasattr(file, 'size') and file.size and file.size > 100 * 1024 * 1024:
                 raise HTTPException(
                     status_code=413,
-                    detail="ファイルサイズが大きすぎます（最大500MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
+                    detail="ファイルサイズが大きすぎます（最大100MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
                 )
             tmpdir = tempfile.mkdtemp()
             in_path = os.path.join(tmpdir, f"{uuid.uuid4()}.gml")
@@ -564,6 +593,24 @@ async def citygml_to_step(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+    finally:
+        # エラー時の一時ディレクトリクリーンアップ
+        # 成功時はbackground_tasksが処理するため、エラー時のみクリーンアップ
+        import shutil
+        import sys
+        if sys.exc_info()[0] is not None:  # 例外が発生している場合のみ
+            if tmpdir and os.path.exists(tmpdir):
+                try:
+                    shutil.rmtree(tmpdir)
+                    print(f"[CLEANUP] Removed tmpdir on error: {tmpdir}")
+                except Exception as cleanup_e:
+                    print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {cleanup_e}")
+            if out_dir and os.path.exists(out_dir):
+                try:
+                    shutil.rmtree(out_dir)
+                    print(f"[CLEANUP] Removed out_dir on error: {out_dir}")
+                except Exception as cleanup_e:
+                    print(f"[CLEANUP] Failed to remove out_dir {out_dir}: {cleanup_e}")
 
 
 # --- CityGML 検証（簡易） ---
@@ -770,6 +817,8 @@ async def plateau_fetch_and_convert(
     Returns:
         STEPファイル（application/octet-stream）
     """
+    tmpdir = None
+    out_dir = None
     try:
         # Normalize building_limit parameter (handle empty string, "0", or None)
         normalized_building_limit: Optional[int] = None
@@ -951,6 +1000,24 @@ async def plateau_fetch_and_convert(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+    finally:
+        # エラー時の一時ディレクトリクリーンアップ
+        # 成功時はbackground_tasksが処理するため、エラー時のみクリーンアップ
+        import shutil
+        import sys
+        if sys.exc_info()[0] is not None:  # 例外が発生している場合のみ
+            if tmpdir and os.path.exists(tmpdir):
+                try:
+                    shutil.rmtree(tmpdir)
+                    print(f"[CLEANUP] Removed tmpdir on error: {tmpdir}")
+                except Exception as cleanup_e:
+                    print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {cleanup_e}")
+            if out_dir and os.path.exists(out_dir):
+                try:
+                    shutil.rmtree(out_dir)
+                    print(f"[CLEANUP] Removed out_dir on error: {out_dir}")
+                except Exception as cleanup_e:
+                    print(f"[CLEANUP] Failed to remove out_dir {out_dir}: {cleanup_e}")
 
 
 # --- PLATEAU: Building ID Search ---

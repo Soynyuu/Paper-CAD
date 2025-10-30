@@ -154,13 +154,14 @@ export class Editor extends HTMLElement {
     }
 
     private readonly showSelectionControl = (controller: AsyncController) => {
-        this._selectionController.setControl(controller);
+        const document = this._app.activeView?.document;
+        this._selectionController.setControl(controller, document);
         this._selectionController.style.visibility = "visible";
         this._selectionController.style.zIndex = "1000";
     };
 
     private readonly clearSelectionControl = () => {
-        this._selectionController.setControl(undefined);
+        this._selectionController.setControl(undefined, undefined);
         this._selectionController.style.visibility = "hidden";
     };
 

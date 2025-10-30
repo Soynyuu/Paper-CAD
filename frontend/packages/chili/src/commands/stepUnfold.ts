@@ -59,18 +59,21 @@ export class StepUnfold extends CancelableCommand {
             "showPermanent",
             async () => {
                 try {
-                    console.log("Selected nodes:", nodes);
-                    console.log("First node:", nodes[0]);
+                    console.log(`Selected ${nodes.length} node(s):`, nodes);
 
-                    // 選択されたノードから3D形状データを取得
-                    const shapeNode = nodes[0] as ShapeNode;
-                    console.log("ShapeNode:", shapeNode);
-                    console.log("Has shape:", !!shapeNode.shape);
+                    // 選択されたすべてのノードが有効な3D形状データを持つか検証
+                    const invalidNodes = nodes.filter((node) => {
+                        const shapeNode = node as ShapeNode;
+                        return !shapeNode.shape;
+                    });
 
-                    if (!shapeNode.shape) {
+                    if (invalidNodes.length > 0) {
+                        console.warn("Invalid nodes without shape:", invalidNodes);
                         PubSub.default.pub("showToast", "toast.select.noSelected");
                         return;
                     }
+
+                    console.log(`All ${nodes.length} nodes have valid shapes. Proceeding with unfold...`);
 
                     // 3D形状をSTEPファイル形式でエクスポート
                     const stepData = await this.application.dataExchange.export(".step", nodes);
@@ -160,7 +163,7 @@ export class StepUnfold extends CancelableCommand {
     private async selectNodesAsync() {
         this.controller = new AsyncController();
         const step = new SelectNodeWithListStep("prompt.select.models", {
-            multiple: false,
+            multiple: true,
             keepSelection: true,
             allowListSelection: true,
             filter: {

@@ -41,7 +41,9 @@ export class NodeSelectionHandler extends SelectionHandler {
         const models = this._highlights
             .map((x) => view.document.visual.context.getNode(x))
             .filter((x): x is INode => x !== undefined);
-        this.document.selection.setSelection(models, event.shiftKey);
+        // In multi-mode, always toggle selection (no Shift key required)
+        // In single-mode, toggle only when Shift key is pressed
+        this.document.selection.setSelection(models, this.multiMode || event.shiftKey);
         return models.length;
     }
 

@@ -505,11 +505,11 @@ async def citygml_to_step(
             if not file.filename.lower().endswith((".gml", ".xml")):
                 raise HTTPException(status_code=400, detail="CityGML (.gml/.xml) に対応しています。")
             
-            # ファイルサイズチェック（100MB制限）
-            if hasattr(file, 'size') and file.size and file.size > 100 * 1024 * 1024:
+            # ファイルサイズチェック（250MB制限）
+            if hasattr(file, 'size') and file.size and file.size > 250 * 1024 * 1024:
                 raise HTTPException(
                     status_code=413,
-                    detail="ファイルサイズが大きすぎます（最大100MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
+                    detail="ファイルサイズが大きすぎます（最大250MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
                 )
             tmpdir = tempfile.mkdtemp()
             in_path = os.path.join(tmpdir, f"{uuid.uuid4()}.gml")

@@ -587,14 +587,10 @@ def _wire_from_coords_xy(coords: List[Tuple[float, float]]) -> "TopoDS_Shape":
     """Create a wire from 2D coordinates.
 
     Args:
-        coords: List of (x, y) tuples in METERS (CityGML standard)
+        coords: List of (x, y) tuples in meters (CityGML standard)
 
     Returns:
         TopoDS_Wire
-
-    Note:
-        CityGML coordinates are in meters, but OpenCASCADE/STEP expects millimeters.
-        This function automatically converts by multiplying by 1000.
     """
     poly = BRepBuilderAPI_MakePolygon()
     # Ensure closed polygon; avoid duplicate closing point
@@ -602,9 +598,8 @@ def _wire_from_coords_xy(coords: List[Tuple[float, float]]) -> "TopoDS_Shape":
         pts = coords[:-1]
     else:
         pts = coords
-    # Convert from meters (CityGML) to millimeters (OpenCASCADE/STEP)
     for x, y in pts:
-        poly.Add(gp_Pnt(float(x) * 1000.0, float(y) * 1000.0, 0.0))
+        poly.Add(gp_Pnt(float(x), float(y), 0.0))
     poly.Close()
     return poly.Wire()
 
@@ -613,15 +608,11 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
     """Create a wire from 3D coordinates.
 
     Args:
-        coords: List of (x, y, z) tuples in METERS (CityGML standard)
+        coords: List of (x, y, z) tuples in meters (CityGML standard)
         debug: Enable debug output
 
     Returns:
         TopoDS_Wire or None if creation fails
-
-    Note:
-        CityGML coordinates are in meters, but OpenCASCADE/STEP expects millimeters.
-        This function automatically converts by multiplying by 1000.
     """
     try:
         poly = BRepBuilderAPI_MakePolygon()
@@ -635,9 +626,8 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
                 log(f"Wire creation failed: insufficient points ({len(pts)} < 2)")
             return None
 
-        # Convert from meters (CityGML) to millimeters (OpenCASCADE/STEP)
         for x, y, z in pts:
-            poly.Add(gp_Pnt(float(x) * 1000.0, float(y) * 1000.0, float(z) * 1000.0))
+            poly.Add(gp_Pnt(float(x), float(y), float(z)))
         poly.Close()
 
         if not poly.IsDone():
@@ -655,9 +645,11 @@ def _wire_from_coords_xyz(coords: List[Tuple[float, float, float]], debug: bool 
 def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
     """Create a prism solid from a 2D footprint using OCCT.
 
-    Note:
-        Footprint coordinates are in meters (CityGML standard), but OpenCASCADE/STEP
-        expects millimeters. Height is also converted from meters to millimeters.
+    Args:
+        fp: Footprint with coordinates and height in meters (CityGML standard)
+
+    Returns:
+        TopoDS_Shape prism solid
     """
     if not OCCT_AVAILABLE:
         raise RuntimeError("OpenCASCADE (pythonocc-core) is required for extrusion")
@@ -670,8 +662,7 @@ def extrude_footprint(fp: Footprint) -> "TopoDS_Shape":
             face_maker.Add(_wire_from_coords_xy(hole))
     face = face_maker.Face()
 
-    # Convert height from meters to millimeters (fp.height is in meters)
-    vec = gp_Vec(0.0, 0.0, float(fp.height) * 1000.0)
+    vec = gp_Vec(0.0, 0.0, float(fp.height))
     prism = BRepPrimAPI_MakePrism(face, vec, True).Shape()
     return prism
 

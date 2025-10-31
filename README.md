@@ -65,6 +65,54 @@ npm install
 npm run dev
 ```
 
+### 実行モード
+
+Paper-CADは用途に応じて3つの実行モードを提供しています。
+
+#### 🔧 開発モード（デフォルト）
+通常の開発作業用。ホットリロード有効。
+
+```bash
+# バックエンド
+cd backend
+python main.py  # http://localhost:8001
+
+# フロントエンド（別ターミナル）
+cd frontend
+npm run dev     # http://localhost:8080
+```
+
+#### 🎬 デモモード（推奨）
+**localhostで本番環境並みのパフォーマンスを実現**。デモやプレゼンテーションに最適。
+
+```bash
+# バックエンド
+cd backend
+ENV=demo python main.py  # http://localhost:8001
+
+# フロントエンド（別ターミナル）
+cd frontend
+npm run demo             # http://localhost:8080
+```
+
+**特徴:**
+- ✅ 本番と同等の速度（minification、tree-shaking、複数ワーカー）
+- ✅ 開発モードと同じポート（8080/8001）
+- ✅ ホットリロード無効化による高速化
+
+#### 🚀 本番モード
+本番環境へのデプロイ用。
+
+```bash
+# フロントエンド（Cloudflare Pages）
+cd frontend
+npm run deploy:production
+
+# バックエンド（Docker/Podman）
+cd backend
+docker compose up -d
+```
+
 ## 使い方
 
 ### 基本的なワークフロー

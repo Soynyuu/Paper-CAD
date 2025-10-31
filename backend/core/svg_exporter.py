@@ -11,14 +11,14 @@ class SVGExporter:
     展開図のSVG形式での出力機能を提供。
     """
     
-    def __init__(self, scale_factor: float = 10.0, units: str = "mm", 
+    def __init__(self, scale_factor: float = 10.0, units: str = "mm",
                  tab_width: float = 5.0, show_scale: bool = True,
                  show_fold_lines: bool = True, show_cut_lines: bool = True,
                  page_format: str = "A4", layout_mode: str = "canvas",
-                 page_orientation: str = "portrait"):
+                 page_orientation: str = "portrait", mirror_horizontal: bool = False):
         """
         SVGExporterを初期化。
-        
+
         Args:
             scale_factor: スケール倍率
             units: 単位系
@@ -29,6 +29,7 @@ class SVGExporter:
             page_format: ページフォーマット (A4, A3, Letter)
             layout_mode: レイアウトモード ("canvas" or "paged")
             page_orientation: ページ方向 ("portrait" or "landscape")
+            mirror_horizontal: 左右反転モード (True=水平方向に反転)
         """
         self.scale_factor = scale_factor
         self.units = units
@@ -39,6 +40,7 @@ class SVGExporter:
         self.page_format = page_format
         self.layout_mode = layout_mode
         self.page_orientation = page_orientation
+        self.mirror_horizontal = mirror_horizontal
         
         # ページサイズの定義 (mm単位)
         self.page_sizes_mm = {
@@ -892,11 +894,19 @@ class SVGExporter:
                     for polygon in polygons:
                         if len(polygon) >= 3:
                             # ページマージンを考慮した配置
-                            points = [
-                                (x * actual_scale + margin_px,
-                                 y * actual_scale + margin_px)
-                                for x, y in polygon
-                            ]
+                            if self.mirror_horizontal:
+                                # 左右反転: 印刷可能幅を基準に反転
+                                points = [
+                                    (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                     y * actual_scale + margin_px)
+                                    for x, y in polygon
+                                ]
+                            else:
+                                points = [
+                                    (x * actual_scale + margin_px,
+                                     y * actual_scale + margin_px)
+                                    for x, y in polygon
+                                ]
 
                             # pathデータを追加
                             path_parts.append(f"M {points[0][0]},{points[0][1]}")
@@ -939,11 +949,19 @@ class SVGExporter:
                     for poly_idx, polygon in enumerate(polygons):
                         if len(polygon) >= 3:
                             # ページマージンを考慮した配置
-                            points = [
-                                (x * actual_scale + margin_px,
-                                 y * actual_scale + margin_px)
-                                for x, y in polygon
-                            ]
+                            if self.mirror_horizontal:
+                                # 左右反転: 印刷可能幅を基準に反転
+                                points = [
+                                    (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                     y * actual_scale + margin_px)
+                                    for x, y in polygon
+                                ]
+                            else:
+                                points = [
+                                    (x * actual_scale + margin_px,
+                                     y * actual_scale + margin_px)
+                                    for x, y in polygon
+                                ]
                             polygon_elem = dwg.polygon(points=points, class_="face-polygon")
                             # カスタムデータ属性を追加
                             if face_number is not None:
@@ -966,11 +984,19 @@ class SVGExporter:
                 # タブ描画
                 for tab in group.get("tabs", []):
                     if len(tab) >= 3:
-                        points = [
-                            (x * actual_scale + margin_px, 
-                             y * actual_scale + margin_px) 
-                            for x, y in tab
-                        ]
+                        if self.mirror_horizontal:
+                            # 左右反転: 印刷可能幅を基準に反転
+                            points = [
+                                (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                 y * actual_scale + margin_px)
+                                for x, y in tab
+                            ]
+                        else:
+                            points = [
+                                (x * actual_scale + margin_px,
+                                 y * actual_scale + margin_px)
+                                for x, y in tab
+                            ]
                         dwg.add(dwg.polygon(points=points, class_="tab-polygon"))
             
             # ページ番号を追加
@@ -997,15 +1023,16 @@ class SVGExporter:
         
         return svg_paths
 
-    def update_settings(self, scale_factor: Optional[float] = None, 
-                       units: Optional[str] = None, 
+    def update_settings(self, scale_factor: Optional[float] = None,
+                       units: Optional[str] = None,
                        tab_width: Optional[float] = None,
                        show_scale: Optional[bool] = None,
                        show_fold_lines: Optional[bool] = None,
                        show_cut_lines: Optional[bool] = None,
                        layout_mode: Optional[str] = None,
                        page_format: Optional[str] = None,
-                       page_orientation: Optional[str] = None):
+                       page_orientation: Optional[str] = None,
+                       mirror_horizontal: Optional[bool] = None):
         """
         設定を更新する
         """
@@ -1029,3 +1056,5 @@ class SVGExporter:
         if page_orientation is not None:
             self.page_orientation = page_orientation
             self._calculate_page_dimensions()
+        if mirror_horizontal is not None:
+            self.mirror_horizontal = mirror_horizontal

@@ -185,7 +185,8 @@ async def unfold_step_to_pdf(
     page_format: str = Form("A4"),
     page_orientation: str = Form("portrait"),
     scale_factor: float = Form(150.0),
-    texture_mappings: Optional[str] = Form(None)
+    texture_mappings: Optional[str] = Form(None),
+    mirror_horizontal: bool = Form(False)
 ):
     """
     STEPファイル（.step/.stp）を受け取り、展開図をPDF形式で生成するAPI。
@@ -197,6 +198,7 @@ async def unfold_step_to_pdf(
         page_orientation: ページ方向 - "portrait"=縦、"landscape"=横 (default: "portrait")
         scale_factor: 図の縮尺倍率 (default: 150.0) - 例: 150なら1/150スケール
         texture_mappings: JSON形式のテクスチャマッピング情報 - [{faceNumber, patternId, tileCount}]
+        mirror_horizontal: 左右反転モード - True=水平方向に反転 (default: False)
 
     Returns:
         PDFファイル（application/pdf）
@@ -251,7 +253,8 @@ async def unfold_step_to_pdf(
             layout_mode=layout_mode,
             page_format=page_format,
             page_orientation=page_orientation,
-            scale_factor=scale_factor
+            scale_factor=scale_factor,
+            mirror_horizontal=mirror_horizontal
         )
 
         # テクスチャマッピングを設定

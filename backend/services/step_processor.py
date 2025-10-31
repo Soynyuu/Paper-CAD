@@ -88,7 +88,8 @@ class StepUnfoldGenerator:
         self.show_scale = True      # スケールバー：図面標準への準拠
         self.show_fold_lines = True # 折り線：組み立て指示の視覚化
         self.show_cut_lines = True  # 切断線：加工指示の視覚化
-        
+        self.mirror_horizontal = False  # 左右反転モード：水平方向の反転
+
         # SVGエクスポーター
         self.svg_exporter = SVGExporter(
             scale_factor=self.scale_factor,
@@ -99,7 +100,8 @@ class StepUnfoldGenerator:
             show_cut_lines=self.show_cut_lines,
             layout_mode=self.layout_mode,
             page_format=self.page_format,
-            page_orientation=self.page_orientation
+            page_orientation=self.page_orientation,
+            mirror_horizontal=self.mirror_horizontal
         )
         
         # ═══ 処理統計情報：品質管理と性能監視のためのメトリクス ═══
@@ -249,7 +251,8 @@ class StepUnfoldGenerator:
             show_cut_lines=self.show_cut_lines,
             layout_mode=self.layout_mode,
             page_format=self.page_format,
-            page_orientation=self.page_orientation
+            page_orientation=self.page_orientation,
+            mirror_horizontal=self.mirror_horizontal
         )
 
         # テクスチャマッピングを設定
@@ -273,7 +276,8 @@ class StepUnfoldGenerator:
             show_cut_lines=self.show_cut_lines,
             layout_mode=self.layout_mode,
             page_format=self.page_format,
-            page_orientation=self.page_orientation
+            page_orientation=self.page_orientation,
+            mirror_horizontal=self.mirror_horizontal
         )
 
         # テクスチャマッピングを設定
@@ -373,7 +377,8 @@ class StepUnfoldGenerator:
             self.layout_mode = request.layout_mode
             self.page_format = request.page_format
             self.page_orientation = request.page_orientation
-            
+            self.mirror_horizontal = request.mirror_horizontal
+
             # UnfoldEngine、LayoutManager、SVGExporterのscale_factorを更新
             self.unfold_engine.scale_factor = self.scale_factor
             self.unfold_engine.tab_width = self.tab_width
@@ -383,6 +388,7 @@ class StepUnfoldGenerator:
             self.svg_exporter.layout_mode = self.layout_mode
             self.svg_exporter.page_format = self.page_format
             self.svg_exporter.page_orientation = self.page_orientation
+            self.svg_exporter.mirror_horizontal = self.mirror_horizontal
             
             # 1. BREPトポロジ解析
             self.analyze_brep_topology()

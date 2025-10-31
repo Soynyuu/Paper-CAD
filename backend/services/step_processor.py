@@ -318,7 +318,8 @@ class StepUnfoldGenerator:
                 show_cut_lines=self.show_cut_lines,
                 layout_mode=self.layout_mode,
                 page_format=self.page_format,
-                page_orientation=self.page_orientation
+                page_orientation=self.page_orientation,
+                mirror_horizontal=self.mirror_horizontal
             )
 
             # テクスチャマッピングを設定

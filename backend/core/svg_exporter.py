@@ -897,7 +897,7 @@ class SVGExporter:
                             if self.mirror_horizontal:
                                 # 左右反転: 印刷可能幅を基準に反転
                                 points = [
-                                    (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                    (self.printable_width_mm * actual_scale - x * actual_scale + margin_px,
                                      y * actual_scale + margin_px)
                                     for x, y in polygon
                                 ]
@@ -952,7 +952,7 @@ class SVGExporter:
                             if self.mirror_horizontal:
                                 # 左右反転: 印刷可能幅を基準に反転
                                 points = [
-                                    (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                    (self.printable_width_mm * actual_scale - x * actual_scale + margin_px,
                                      y * actual_scale + margin_px)
                                     for x, y in polygon
                                 ]
@@ -987,7 +987,7 @@ class SVGExporter:
                         if self.mirror_horizontal:
                             # 左右反転: 印刷可能幅を基準に反転
                             points = [
-                                (self.printable_width_mm * actual_scale - x * actual_scale + 2 * margin_px,
+                                (self.printable_width_mm * actual_scale - x * actual_scale + margin_px,
                                  y * actual_scale + margin_px)
                                 for x, y in tab
                             ]

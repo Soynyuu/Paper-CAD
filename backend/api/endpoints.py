@@ -283,18 +283,45 @@ async def unfold_step_to_pdf(
         # 1. BREPトポロジ解析
         generator.analyze_brep_topology()
 
-        # 2. パラメータ設定
+        # 2. パラメータ設定（全パラメータを漏れなく設定）
         generator.scale_factor = request.scale_factor
+        generator.units = request.units
+        generator.tab_width = request.tab_width
+        generator.show_scale = request.show_scale
+        generator.show_fold_lines = request.show_fold_lines
+        generator.show_cut_lines = request.show_cut_lines
         generator.layout_mode = request.layout_mode
         generator.page_format = request.page_format
         generator.page_orientation = request.page_orientation
+        generator.mirror_horizontal = request.mirror_horizontal
 
         # SVGエクスポーターとレイアウトマネージャーにも設定を反映（重要！）
         generator.svg_exporter.scale_factor = request.scale_factor
+        generator.svg_exporter.units = request.units
+        generator.svg_exporter.tab_width = request.tab_width
+        generator.svg_exporter.show_scale = request.show_scale
+        generator.svg_exporter.show_fold_lines = request.show_fold_lines
+        generator.svg_exporter.show_cut_lines = request.show_cut_lines
         generator.svg_exporter.layout_mode = request.layout_mode
         generator.svg_exporter.page_format = request.page_format
         generator.svg_exporter.page_orientation = request.page_orientation
+        generator.svg_exporter.mirror_horizontal = request.mirror_horizontal
         generator.layout_manager.scale_factor = request.scale_factor
+        generator.layout_manager.page_format = request.page_format
+        generator.layout_manager.page_orientation = request.page_orientation
+
+        # パラメータ設定完了のログ出力
+        print(f"[PDF] Parameters set:")
+        print(f"  scale_factor: {request.scale_factor}")
+        print(f"  units: {request.units}")
+        print(f"  tab_width: {request.tab_width}")
+        print(f"  show_scale: {request.show_scale}")
+        print(f"  show_fold_lines: {request.show_fold_lines}")
+        print(f"  show_cut_lines: {request.show_cut_lines}")
+        print(f"  layout_mode: {request.layout_mode}")
+        print(f"  page_format: {request.page_format}")
+        print(f"  page_orientation: {request.page_orientation}")
+        print(f"  mirror_horizontal: {request.mirror_horizontal}")
 
         # 3. 展開可能面のグルーピング（SVGと同じmax_facesを使用）
         generator.group_faces_for_unfolding(request.max_faces)

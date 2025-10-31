@@ -1,6 +1,18 @@
 import os
+import builtins
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# 環境変数でdemo/productionモードの場合、printを無効化してパフォーマンス向上
+ENV = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
+
+if ENV in ["demo", "production"]:
+    def noop_print(*args, **kwargs):
+        pass
+    builtins.print = noop_print
+    # 起動時のメッセージのみ標準エラー出力に表示
+    sys.stderr.write(f"[CONFIG] {ENV}モード: ログ出力を無効化しました\n")
 
 # OpenCASCADE Technology (OCCT) の可用性チェック
 try:
@@ -27,31 +39,27 @@ except ImportError as e:
 # 環境変数の読み込み
 try:
     from dotenv import load_dotenv
-    import os as _os
 
-    # ENV環境変数で実行環境を判定（development/production/demo）
-    # デフォルトは development
-    ENV = _os.getenv("ENV", _os.getenv("PYTHON_ENV", "development"))
-
+    # ENV変数は冒頭で定義済み（print無効化のため）
     # 環境に応じた.envファイルを選択
     env_file = None
     if ENV == "production":
         # 本番環境: .env.production → .env の順で探す
-        if _os.path.exists(".env.production"):
+        if os.path.exists(".env.production"):
             env_file = ".env.production"
-        elif _os.path.exists(".env"):
+        elif os.path.exists(".env"):
             env_file = ".env"
     elif ENV == "demo":
         # デモ環境: .env.demo → .env の順で探す
-        if _os.path.exists(".env.demo"):
+        if os.path.exists(".env.demo"):
             env_file = ".env.demo"
-        elif _os.path.exists(".env"):
+        elif os.path.exists(".env"):
             env_file = ".env"
     else:
         # 開発環境（デフォルト）: .env.development → .env の順で探す
-        if _os.path.exists(".env.development"):
+        if os.path.exists(".env.development"):
             env_file = ".env.development"
-        elif _os.path.exists(".env"):
+        elif os.path.exists(".env"):
             env_file = ".env"
 
     if env_file:

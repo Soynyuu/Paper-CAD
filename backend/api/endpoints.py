@@ -26,6 +26,22 @@ from services.plateau_fetcher import search_buildings_by_address, search_buildin
 # APIルーターの作成
 router = APIRouter()
 
+# --- ヘルパー関数 ---
+def cleanup_temp_dir(tmpdir: str):
+    """
+    一時ディレクトリをクリーンアップする関数（BackgroundTasksで使用）
+
+    Args:
+        tmpdir: 削除する一時ディレクトリのパス
+    """
+    import shutil
+    if tmpdir and os.path.exists(tmpdir):
+        try:
+            shutil.rmtree(tmpdir)
+            print(f"[CLEANUP] Removed tmpdir: {tmpdir}")
+        except Exception as e:
+            print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {e}")
+
 # --- STEP専用APIエンドポイント ---
 @router.post("/api/step/unfold")
 async def unfold_step_to_svg(
@@ -180,6 +196,7 @@ async def unfold_step_to_svg(
 # --- STEP → PDF 展開図エンドポイント ---
 @router.post("/api/step/unfold-pdf")
 async def unfold_step_to_pdf(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     layout_mode: str = Form("paged"),
     page_format: str = Form("A4"),
@@ -207,6 +224,7 @@ async def unfold_step_to_pdf(
         raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
 
     tmpdir = None
+    result_path = None  # PDFが正常に生成されたかを追跡
     try:
         # ファイル拡張子チェック
         if not (file.filename.lower().endswith('.step') or file.filename.lower().endswith('.stp')):
@@ -301,7 +319,8 @@ async def unfold_step_to_pdf(
 
             print(f"[PDF] Generated PDF with {len(paged_groups)} pages: {result_path}")
 
-            # PDFファイルを返す
+            # PDFファイルを返す（レスポンス送信後にtmpdirをクリーンアップ）
+            background_tasks.add_task(cleanup_temp_dir, tmpdir)
             return FileResponse(
                 path=result_path,
                 media_type="application/pdf",
@@ -328,11 +347,12 @@ async def unfold_step_to_pdf(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"PDFエクスポートエラー: {str(e)}")
     finally:
-        # 一時ディレクトリのクリーンアップ
-        import shutil
-        if tmpdir and os.path.exists(tmpdir):
+        # エラー時のみ即座にクリーンアップ（正常時はBackgroundTasksでクリーンアップ）
+        if tmpdir and os.path.exists(tmpdir) and result_path is None:
+            import shutil
             try:
                 shutil.rmtree(tmpdir)
+                print(f"[CLEANUP] Error occurred, immediately removed tmpdir: {tmpdir}")
             except Exception as e:
                 print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {e}")
 

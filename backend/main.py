@@ -48,11 +48,11 @@ def main():
     # 環境変数から設定を取得
     port = int(os.getenv("PORT", 8001))
     env = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
-    is_production = env == "production"
+    is_production_like = env in ["production", "demo"]  # demo も本番設定を使用
 
-    # 本番環境ではreloadを無効化、ワーカー数を設定
-    reload_enabled = not is_production
-    workers = int(os.getenv("WORKERS", 1 if not is_production else 2))
+    # 本番環境またはデモ環境ではreloadを無効化、ワーカー数を設定
+    reload_enabled = not is_production_like
+    workers = int(os.getenv("WORKERS", 1 if not is_production_like else 2))
 
     print(f"\n{'='*60}")
     print(f"[SERVER] 環境: {env}")
@@ -60,6 +60,8 @@ def main():
     print(f"[SERVER] リロード: {reload_enabled}")
     print(f"[SERVER] ワーカー数: {workers}")
     print(f"[SERVER] OpenCASCADE: {'利用可能' if OCCT_AVAILABLE else '利用不可'}")
+    if env == "demo":
+        print(f"[SERVER] 💡 デモモード: 本番パフォーマンス + localhost対応")
     print(f"{'='*60}\n")
 
     uvicorn.run(

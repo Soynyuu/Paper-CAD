@@ -20,6 +20,10 @@ npm run dev
 # Production build
 npm run build
 
+# Demo mode (production performance on localhost, port 8080)
+npm run demo          # Build and serve optimized build locally
+npm run demo:build    # Build only (for demo mode)
+
 # Build WebAssembly (C++)
 npm run build:wasm
 
@@ -42,6 +46,9 @@ npm run deploy:production    # Deploy to production
 # Development server (requires Conda environment)
 conda activate paper-cad
 python main.py        # Starts server on http://localhost:8001
+
+# Demo mode (production performance on localhost)
+ENV=demo python main.py    # Production settings + localhost CORS
 
 # Tests (26+ test files available)
 # Run specific tests:
@@ -88,6 +95,39 @@ npm run dev  # Starts on http://localhost:8080
 - Backend API base URL is configured in `rspack.config.js` via `STEP_UNFOLD_API_URL` environment variable
 - For local development, backend must be running before testing unfold functionality in frontend
 - Frontend has git pre-commit hooks (via `simple-git-hooks` + `lint-staged`) that automatically format code on commit
+
+### Demo Mode
+
+**Demo mode** provides production-like performance on localhost for demos and presentations. It combines:
+- ✅ Production optimizations (minification, tree-shaking, multiple workers)
+- ✅ Localhost compatibility (same ports as development: 8080 frontend, 8001 backend)
+- ✅ No hot-reload overhead (faster than development mode)
+
+**Usage:**
+
+1. **Start backend in demo mode** (in a separate terminal):
+```bash
+cd backend
+conda activate paper-cad
+ENV=demo python main.py
+```
+
+2. **Start frontend in demo mode**:
+```bash
+cd frontend
+npm run demo
+```
+
+3. **Access the application**: Open http://localhost:8080
+
+**Configuration Files:**
+- Frontend: `frontend/.env.demo` (points to `http://localhost:8001/api`)
+- Backend: `backend/.env.demo` (ENV=demo, production settings + localhost CORS)
+
+**Performance Characteristics:**
+- Frontend: Production build (minified, optimized) served via static server
+- Backend: No auto-reload, multiple workers (default: 2), production-level settings
+- Same speed as production deployment but running locally
 
 ## Architecture
 

@@ -29,7 +29,7 @@ try:
     from dotenv import load_dotenv
     import os as _os
 
-    # ENV環境変数で実行環境を判定（development/production）
+    # ENV環境変数で実行環境を判定（development/production/demo）
     # デフォルトは development
     ENV = _os.getenv("ENV", _os.getenv("PYTHON_ENV", "development"))
 
@@ -39,6 +39,12 @@ try:
         # 本番環境: .env.production → .env の順で探す
         if _os.path.exists(".env.production"):
             env_file = ".env.production"
+        elif _os.path.exists(".env"):
+            env_file = ".env"
+    elif ENV == "demo":
+        # デモ環境: .env.demo → .env の順で探す
+        if _os.path.exists(".env.demo"):
+            env_file = ".env.demo"
         elif _os.path.exists(".env"):
             env_file = ".env"
     else:
@@ -76,10 +82,12 @@ def setup_cors(app: FastAPI) -> None:
     print(f"\n{'='*60}")
     print(f"[CORS CONFIG] フロントエンドURL: {FRONTEND_URL}")
     print(f"[CORS CONFIG] すべてのオリジンを許可: {CORS_ALLOW_ALL}")
+    print(f"[CORS CONFIG] 環境: {os.getenv('ENV', 'development')}")
     print(f"{'='*60}\n")
 
     # オリジンリストを構築
     origins = []
+    env = os.getenv('ENV', os.getenv('PYTHON_ENV', 'development'))
 
     if CORS_ALLOW_ALL or FRONTEND_URL == "*":
         # 開発環境: ローカルホストを明示的に許可
@@ -94,6 +102,24 @@ def setup_cors(app: FastAPI) -> None:
             "http://127.0.0.1:8081",
         ])
         print("[CORS] 🔧 開発モード: ローカルホストのみ許可")
+    elif env == "demo":
+        # デモ環境: 本番設定 + localhost許可
+        # FRONTENDを設定
+        if FRONTEND_URL and FRONTEND_URL != "*":
+            origins.append(FRONTEND_URL)
+
+        # localhostを追加（デモ用）
+        origins.extend([
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+        ])
+
+        # 本番ドメインも追加（オプション）
+        origins.extend([
+            "https://paper-cad.soynyuu.com",
+            "https://app-paper-cad.soynyuu.com",
+        ])
+        print(f"[CORS] 🎬 デモモード: 本番設定 + localhost許可")
     else:
         # 本番環境: 特定のオリジンのみを許可
         # FRONTENDを設定

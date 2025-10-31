@@ -43,6 +43,7 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _pdfExportButton: HTMLButtonElement;
     private readonly _pdfSplitPagesCheckbox: HTMLInputElement;
     private readonly _pdfScaleInput: HTMLInputElement;
+    private readonly _pdfMirrorCheckbox: HTMLInputElement;
     private readonly _pdfSettingsContainer: HTMLDivElement;
     private _secondaryControlsContainer: HTMLDivElement = null as any; // Will be initialized in _render()
     private _svgEditor: Editor | null = null;
@@ -204,6 +205,12 @@ export class StepUnfoldPanel extends HTMLElement {
             style: { width: "60px", marginLeft: "8px" },
         });
 
+        this._pdfMirrorCheckbox = input({
+            type: "checkbox",
+            id: "pdfMirror",
+            checked: false,
+        });
+
         this._pdfSettingsContainer = div(
             {
                 className: style.pdfSettingsContainer,
@@ -231,6 +238,13 @@ export class StepUnfoldPanel extends HTMLElement {
                         "📌 Canvasモード: クライアントサイドで表示中のSVGをPDF化",
                     style: { fontSize: "12px", color: "#333", whiteSpace: "pre-line" },
                 }),
+            ),
+            label(
+                {
+                    style: { display: "flex", alignItems: "center", marginBottom: "8px" },
+                },
+                this._pdfMirrorCheckbox,
+                span({ textContent: " 左右反転 (Mirror Horizontally)", style: { marginLeft: "8px" } }),
             ),
             // Temporarily hide complex settings until multi-page export is re-implemented
             /*
@@ -1475,6 +1489,7 @@ export class StepUnfoldPanel extends HTMLElement {
             // Update with current page settings (user may have changed them)
             options.pageFormat = this._pageFormatSelect.value as "A4" | "A3" | "Letter";
             options.pageOrientation = this._pageOrientationSelect.value as "portrait" | "landscape";
+            options.mirrorHorizontal = this._pdfMirrorCheckbox.checked;
 
             console.log("[BackendPDF] Sending to backend with options:", options);
 

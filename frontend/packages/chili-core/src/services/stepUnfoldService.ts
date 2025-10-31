@@ -12,6 +12,7 @@ export interface UnfoldOptions {
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
     returnFaceNumbers?: boolean;
+    mirrorHorizontal?: boolean; // 左右反転モード
     textureMappings?: Array<{
         faceNumber: number;
         patternId: string;
@@ -196,6 +197,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
+            formData.append("mirror_horizontal", (options.mirrorHorizontal || false).toString());
 
             // テクスチャマッピングを追加
             if (options.textureMappings && options.textureMappings.length > 0) {

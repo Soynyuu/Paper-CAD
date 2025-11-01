@@ -1107,7 +1107,7 @@ def search_buildings_by_address(
             # 建物情報を返す
             building = result["building"]
             building.name = "渋谷フクラス"  # 名前を設定
-            building.match_reason = "Hardcoded exact match for Shibuya Fukuras"
+            building.match_reason = "完全一致"
             building.relevance_score = 1.0
             building.name_similarity = 1.0
 

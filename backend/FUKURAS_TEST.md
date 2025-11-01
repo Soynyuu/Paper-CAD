@@ -32,7 +32,7 @@ curl -X POST http://localhost:8001/api/plateau/search-by-address \
 - `success: true`
 - `buildings[0].name`: "渋谷フクラス"
 - `buildings[0].gml_id`: "bldg_3ad6aaeb-26f8-4716-a8ec-cb2504b94674"
-- `buildings[0].match_reason`: "Hardcoded exact match for Shibuya Fukuras"
+- `buildings[0].match_reason`: "完全一致"
 - `geocoding.display_name`: "渋谷フクラス (Shibuya Fukuras)..."
 - `geocoding.osm_type`: "hardcoded"
 
@@ -143,7 +143,7 @@ curl -X POST http://localhost:8001/api/plateau/search-by-address \
       "name": "渋谷フクラス",
       "relevance_score": 1.0,
       "name_similarity": 1.0,
-      "match_reason": "Hardcoded exact match for Shibuya Fukuras",
+      "match_reason": "完全一致",
       "has_lod2": true,
       "has_lod3": ...
     }

@@ -168,8 +168,8 @@ export class StepUnfoldPanel extends HTMLElement {
         this._scaleSlider = input({
             type: "range",
             min: "0",
-            max: "7",
-            value: "0",
+            max: "11",
+            value: "3",
             className: style.scaleSlider,
         });
 
@@ -1157,13 +1157,18 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     private _updateScaleDisplay() {
-        const scaleMap = [1, 10, 50, 100, 150, 200, 300, 500];
+        const scaleMap = [0.1, 0.2, 0.5, 1, 2, 10, 50, 100, 150, 200, 300, 500];
         const scaleIndex = parseInt(this._scaleSlider.value);
         this._currentScale = scaleMap[scaleIndex];
 
         if (this._currentScale === 1) {
             this._scaleValueDisplay.textContent = "1:1";
+        } else if (this._currentScale < 1) {
+            // Enlarge mode: display as "X:1" (e.g., 0.5 → "2:1" = 2× enlargement)
+            const enlargeFactor = (1 / this._currentScale).toFixed(1);
+            this._scaleValueDisplay.textContent = `${enlargeFactor}:1`;
         } else {
+            // Reduce mode: display as "1:X" (e.g., 100 → "1:100" = 100× reduction)
             this._scaleValueDisplay.textContent = `1:${this._currentScale}`;
         }
 

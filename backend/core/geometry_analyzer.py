@@ -127,11 +127,11 @@ class GeometryAnalyzer:
             # 面アダプタ取得
             surface_adaptor = BRepAdaptor_Surface(face)
             surface_type_enum = surface_adaptor.GetType()
-            
+
             # 面積計算（簡易版）
             # 面の境界から面積を推定
             area = 100.0  # デフォルト値（立方体の場合）
-            
+
             # 重心計算（面の中心点を近似）
             # 面のパラメータ範囲の中心を使用
             try:
@@ -143,7 +143,7 @@ class GeometryAnalyzer:
             except:
                 # フォールバック：原点を使用
                 centroid = gp_Pnt(0, 0, 0)
-            
+
             # 法線ベクトルを取得（立方体の面を識別するため）
             normal_vec = None
             if surface_type_enum == GeomAbs_Plane:
@@ -154,10 +154,10 @@ class GeometryAnalyzer:
                     normal_vec = [normal_dir.X(), normal_dir.Y(), normal_dir.Z()]
                 except:
                     pass
-            
+
             # 法線ベクトルに基づいて面番号を割り当てる
             face_number = self._assign_face_number_by_normal(normal_vec, [centroid.X(), centroid.Y(), centroid.Z()])
-            
+
             face_data = {
                 "index": face_index,
                 "face_number": face_number,  # ユニークな面番号
@@ -165,35 +165,68 @@ class GeometryAnalyzer:
                 "centroid": [centroid.X(), centroid.Y(), centroid.Z()],
                 "surface_type": self._get_surface_type_name(surface_type_enum),
                 "normal_vector": normal_vec,  # 法線ベクトルを保存
-                "unfoldable": True,  # デフォルトで展開可能とする
+                "unfoldable": True,  # デフォルトで展開可能とする（後で平面性チェックで修正される）
                 "boundary_curves": []
             }
-            
+
             # 曲面タイプ別の詳細解析
             if surface_type_enum == GeomAbs_Plane:
                 face_data.update(self._analyze_planar_face(surface_adaptor))
-                
+
             elif surface_type_enum == GeomAbs_Cylinder:
                 face_data.update(self._analyze_cylindrical_face(surface_adaptor))
-                
+
             elif surface_type_enum == GeomAbs_Cone:
                 face_data.update(self._analyze_conical_face(surface_adaptor))
-                
+
             else:
                 # その他の曲面も近似展開を試みる
                 face_data.update(self._analyze_general_surface(surface_adaptor))
-                
+                # サポートされない曲面タイプは展開不可
+                print(f"⚠️  面{face_index}: サポートされない曲面タイプ ({face_data['surface_type']}) - 展開をスキップ")
+                face_data["unfoldable"] = False
+
             # 境界線解析
             face_data["boundary_curves"] = self._extract_face_boundaries(face)
-            
-            # 境界線が取得できない場合でも展開可能とする（立方体の場合）
+
+            # 境界線が取得できない場合の改善されたフォールバック処理
             if not face_data["boundary_curves"]:
-                print(f"面{face_index}: 境界線が取得できませんが、展開可能として処理")
-                # 立方体の場合の簡易境界線を生成
-                face_data["boundary_curves"] = self._generate_default_square_boundary()
-                
+                print(f"⚠️  面{face_index}: 境界線抽出失敗 - フォールバック処理を実行")
+                # 凸包ベースの境界線を生成（デフォルト正方形より優れた方法）
+                face_data["boundary_curves"] = self._generate_convex_hull_boundary(face, surface_adaptor)
+
+                # それでも失敗した場合はデフォルト正方形を使用
+                if not face_data["boundary_curves"]:
+                    print(f"⚠️  面{face_index}: 凸包も失敗 - デフォルト正方形を使用")
+                    face_data["boundary_curves"] = self._generate_default_square_boundary()
+
+            # デバッグ情報の追加
+            vertex_count = sum(len(boundary) for boundary in face_data["boundary_curves"])
+            print(f"  → 面{face_index}: タイプ={face_data['surface_type']}, 頂点数={vertex_count}, 面積={face_data.get('area', 'N/A'):.2f}")
+
+            # 頂点数が異常に多い場合は警告
+            if vertex_count > 50:
+                print(f"⚠️  面{face_index}: 頂点数が多い ({vertex_count}点) - 簡略化が推奨されます")
+
+            # 面積が極端に小さい場合は展開をスキップ
+            estimated_area = self._estimate_face_area(face_data["boundary_curves"])
+            if estimated_area < 1.0:  # 1mm²未満
+                print(f"⚠️  面{face_index}: 面積が極端に小さい ({estimated_area:.4f}mm²) - 展開をスキップ")
+                face_data["unfoldable"] = False
+
+            # 平面として認識された面の平面性を検証
+            if face_data["surface_type"] == "plane" and face_data["unfoldable"]:
+                is_planar, planarity_deviation = self._validate_planarity(face_data["boundary_curves"], normal_vec)
+                if not is_planar:
+                    print(f"⚠️  面{face_index}: 平面性検証失敗（偏差={planarity_deviation:.4f}mm） - 展開をスキップ")
+                    face_data["unfoldable"] = False
+                    face_data["planarity_deviation"] = planarity_deviation
+                else:
+                    print(f"  ✓ 面{face_index}: 平面性検証成功（偏差={planarity_deviation:.4f}mm）")
+                    face_data["planarity_deviation"] = planarity_deviation
+
             return face_data
-            
+
         except Exception as e:
             print(f"面{face_index}の解析でエラー: {e}")
             return None
@@ -572,18 +605,18 @@ class GeometryAnalyzer:
         """
         if len(points_2d) < 2:
             return points_2d
-        
+
         cleaned_points = [points_2d[0]]
-        
+
         for i in range(1, len(points_2d)):
             current = points_2d[i]
             last = cleaned_points[-1]
-            
+
             # 距離チェック
             distance = math.sqrt((current[0] - last[0])**2 + (current[1] - last[1])**2)
             if distance > tolerance:
                 cleaned_points.append(current)
-        
+
         # 最初と最後の点が重複している場合は除去
         if len(cleaned_points) > 2:
             first = cleaned_points[0]
@@ -591,5 +624,154 @@ class GeometryAnalyzer:
             distance = math.sqrt((first[0] - last[0])**2 + (first[1] - last[1])**2)
             if distance <= tolerance:
                 cleaned_points = cleaned_points[:-1]
-        
+
         return cleaned_points
+
+    def _generate_convex_hull_boundary(self, face, surface_adaptor):
+        """
+        凸包を使用して境界線を生成（デフォルト正方形より優れた方法）。
+        面のパラメータ空間をサンプリングして凸包を計算。
+
+        Args:
+            face: 面オブジェクト
+            surface_adaptor: 面アダプタ
+
+        Returns:
+            List[List[Tuple[float, float, float]]]: 境界線のリスト
+        """
+        try:
+            # パラメータ空間をサンプリング
+            u_min, u_max, v_min, v_max = surface_adaptor.BoundsUV()
+            sample_points = []
+
+            # グリッド状にサンプリング（10x10）
+            for i in range(10):
+                for j in range(10):
+                    u = u_min + (u_max - u_min) * i / 9
+                    v = v_min + (v_max - v_min) * j / 9
+
+                    try:
+                        point_3d = surface_adaptor.Value(u, v)
+                        sample_points.append((point_3d.X(), point_3d.Y(), point_3d.Z()))
+                    except:
+                        continue
+
+            if len(sample_points) < 3:
+                return []
+
+            # 3D点群から2D投影して凸包を計算
+            # 簡易版：XY平面に投影
+            points_2d = [(p[0], p[1]) for p in sample_points]
+
+            # 凸包を計算
+            try:
+                points_array = np.array(points_2d)
+                hull = ConvexHull(points_array)
+
+                # 凸包の頂点から3D点を復元
+                boundary_3d = []
+                for vertex_idx in hull.vertices:
+                    boundary_3d.append(sample_points[vertex_idx])
+
+                # 閉じた境界線にする
+                if boundary_3d and boundary_3d[0] != boundary_3d[-1]:
+                    boundary_3d.append(boundary_3d[0])
+
+                print(f"    凸包境界線を生成: {len(boundary_3d)}点")
+                return [boundary_3d]
+
+            except Exception as e:
+                print(f"    凸包計算エラー: {e}")
+                return []
+
+        except Exception as e:
+            print(f"    凸包境界線生成エラー: {e}")
+            return []
+
+    def _estimate_face_area(self, boundary_curves: List[List[Tuple[float, float, float]]]) -> float:
+        """
+        境界線から面積を推定（Shoelace formula を使用）。
+
+        Args:
+            boundary_curves: 境界線のリスト
+
+        Returns:
+            float: 推定面積（mm²）
+        """
+        if not boundary_curves or not boundary_curves[0]:
+            return 0.0
+
+        # 最初の境界線（外形線）から面積を計算
+        boundary = boundary_curves[0]
+
+        if len(boundary) < 3:
+            return 0.0
+
+        # XY平面に投影して面積を計算（簡易版）
+        try:
+            points_2d = [(p[0], p[1]) for p in boundary]
+
+            # Shoelace formula
+            area = 0.0
+            n = len(points_2d)
+            for i in range(n):
+                j = (i + 1) % n
+                area += points_2d[i][0] * points_2d[j][1]
+                area -= points_2d[j][0] * points_2d[i][1]
+
+            area = abs(area) / 2.0
+            return area
+
+        except Exception as e:
+            print(f"    面積推定エラー: {e}")
+            return 0.0
+
+    def _validate_planarity(self, boundary_curves: List[List[Tuple[float, float, float]]],
+                          normal_vec: Optional[List[float]],
+                          tolerance: float = 0.5) -> Tuple[bool, float]:
+        """
+        境界線の点が平面上にあるかを検証。
+
+        Args:
+            boundary_curves: 境界線のリスト
+            normal_vec: 平面の法線ベクトル
+            tolerance: 平面からの最大許容偏差（mm）
+
+        Returns:
+            Tuple[bool, float]: (平面性OK, 最大偏差)
+        """
+        if not boundary_curves or not boundary_curves[0] or not normal_vec:
+            return True, 0.0  # 検証不可の場合はOKとする
+
+        boundary = boundary_curves[0]
+
+        if len(boundary) < 3:
+            return True, 0.0
+
+        try:
+            # 法線ベクトルを正規化
+            normal = np.array(normal_vec)
+            normal = normal / np.linalg.norm(normal)
+
+            # 最初の点を基準点とする
+            reference_point = np.array(boundary[0])
+
+            # 各点から平面までの距離を計算
+            max_deviation = 0.0
+
+            for point in boundary:
+                point_vec = np.array(point)
+                # 基準点からのベクトル
+                relative_vec = point_vec - reference_point
+                # 平面までの垂直距離（法線方向への投影）
+                deviation = abs(np.dot(relative_vec, normal))
+                max_deviation = max(max_deviation, deviation)
+
+            # 許容偏差以内なら平面と判定
+            is_planar = max_deviation <= tolerance
+
+            return is_planar, max_deviation
+
+        except Exception as e:
+            print(f"    平面性検証エラー: {e}")
+            return True, 0.0  # エラー時はOKとする

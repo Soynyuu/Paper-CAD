@@ -611,22 +611,23 @@ class UnfoldEngine:
         # 各境界線を2Dに投影
         for boundary_idx, boundary in enumerate(face_data["boundary_curves"]):
             print(f"  境界線{boundary_idx}: {len(boundary)}点")
-            
+
             if len(boundary) >= 3:
                 # 3D境界点を2D平面に正確に投影
                 projected_boundary = self._project_points_to_plane_accurate(boundary, normal, origin)
-                
+                print(f"    → 2D投影完了: {len(projected_boundary)}点")
+
                 # 境界線を単純化（正方形/長方形の場合は4点に削減）
                 simplified_boundary = self._simplify_boundary_polygon(projected_boundary)
-                
+
                 # 有効な2D形状の場合のみ追加
                 if len(simplified_boundary) >= 3:
                     polygons_2d.append(simplified_boundary)
-                    print(f"  境界線{boundary_idx}を2D投影: {len(simplified_boundary)}点（簡略化済み）")
+                    print(f"    → 簡略化完了: {len(projected_boundary)}点 → {len(simplified_boundary)}点")
                 else:
-                    print(f"  境界線{boundary_idx}の投影に失敗")
+                    print(f"    ⚠️ 境界線{boundary_idx}の投影に失敗（簡略化後の点数不足）")
             else:
-                print(f"  境界線{boundary_idx}の点数が不足: {len(boundary)}点")
+                print(f"    ⚠️ 境界線{boundary_idx}の点数が不足: {len(boundary)}点")
         
         print(f"面{face_idx}の2D形状: {len(polygons_2d)}個のポリゴン")
         return polygons_2d
@@ -729,9 +730,9 @@ class UnfoldEngine:
                 print(f"{len(result)}点（{num_corners}角形・凸包）")
                 return result
 
-        # Layer 2: 凹型・複雑な形状 → Douglas-Peucker アルゴリズム
-        result = self._simplify_rdp(cleaned_points, epsilon=0.5)
-        print(f"{len(result)}点（Douglas-Peucker）")
+        # Layer 2: 凹型・複雑な形状 → Douglas-Peucker アルゴリズム（改善された許容値）
+        result = self._simplify_rdp(cleaned_points, epsilon=0.1)  # 0.5mm → 0.1mm に改善
+        print(f"{len(result)}点（Douglas-Peucker, ε=0.1mm）")
         return result
     
     def _simplify_by_angle_detection(self, points_2d: List[Tuple[float, float]],
@@ -1111,8 +1112,8 @@ class UnfoldEngine:
                 if corners[0] != corners[-1]:
                     corners.append(corners[0])
 
-                # Douglas-Peuckerで正確に4点に簡略化
-                corners = self._simplify_rdp(corners, epsilon=1.0)
+                # Douglas-Peuckerで正確に4点に簡略化（改善された許容値）
+                corners = self._simplify_rdp(corners, epsilon=0.5)  # 1.0mm → 0.5mm に改善
 
                 # 4-5点（閉じた四角形）になったか確認
                 if 4 <= len(corners) <= 5:
@@ -1306,8 +1307,8 @@ class UnfoldEngine:
 
             # 凸包の頂点が多すぎる場合（>12）、Douglas-Peuckerでさらに簡略化
             if len(corners) > 12:
-                corners = self._simplify_rdp(corners, epsilon=1.0)
-                print(f"→{len(corners)}点に再簡略化, ", end="")
+                corners = self._simplify_rdp(corners, epsilon=0.5)  # 1.0mm → 0.5mm に改善
+                print(f"→{len(corners)}点に再簡略化(ε=0.5mm), ", end="")
 
             return corners
         except Exception as e:

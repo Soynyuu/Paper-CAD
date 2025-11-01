@@ -699,10 +699,14 @@ export class PlateauSearchDialog {
             if (e.key === "Escape") {
                 e.preventDefault();
                 closeDialog(DialogResult.cancel);
-            } else if (e.key === "Enter" && !e.isComposing && e.target === queryInput) {
-                // Allow Enter to submit from the query input (but not during IME composition)
-                e.preventDefault();
-                closeDialog(DialogResult.ok);
+            } else if (e.key === "Enter" && !e.isComposing) {
+                // Allow Enter to submit from text input fields (query or meshCode)
+                // but not during IME composition
+                const target = e.target as HTMLElement;
+                if (target === queryInput || target === meshCodeInput) {
+                    e.preventDefault();
+                    closeDialog(DialogResult.ok);
+                }
             }
         };
 

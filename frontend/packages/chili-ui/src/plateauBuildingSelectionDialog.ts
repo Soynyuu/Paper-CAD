@@ -344,8 +344,12 @@ export class PlateauBuildingSelectionDialog {
                 e.preventDefault();
                 closeDialog(DialogResult.cancel);
             } else if (e.key === "Enter" && !e.isComposing) {
-                e.preventDefault();
-                closeDialog(DialogResult.ok);
+                // Allow Enter to submit from search input field only
+                const target = e.target as HTMLElement;
+                if (target === searchInput) {
+                    e.preventDefault();
+                    closeDialog(DialogResult.ok);
+                }
             }
         };
 

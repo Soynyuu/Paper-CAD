@@ -852,11 +852,29 @@ export class StepUnfoldPanel extends HTMLElement {
         this._svgContainer.innerHTML = "";
 
         // Enable SVG-Edit for editing capability
-        const USE_SVGEDIT = true; // Toggle this to enable/disable SVG-Edit
+        // DIAGNOSTIC: Set to false to test if backend-generated SVG patterns display correctly
+        // Step 1: false - Test direct SVG display (bypasses SVG-Edit)
+        // Step 2: true - Test SVG-Edit with diagnostic pattern injection
+        const USE_SVGEDIT = false; // Toggle this to enable/disable SVG-Edit
 
         if (!USE_SVGEDIT) {
             // Simple SVG display without editing capability
-            console.log("Displaying SVG without SVG-Edit");
+            console.log("DIAGNOSTIC STEP 1: Displaying SVG without SVG-Edit");
+            console.log("This tests if backend-generated texture patterns display correctly");
+
+            // Check for pattern elements in the SVG content
+            const patternMatches = svgContent.match(/<pattern[^>]*>/g);
+            const imageMatches = svgContent.match(/<image[^>]*href="data:image/g);
+            console.log(`Found ${patternMatches ? patternMatches.length : 0} <pattern> elements`);
+            console.log(`Found ${imageMatches ? imageMatches.length : 0} <image> elements with data URLs`);
+
+            if (patternMatches && patternMatches.length > 0) {
+                console.log(
+                    "Pattern IDs found:",
+                    patternMatches.map((p) => p.match(/id="([^"]+)"/)?.[1]).filter(Boolean),
+                );
+            }
+
             this._svgContainer.innerHTML = svgContent;
 
             // Store the SVG element for PDF export
@@ -869,7 +887,29 @@ export class StepUnfoldPanel extends HTMLElement {
                 if (!svgElement.getAttribute("height")) {
                     svgElement.setAttribute("height", "100%");
                 }
-                console.log("SVG displayed successfully");
+
+                // Verify patterns are in the DOM
+                const defsElement = svgElement.querySelector("defs");
+                const patterns = svgElement.querySelectorAll("pattern");
+                console.log(`✓ SVG displayed successfully`);
+                console.log(`✓ Found <defs>: ${!!defsElement}`);
+                console.log(`✓ Patterns in DOM: ${patterns.length}`);
+
+                // Check for textured polygons
+                const texturedPolygons = svgElement.querySelectorAll('[fill^="url(#"]');
+                console.log(`✓ Polygons with pattern fills: ${texturedPolygons.length}`);
+
+                if (patterns.length > 0 && texturedPolygons.length === 0) {
+                    console.warn("⚠️ Patterns exist but no polygons reference them!");
+                }
+
+                if (patterns.length === 0 && texturedPolygons.length > 0) {
+                    console.error("❌ Polygons reference patterns but patterns don't exist!");
+                }
+
+                if (patterns.length > 0 && texturedPolygons.length > 0) {
+                    console.log("✅ TEXTURES SHOULD BE VISIBLE: Patterns and references both present");
+                }
             }
             return;
         }
@@ -978,6 +1018,55 @@ export class StepUnfoldPanel extends HTMLElement {
                             console.error("SVG canvas not available");
                         }
 
+                        // === DIAGNOSTIC CODE START ===
+                        // Check if patterns survived SVG-Edit loading
+                        console.log("=== DIAGNOSTIC STEP 2/3: Checking SVG-Edit Pattern Support ===");
+
+                        if (this._svgEditor && this._svgEditor.svgCanvas) {
+                            const svgRoot = this._svgEditor.svgCanvas.getRootElem();
+                            if (svgRoot) {
+                                const defsElement = svgRoot.querySelector("defs");
+                                const patterns = svgRoot.querySelectorAll("pattern");
+                                const texturedPolygons = svgRoot.querySelectorAll('[fill^="url(#"]');
+
+                                console.log(`After SVG-Edit loading:`);
+                                console.log(`  - <defs> element: ${!!defsElement}`);
+                                console.log(`  - <pattern> elements: ${patterns.length}`);
+                                console.log(`  - Textured polygons: ${texturedPolygons.length}`);
+
+                                if (patterns.length === 0 && texturedPolygons.length > 0) {
+                                    console.error(
+                                        "❌ SVG-Edit STRIPPED PATTERNS - patterns were removed during loading",
+                                    );
+                                    console.log("Testing if manual pattern injection works...");
+
+                                    // DIAGNOSTIC STEP 2: Test simple pattern (stripes) without images
+                                    this._injectTestPattern_Simple(svgRoot);
+
+                                    // DIAGNOSTIC STEP 3: Test image-based pattern with data URL
+                                    // Uncomment the line below to test image patterns:
+                                    // this._injectTestPattern_Image(svgRoot);
+                                } else if (patterns.length > 0) {
+                                    console.log("✅ Patterns survived SVG-Edit loading!");
+
+                                    // Check if images inside patterns are intact
+                                    const patternImages = svgRoot.querySelectorAll("pattern image");
+                                    console.log(`  - <image> elements in patterns: ${patternImages.length}`);
+
+                                    if (patternImages.length === 0 && patterns.length > 0) {
+                                        console.warn("⚠️ Patterns exist but <image> children were removed");
+                                        console.log("Testing if manual image injection works...");
+                                        this._injectTestPattern_Image(svgRoot);
+                                    }
+                                } else {
+                                    console.log(
+                                        "ℹ️ No texture patterns expected (no textured polygons found)",
+                                    );
+                                }
+                            }
+                        }
+                        // === DIAGNOSTIC CODE END ===
+
                         // Setup event listeners for the editor
                         this._setupEditorEvents();
                     }
@@ -1044,6 +1133,128 @@ export class StepUnfoldPanel extends HTMLElement {
             console.warn("Error setting up editor events:", error);
         }
     }
+
+    // === DIAGNOSTIC METHODS ===
+    // These methods are for testing SVG-Edit pattern support
+
+    /**
+     * DIAGNOSTIC STEP 2: Inject a simple pattern without images (colored stripes)
+     * This tests if SVG-Edit supports basic SVG patterns
+     */
+    private _injectTestPattern_Simple(svgRoot: SVGSVGElement) {
+        console.log("🧪 DIAGNOSTIC TEST 2: Injecting simple stripe pattern (no images)");
+
+        try {
+            // Get or create <defs> element
+            let defsElement = svgRoot.querySelector("defs") as SVGDefsElement;
+            if (!defsElement) {
+                defsElement = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+                svgRoot.insertBefore(defsElement, svgRoot.firstChild);
+                console.log("  ✓ Created <defs> element");
+            }
+
+            // Create simple stripe pattern (red and blue stripes)
+            const pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+            pattern.setAttribute("id", "diagnostic-test-stripes");
+            pattern.setAttribute("patternUnits", "userSpaceOnUse");
+            pattern.setAttribute("width", "20");
+            pattern.setAttribute("height", "20");
+
+            const rect1 = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect1.setAttribute("width", "10");
+            rect1.setAttribute("height", "20");
+            rect1.setAttribute("fill", "#ff0000");
+
+            const rect2 = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect2.setAttribute("x", "10");
+            rect2.setAttribute("width", "10");
+            rect2.setAttribute("height", "20");
+            rect2.setAttribute("fill", "#0000ff");
+
+            pattern.appendChild(rect1);
+            pattern.appendChild(rect2);
+            defsElement.appendChild(pattern);
+
+            console.log("  ✓ Injected stripe pattern: #diagnostic-test-stripes");
+
+            // Apply pattern to first polygon
+            const firstPolygon = svgRoot.querySelector("polygon");
+            if (firstPolygon) {
+                firstPolygon.setAttribute("fill", "url(#diagnostic-test-stripes)");
+                console.log("  ✓ Applied stripe pattern to first polygon");
+                console.log("  ⏳ Check if you see RED/BLUE STRIPES on the first face");
+                console.log("  ✅ If you see stripes: SVG-Edit supports basic patterns");
+                console.log("  ❌ If no stripes: SVG-Edit doesn't support patterns at all");
+            } else {
+                console.log("  ⚠️ No polygons found to apply pattern");
+            }
+        } catch (error) {
+            console.error("  ❌ Error injecting simple pattern:", error);
+        }
+    }
+
+    /**
+     * DIAGNOSTIC STEP 3: Inject an image-based pattern with data URL
+     * This tests if SVG-Edit supports patterns with embedded Base64 images
+     */
+    private _injectTestPattern_Image(svgRoot: SVGSVGElement) {
+        console.log("🧪 DIAGNOSTIC TEST 3: Injecting image-based pattern (Base64 data URL)");
+
+        try {
+            // Get or create <defs> element
+            let defsElement = svgRoot.querySelector("defs") as SVGDefsElement;
+            if (!defsElement) {
+                defsElement = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+                svgRoot.insertBefore(defsElement, svgRoot.firstChild);
+                console.log("  ✓ Created <defs> element");
+            }
+
+            // Create pattern with embedded image (small 4x4 checkerboard)
+            const pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+            pattern.setAttribute("id", "diagnostic-test-image");
+            pattern.setAttribute("patternUnits", "objectBoundingBox");
+            pattern.setAttribute("width", "10%");
+            pattern.setAttribute("height", "10%");
+
+            // 4x4 checkerboard pattern (black/white) as Base64 PNG
+            // This is a tiny PNG image: 2x2 pixels, checkerboard pattern
+            const checkerboardDataURL =
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAF0lEQVQIW2P4DwQMDAz/gYABBhgYGBgA8+8D/a4uv4UAAAAASUVORK5CYII=";
+
+            const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+            image.setAttribute("href", checkerboardDataURL);
+            image.setAttribute("x", "0");
+            image.setAttribute("y", "0");
+            image.setAttribute("width", "100%");
+            image.setAttribute("height", "100%");
+            image.setAttribute("preserveAspectRatio", "none");
+
+            pattern.appendChild(image);
+            defsElement.appendChild(pattern);
+
+            console.log("  ✓ Injected image pattern: #diagnostic-test-image");
+
+            // Apply pattern to second polygon (or first if only one exists)
+            const polygons = svgRoot.querySelectorAll("polygon");
+            const targetPolygon = polygons.length > 1 ? polygons[1] : polygons[0];
+
+            if (targetPolygon) {
+                targetPolygon.setAttribute("fill", "url(#diagnostic-test-image)");
+                targetPolygon.setAttribute("stroke", "#00ff00");
+                targetPolygon.setAttribute("stroke-width", "2");
+                console.log("  ✓ Applied image pattern to polygon");
+                console.log("  ⏳ Check if you see CHECKERBOARD TEXTURE on the face");
+                console.log("  ✅ If you see checkerboard: SVG-Edit supports image-based patterns!");
+                console.log("  ❌ If no checkerboard: SVG-Edit blocks data URL images in patterns");
+            } else {
+                console.log("  ⚠️ No polygons found to apply pattern");
+            }
+        } catch (error) {
+            console.error("  ❌ Error injecting image pattern:", error);
+        }
+    }
+
+    // === END DIAGNOSTIC METHODS ===
 
     private _toggleFaceNumbers() {
         this._faceNumbersVisible = !this._faceNumbersVisible;

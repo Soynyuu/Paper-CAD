@@ -622,6 +622,9 @@ class SVGExporter:
         # スタイル定義
         dwg.defs.add(dwg.style("""
             .face-polygon { fill: none; stroke: #000000; stroke-width: 2; }
+            .face-polygon-textured { stroke: #000000; stroke-width: 2; }
+            path.face-polygon { fill: none; stroke: #000000; stroke-width: 2; }
+            path.face-polygon-textured { stroke: #000000; stroke-width: 2; }
             .tab-polygon { fill: none; stroke: #0066cc; stroke-width: 1.5; stroke-dasharray: 4,4; }
             .page-border { fill: white; stroke: #999999; stroke-width: 2; stroke-dasharray: 10,5; }
             .page-separator { stroke: #666666; stroke-width: 1; stroke-dasharray: 20,10; }
@@ -630,6 +633,9 @@ class SVGExporter:
             .face-number { font-family: Arial, sans-serif; font-weight: bold; fill: #ff0000; text-anchor: middle; }
             .page-label { font-family: Arial, sans-serif; font-size: 12px; fill: #666666; }
         """))
+
+        # テクスチャパターンの定義を生成
+        self._generate_texture_patterns(dwg, self.mm_to_px)
         
         margin_px = self.print_margin_mm * self.mm_to_px
         
@@ -681,8 +687,20 @@ class SVGExporter:
 
                 # 面番号を取得
                 face_number = None
+                texture_mapping = None
+                pattern_id = None
                 if "face_numbers" in group and len(group["face_numbers"]) > 0:
                     face_number = group["face_numbers"][0]
+                    # テクスチャマッピングを検索
+                    for mapping in self.texture_mappings:
+                        if mapping.get("faceNumber") == face_number:
+                            texture_mapping = mapping
+                            # パターンIDを生成（rotation込み）
+                            rotation = mapping.get('rotation', 0)
+                            pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
+                            if rotation != 0:
+                                pattern_id += f"_r{int(rotation)}"
+                            break
 
                 # 複数のポリゴンがある場合は穴付きポリゴンとして描画
                 if len(polygons) > 1:
@@ -705,15 +723,29 @@ class SVGExporter:
 
                     # pathを作成して描画
                     full_path = " ".join(path_parts)
-                    path_elem = dwg.path(
-                        d=full_path,
-                        class_="face-polygon",
-                        fill_rule="evenodd"
-                    )
-                    # カスタムデータ属性を追加
-                    if face_number is not None:
-                        path_elem.attribs['data-face-number'] = str(face_number)
-                    dwg.add(path_elem)
+
+                    if texture_mapping and pattern_id:
+                        path_elem = dwg.path(
+                            d=full_path,
+                            class_="face-polygon-textured",
+                            fill=f"url(#{pattern_id})",
+                            fill_opacity="1.0",
+                            fill_rule="evenodd"
+                        )
+                        # カスタムデータ属性を追加
+                        if face_number is not None:
+                            path_elem.attribs['data-face-number'] = str(face_number)
+                        dwg.add(path_elem)
+                    else:
+                        path_elem = dwg.path(
+                            d=full_path,
+                            class_="face-polygon",
+                            fill_rule="evenodd"
+                        )
+                        # カスタムデータ属性を追加
+                        if face_number is not None:
+                            path_elem.attribs['data-face-number'] = str(face_number)
+                        dwg.add(path_elem)
 
                     # 面番号を描画（外形線の中心）
                     if face_number is not None:
@@ -743,11 +775,25 @@ class SVGExporter:
                                  y * self.mm_to_px + margin_px + page_y_offset)
                                 for x, y in polygon
                             ]
-                            polygon_elem = dwg.polygon(points=points, class_="face-polygon")
-                            # カスタムデータ属性を追加
-                            if face_number is not None:
-                                polygon_elem.attribs['data-face-number'] = str(face_number)
-                            dwg.add(polygon_elem)
+
+                            # テクスチャがある場合はパターンを適用
+                            if texture_mapping and pattern_id:
+                                polygon_elem = dwg.polygon(
+                                    points=points,
+                                    class_="face-polygon-textured",
+                                    fill=f"url(#{pattern_id})",
+                                    fill_opacity="1.0"
+                                )
+                                # カスタムデータ属性を追加
+                                if face_number is not None:
+                                    polygon_elem.attribs['data-face-number'] = str(face_number)
+                                dwg.add(polygon_elem)
+                            else:
+                                polygon_elem = dwg.polygon(points=points, class_="face-polygon")
+                                # カスタムデータ属性を追加
+                                if face_number is not None:
+                                    polygon_elem.attribs['data-face-number'] = str(face_number)
+                                dwg.add(polygon_elem)
 
                             # 面番号を描画
                             if face_number is not None:

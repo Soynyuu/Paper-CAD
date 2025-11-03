@@ -406,8 +406,9 @@ class SVGExporter:
 
         # 各ユニークパターンをdefsに追加
         for pattern_id, pattern_info in unique_patterns.items():
-            # パターンサイズを計算（タイル数に基づく）
-            tile_size = 100 / pattern_info['tileCount'] # 基本サイズを分割
+            # パターンサイズを計算（tileCountが大きいほど粗くなる）
+            # tileCount=1 → 10% (細かい), tileCount=5 → 50% (粗い), tileCount=10 → 100% (最大)
+            tile_size = pattern_info['tileCount'] * 10
 
             # パターン定義
             pattern = dwg.pattern(

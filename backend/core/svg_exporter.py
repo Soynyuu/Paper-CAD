@@ -406,15 +406,17 @@ class SVGExporter:
 
         # 各ユニークパターンをdefsに追加
         for pattern_id, pattern_info in unique_patterns.items():
-            # パターンサイズを計算（tileCountが大きいほど粗くなる）
-            # tileCount=1 → 5% (細かい), tileCount=5 → 25% (適度), tileCount=10 → 50% (粗い)
-            tile_size = pattern_info['tileCount'] * 5
+            # パターンサイズを計算（固定ピクセルサイズ、縦横比を保持）
+            # tileCountが大きいほど粗くなる：基本サイズ20mm × tileCount
+            base_size_mm = 20  # 基本タイルサイズ（mm）
+            tile_size_mm = base_size_mm * pattern_info['tileCount']
+            tile_size_px = tile_size_mm * actual_scale  # mmをピクセルに変換
 
-            # パターン定義
+            # パターン定義（userSpaceOnUseで絶対座標系を使用 → 縦横比を保持）
             pattern = dwg.pattern(
                 id=pattern_id,
-                size=(f"{tile_size}%", f"{tile_size}%"),
-                patternUnits="objectBoundingBox"
+                size=(tile_size_px, tile_size_px),  # 正方形のタイル
+                patternUnits="userSpaceOnUse"  # 絶対座標系（歪まない）
             )
 
             # 画像データがある場合は実際の画像を使用
@@ -423,11 +425,11 @@ class SVGExporter:
                 image = dwg.image(
                     href=pattern_info['imageData'],  # data:image/png;base64,... 形式
                     insert=(0, 0),
-                    size=('100%', '100%'),
-                    preserveAspectRatio="xMidYMid slice"  # アスペクト比を保ちながらフィット
+                    size=(tile_size_px, tile_size_px),  # 正方形サイズ（縦横比保持）
+                    preserveAspectRatio="none"  # タイル全体を埋める（歪み防止）
                 )
                 pattern.add(image)
-                print(f"[SVGExporter] Generated pattern with embedded image: {pattern_id}")
+                print(f"[SVGExporter] Generated pattern with embedded image: {pattern_id}, size={tile_size_px:.1f}px")
             else:
                 # 画像データがない場合は簡易的なパターンを生成
                 if pattern_info['patternId'] == 'grass':

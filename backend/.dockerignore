@@ -50,6 +50,7 @@ docs/
 # Environment files
 .env
 .env.*
+!.env.production
 
 # Cache
 .cache/

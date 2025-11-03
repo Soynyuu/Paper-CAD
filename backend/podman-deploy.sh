@@ -77,8 +77,8 @@ case $ACTION in
             -e PORT=8001 \
             -e ENV=production \
             -e WORKERS=2 \
-            --memory=2g \
-            --cpus=2.0 \
+            --memory=6g \
+            --cpus=4.0 \
             --security-opt label=disable \
             ${IMAGE_NAME}:latest
 

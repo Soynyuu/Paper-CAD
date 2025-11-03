@@ -698,16 +698,23 @@ class SVGExporter:
                 pattern_id = None
                 if "face_numbers" in group and len(group["face_numbers"]) > 0:
                     face_number = group["face_numbers"][0]
+                    print(f"  [TEXTURE_DEBUG_PAGED] Group face_number: {face_number}")
+                    print(f"  [TEXTURE_DEBUG_PAGED] Available texture_mappings: {self.texture_mappings}")
                     # テクスチャマッピングを検索
                     for mapping in self.texture_mappings:
-                        if mapping.get("faceNumber") == face_number:
+                        mapping_face_num = mapping.get("faceNumber")
+                        print(f"  [TEXTURE_DEBUG_PAGED] Checking mapping faceNumber={mapping_face_num}, group face_number={face_number}, match={mapping_face_num == face_number}")
+                        if mapping_face_num == face_number:
                             texture_mapping = mapping
                             # パターンIDを生成（rotation込み）
                             rotation = mapping.get('rotation', 0)
                             pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
                             if rotation != 0:
                                 pattern_id += f"_r{int(rotation)}"
+                            print(f"  [TEXTURE_DEBUG_PAGED] ✓ MATCH FOUND! pattern_id={pattern_id}")
                             break
+                    if not texture_mapping:
+                        print(f"  [TEXTURE_DEBUG_PAGED] ✗ NO MATCH - No texture mapping found for face {face_number}")
 
                 # 複数のポリゴンがある場合は穴付きポリゴンとして描画
                 if len(polygons) > 1:

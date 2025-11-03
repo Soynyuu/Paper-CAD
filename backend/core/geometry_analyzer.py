@@ -155,8 +155,9 @@ class GeometryAnalyzer:
                 except:
                     pass
             
-            # 法線ベクトルに基づいて面番号を割り当てる
-            face_number = self._assign_face_number_by_normal(normal_vec, [centroid.X(), centroid.Y(), centroid.Z()])
+            # シンプルに faceIndex + 1 を面番号として使用（フロントエンドと統一）
+            face_number = face_index + 1
+            print(f"  -> 面番号 {face_number} を割り当て (faceIndex={face_index})")
             
             face_data = {
                 "index": face_index,

@@ -61,8 +61,8 @@ case $ACTION in
         # debug_filesディレクトリの作成
         mkdir -p core/debug_files
 
-        # ENV変数のデフォルト値を設定
-        ENV_VALUE="${ENV:-development}"
+        # ENV変数のデフォルト値を設定（本番環境）
+        ENV_VALUE="${ENV:-production}"
 
         # コンテナ実行（Rootlessモード）
         # 本番環境用の環境変数を明示的に設定
@@ -75,7 +75,6 @@ case $ACTION in
             -e FRONTEND_URL=https://app-paper-cad.soynyuu.com \
             -e CORS_ALLOW_ALL=false \
             -e PORT=8001 \
-            -e ENV=production \
             -e WORKERS=2 \
             --memory=6g \
             --cpus=4.0 \
@@ -119,8 +118,8 @@ case $ACTION in
     systemd)
         echo -e "${YELLOW}Generating systemd service...${NC}"
 
-        # ENV変数のデフォルト値を設定
-        ENV_VALUE="${ENV:-development}"
+        # ENV変数のデフォルト値を設定（本番環境）
+        ENV_VALUE="${ENV:-production}"
 
         # 現在のユーザーのホームディレクトリを取得
         USER_HOME="${HOME}"

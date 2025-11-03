@@ -407,8 +407,8 @@ class SVGExporter:
         # 各ユニークパターンをdefsに追加
         for pattern_id, pattern_info in unique_patterns.items():
             # パターンサイズを計算（固定ピクセルサイズ、縦横比を保持）
-            # tileCountが大きいほど粗くなる：基本サイズ20mm × tileCount
-            base_size_mm = 20  # 基本タイルサイズ（mm）
+            # tileCountが大きいほど粗くなる：基本サイズ10mm × tileCount
+            base_size_mm = 10  # 基本タイルサイズ（mm）
             tile_size_mm = base_size_mm * pattern_info['tileCount']
             tile_size_px = tile_size_mm * actual_scale  # mmをピクセルに変換
 

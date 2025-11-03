@@ -852,10 +852,7 @@ export class StepUnfoldPanel extends HTMLElement {
         this._svgContainer.innerHTML = "";
 
         // Enable SVG-Edit for editing capability
-        // DIAGNOSTIC: Set to false to test if backend-generated SVG patterns display correctly
-        // Step 1: false - Test direct SVG display (bypasses SVG-Edit)
-        // Step 2: true - Test SVG-Edit with diagnostic pattern injection
-        const USE_SVGEDIT = false; // Toggle this to enable/disable SVG-Edit
+        const USE_SVGEDIT = true; // Toggle this to enable/disable SVG-Edit
 
         if (!USE_SVGEDIT) {
             // Simple SVG display without editing capability

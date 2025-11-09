@@ -20,7 +20,9 @@ from models.request_models import (
     PlateauBuildingIdSearchResponse,
     PlateauBuildingIdWithMeshRequest
 )
-from services.citygml_to_step import export_step_from_citygml, parse_citygml_footprints
+# Import from refactored citygml module (Phase 2)
+from services.citygml import export_step_from_citygml
+from services.citygml.lod.footprint_extractor import parse_citygml_footprints
 from services.plateau_fetcher import search_buildings_by_address, search_building_by_id, search_building_by_id_and_mesh
 
 # APIルーターの作成

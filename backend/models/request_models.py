@@ -1,65 +1,129 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class BrepPapercraftRequest(BaseModel):
-    scale_factor: float = 10.0  # デフォルトスケールファクターを大きくする
-    units: str = "mm" #単位形の指定
-    max_faces: int = 20
-    curvature_tolerance: float = 0.1
-    # ═══ 接着工学：物理的組み立ての実践的考慮 ═══
-    tab_width: float = 5.0
-    # ═══ 品質フィルタリング：微細要素の除外戦略 ═══
-    min_face_area: float = 1.0
-        # ═══ 展開アルゴリズム選択：数学的手法の戦略的選択 ═══
-    unfold_method: str = "planar"
-    # ═══ 視覚化制御：図面の情報密度管理 ═══
-    show_scale: bool = True
-    show_fold_lines: bool = True
-    show_cut_lines: bool = True
-    # ═══ レイアウトオプション：出力形式の制御 ═══
-    layout_mode: str = "paged"  # "canvas" (フリーキャンバス) or "paged" (ページ分割)
-    page_format: str = "A4"  # ページフォーマット: A4, A3, Letter
-    page_orientation: str = "portrait"  # ページ向き: portrait (縦) or landscape (横)
-    mirror_horizontal: bool = False  # 左右反転モード: True=水平方向に反転
+    """STEP to SVG/PDF unfold request parameters (STEP → 展開図変換リクエストパラメータ)"""
 
-
-class CityGMLConversionRequest(BaseModel):
-    """CityGML to STEP conversion request parameters"""
-    # Parsing options
-    preferred_lod: Optional[int] = 2  # Preferred Level of Detail (0, 1, 2)
-    min_building_area: Optional[float] = None  # Minimum building area to process (square meters)
-    max_building_count: Optional[int] = None  # Maximum number of buildings to process
-
-    # Building filtering options
-    building_ids: Optional[list[str]] = None  # List of building IDs to extract (None = all buildings)
-    filter_attribute: Optional[str] = "gml:id"  # Attribute to match building_ids against (default: gml:id)
-
-    # Solidification options
-    tolerance: Optional[float] = 1e-6  # Geometric tolerance for solid creation
-    enable_shell_closure: Optional[bool] = True  # Attempt to close open shells
-
-    # Export options
-    export_individual_files: Optional[bool] = False  # Export each building as separate STEP file
-    output_format: Optional[str] = "step"  # Output format (currently only STEP supported)
-
-    # Processing options
-    debug_mode: Optional[bool] = False  # Enable debug logging and detailed error reporting
-
-
-class CityGMLValidationRequest(BaseModel):
-    """CityGML file validation request parameters"""
-    check_geometry: Optional[bool] = True  # Validate geometric structure
-    estimate_processing_time: Optional[bool] = True  # Provide processing time estimates
+    scale_factor: float = Field(
+        default=10.0,
+        description="図の縮尺倍率 (例: 150なら1/150スケール) / Scale factor (e.g., 150 = 1:150 scale)",
+        gt=0,
+        example=150.0
+    )
+    units: str = Field(
+        default="mm",
+        description="単位 / Units (mm/cm/m)",
+        pattern="^(mm|cm|m)$",
+        example="mm"
+    )
+    max_faces: int = Field(
+        default=20,
+        description="1グループあたりの最大面数 / Maximum faces per group",
+        ge=1,
+        le=100,
+        example=20
+    )
+    curvature_tolerance: float = Field(
+        default=0.1,
+        description="曲率許容誤差 / Curvature tolerance",
+        gt=0,
+        example=0.1
+    )
+    tab_width: float = Field(
+        default=5.0,
+        description="接着タブの幅 (mm) / Tab width for assembly (mm)",
+        ge=0,
+        example=5.0
+    )
+    min_face_area: float = Field(
+        default=1.0,
+        description="最小面積フィルタ (mm²) - この値未満の面は除外 / Minimum face area filter (mm²)",
+        ge=0,
+        example=1.0
+    )
+    unfold_method: str = Field(
+        default="planar",
+        description="展開アルゴリズム / Unfold algorithm (planar/geodesic)",
+        pattern="^(planar|geodesic)$",
+        example="planar"
+    )
+    show_scale: bool = Field(
+        default=True,
+        description="縮尺バーを表示 / Show scale bar",
+        example=True
+    )
+    show_fold_lines: bool = Field(
+        default=True,
+        description="折り線を表示 / Show fold lines",
+        example=True
+    )
+    show_cut_lines: bool = Field(
+        default=True,
+        description="切り線を表示 / Show cut lines",
+        example=True
+    )
+    layout_mode: str = Field(
+        default="paged",
+        description="レイアウトモード / Layout mode (canvas=フリーキャンバス, paged=ページ分割)",
+        pattern="^(canvas|paged)$",
+        example="paged"
+    )
+    page_format: str = Field(
+        default="A4",
+        description="ページフォーマット / Page format (A4/A3/Letter)",
+        pattern="^(A4|A3|Letter)$",
+        example="A4"
+    )
+    page_orientation: str = Field(
+        default="portrait",
+        description="ページ向き / Page orientation (portrait=縦, landscape=横)",
+        pattern="^(portrait|landscape)$",
+        example="portrait"
+    )
+    mirror_horizontal: bool = Field(
+        default=False,
+        description="左右反転モード / Mirror horizontally",
+        example=False
+    )
 
 
 class PlateauSearchRequest(BaseModel):
-    """Request to search for PLATEAU buildings by address/facility name"""
-    query: str  # Address or facility name (e.g., "東京駅", "東京都千代田区丸の内1-9-1")
-    radius: Optional[float] = 0.001  # Search radius in degrees (default: ~100m)
-    limit: Optional[int] = 10  # Maximum number of buildings to return
-    auto_select_nearest: Optional[bool] = True  # Auto-select nearest building
-    name_filter: Optional[str] = None  # Building name to filter/rank by (for name-based search)
-    search_mode: Optional[str] = "hybrid"  # Ranking strategy: "distance", "name", or "hybrid"
+    """Request to search for PLATEAU buildings by address/facility name (住所・施設名でPLATEAU建物検索)"""
+
+    query: str = Field(
+        description="住所または施設名 / Address or facility name (例: '東京駅', '渋谷スクランブルスクエア')",
+        min_length=1,
+        example="東京駅"
+    )
+    radius: Optional[float] = Field(
+        default=0.001,
+        description="検索半径（度単位、約100m） / Search radius in degrees (~100m)",
+        gt=0,
+        example=0.001
+    )
+    limit: Optional[int] = Field(
+        default=10,
+        description="最大検索結果数 / Maximum number of results",
+        ge=1,
+        le=100,
+        example=10
+    )
+    auto_select_nearest: Optional[bool] = Field(
+        default=True,
+        description="最近接建物を自動選択 / Auto-select nearest building",
+        example=True
+    )
+    name_filter: Optional[str] = Field(
+        default=None,
+        description="建物名フィルタ（名前ベース検索用） / Building name filter for ranking",
+        example=None
+    )
+    search_mode: Optional[str] = Field(
+        default="hybrid",
+        description="検索モード / Search mode (distance/name/hybrid)",
+        pattern="^(distance|name|hybrid)$",
+        example="hybrid"
+    )
 
 
 class PlateauFetchAndConvertRequest(BaseModel):
@@ -116,28 +180,94 @@ class PlateauSearchResponse(BaseModel):
 
 
 class PlateauBuildingIdRequest(BaseModel):
-    """Request to fetch PLATEAU building by building ID"""
-    building_id: str  # Building ID (e.g., "13101-bldg-2287")
-    # Conversion options
-    merge_building_parts: Optional[bool] = False  # Merge BuildingPart into main building
-    precision_mode: Optional[str] = "ultra"  # Precision mode: standard, high, maximum, ultra
-    shape_fix_level: Optional[str] = "minimal"  # Shape fixing: minimal, standard, aggressive, ultra
-    method: Optional[str] = "solid"  # Conversion method
-    auto_reproject: Optional[bool] = True  # Auto-reproject to planar CRS
-    debug: Optional[bool] = False  # Debug mode
+    """Request to fetch PLATEAU building by building ID (建物IDでPLATEAU建物を取得)"""
+
+    building_id: str = Field(
+        description="建物ID / Building ID (例: '13101-bldg-2287')",
+        min_length=1,
+        example="13101-bldg-2287"
+    )
+    merge_building_parts: Optional[bool] = Field(
+        default=False,
+        description="BuildingPartを結合 / Merge BuildingPart into main building",
+        example=False
+    )
+    precision_mode: Optional[str] = Field(
+        default="ultra",
+        description="精度モード / Precision mode (standard/high/maximum/ultra)",
+        pattern="^(standard|high|maximum|ultra)$",
+        example="ultra"
+    )
+    shape_fix_level: Optional[str] = Field(
+        default="minimal",
+        description="形状修正レベル / Shape fixing level (minimal/standard/aggressive/ultra)",
+        pattern="^(minimal|standard|aggressive|ultra)$",
+        example="minimal"
+    )
+    method: Optional[str] = Field(
+        default="solid",
+        description="変換方法 / Conversion method (solid/sew/extrude/auto)",
+        pattern="^(solid|sew|extrude|auto)$",
+        example="solid"
+    )
+    auto_reproject: Optional[bool] = Field(
+        default=True,
+        description="平面直角座標系へ自動変換 / Auto-reproject to planar CRS",
+        example=True
+    )
+    debug: Optional[bool] = Field(
+        default=False,
+        description="デバッグモード / Debug mode",
+        example=False
+    )
 
 
 class PlateauBuildingIdWithMeshRequest(BaseModel):
-    """Request to fetch PLATEAU building by building ID + mesh code (optimized)"""
-    building_id: str  # Building ID (e.g., "13101-bldg-2287")
-    mesh_code: str  # 3rd mesh code (8 digits, 1km area, e.g., "53394511")
-    # Conversion options
-    merge_building_parts: Optional[bool] = False  # Merge BuildingPart into main building
-    precision_mode: Optional[str] = "ultra"  # Precision mode: standard, high, maximum, ultra
-    shape_fix_level: Optional[str] = "minimal"  # Shape fixing: minimal, standard, aggressive, ultra
-    method: Optional[str] = "solid"  # Conversion method
-    auto_reproject: Optional[bool] = True  # Auto-reproject to planar CRS
-    debug: Optional[bool] = False  # Debug mode
+    """Request to fetch PLATEAU building by building ID + mesh code (optimized) (建物ID+メッシュコードで取得、最適化版)"""
+
+    building_id: str = Field(
+        description="建物ID / Building ID (例: '13101-bldg-2287')",
+        min_length=1,
+        example="13101-bldg-2287"
+    )
+    mesh_code: str = Field(
+        description="3次メッシュコード（8桁、1km区画） / 3rd mesh code (8 digits, 1km area, 例: '53394511')",
+        pattern="^[0-9]{8}$",
+        example="53394511"
+    )
+    merge_building_parts: Optional[bool] = Field(
+        default=False,
+        description="BuildingPartを結合 / Merge BuildingPart into main building",
+        example=False
+    )
+    precision_mode: Optional[str] = Field(
+        default="ultra",
+        description="精度モード / Precision mode (standard/high/maximum/ultra)",
+        pattern="^(standard|high|maximum|ultra)$",
+        example="ultra"
+    )
+    shape_fix_level: Optional[str] = Field(
+        default="minimal",
+        description="形状修正レベル / Shape fixing level (minimal/standard/aggressive/ultra)",
+        pattern="^(minimal|standard|aggressive|ultra)$",
+        example="minimal"
+    )
+    method: Optional[str] = Field(
+        default="solid",
+        description="変換方法 / Conversion method (solid/sew/extrude/auto)",
+        pattern="^(solid|sew|extrude|auto)$",
+        example="solid"
+    )
+    auto_reproject: Optional[bool] = Field(
+        default=True,
+        description="平面直角座標系へ自動変換 / Auto-reproject to planar CRS",
+        example=True
+    )
+    debug: Optional[bool] = Field(
+        default=False,
+        description="デバッグモード / Debug mode",
+        example=False
+    )
 
 
 class PlateauBuildingIdSearchResponse(BaseModel):

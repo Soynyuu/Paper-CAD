@@ -76,13 +76,76 @@ CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
 # アプリケーション設定
 APP_CONFIG = {
-    "title": "Paper-CAD",
-    "description": "Paper-CAD Backend API - STEP to SVG unfold service",
+    "title": "Paper-CAD Backend API",
+    "description": """
+**Paper-CAD Backend API**: 3D CAD to 2D papercraft conversion service
+
+## 主な機能 / Features
+
+### 🏗️ STEP File Unfolding
+- 3D STEP files → 2D SVG/PDF papercraft templates (展開図生成)
+- Multi-page layout support (A4/A3/Letter formats)
+- Configurable scale and precision
+
+### 🏙️ CityGML to STEP Conversion
+- LOD1/LOD2/LOD3 support with hierarchical fallback
+- BuildingPart merging with Boolean fusion
+- XLink reference resolution
+- Modular architecture: 27 components across 7 layers (Issue #129)
+
+### 🇯🇵 PLATEAU Integration
+- Japan PLATEAU 3D city data integration
+- Address/facility-based building search
+- Automatic geocoding and CRS transformation
+- One-step fetch & convert workflow
+
+### 📐 Advanced Processing
+- Adaptive tolerance computation
+- Progressive geometry repair (4-stage escalation)
+- Coordinate recentering for precision
+- Multiple conversion methods (solid/sew/extrude/auto)
+    """,
     "version": "1.0.0",
     "contact": {
         "name": "Kodai MIYAZAKI",
+        "url": "https://github.com/Soynyuu/Paper-CAD"
+    },
+    "license_info": {
+        "name": "MIT",
     }
 }
+
+# OpenAPI タグのメタデータ
+TAGS_METADATA = [
+    {
+        "name": "STEP Processing",
+        "description": "STEP file unfolding to SVG/PDF papercraft templates (STEP → 展開図変換)",
+        "externalDocs": {
+            "description": "STEP format documentation",
+            "url": "https://en.wikipedia.org/wiki/ISO_10303-21",
+        },
+    },
+    {
+        "name": "CityGML Processing",
+        "description": "CityGML to STEP conversion with LOD1/LOD2/LOD3 support (CityGML → STEP変換)",
+        "externalDocs": {
+            "description": "CityGML documentation",
+            "url": "https://www.ogc.org/standards/citygml",
+        },
+    },
+    {
+        "name": "PLATEAU Integration",
+        "description": "Japan PLATEAU 3D city data integration and search (日本のPLATEAU 3D都市データ統合)",
+        "externalDocs": {
+            "description": "PLATEAU official site",
+            "url": "https://www.mlit.go.jp/plateau/",
+        },
+    },
+    {
+        "name": "System",
+        "description": "Health checks, diagnostics, and system information (ヘルスチェック、診断、システム情報)",
+    },
+]
 
 
 def setup_cors(app: FastAPI) -> None:
@@ -156,6 +219,6 @@ def setup_cors(app: FastAPI) -> None:
 
 def create_app() -> FastAPI:
     """FastAPIアプリケーションを作成する"""
-    app = FastAPI(**APP_CONFIG)
+    app = FastAPI(**APP_CONFIG, openapi_tags=TAGS_METADATA)
     setup_cors(app)
     return app

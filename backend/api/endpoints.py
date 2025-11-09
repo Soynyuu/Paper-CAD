@@ -45,33 +45,66 @@ def cleanup_temp_dir(tmpdir: str):
             print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {e}")
 
 # --- STEP専用APIエンドポイント ---
-@router.post("/api/step/unfold")
+@router.post(
+    "/api/step/unfold",
+    summary="STEP → SVG Unfold",
+    tags=["STEP Processing"],
+    responses={
+        200: {
+            "description": "SVG file or JSON response with unfold data",
+            "content": {
+                "image/svg+xml": {
+                    "example": "SVG file content with unfold layout"
+                },
+                "application/json": {
+                    "example": {
+                        "svg_content": "<svg>...</svg>",
+                        "stats": {"page_count": 3, "total_faces": 42},
+                        "face_numbers": [1, 2, 3]
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid file format or parameters"},
+        503: {"description": "OpenCASCADE not available"}
+    }
+)
 async def unfold_step_to_svg(
-    file: UploadFile = File(...),
-    return_face_numbers: bool = Form(True),
-    output_format: str = Form("svg"),
-    layout_mode: str = Form("paged"),
-    page_format: str = Form("A4"),
-    page_orientation: str = Form("portrait"),
-    scale_factor: float = Form(10.0),
-    texture_mappings: Optional[str] = Form(None)
+    file: UploadFile = File(..., description="STEP file (.step/.stp)"),
+    return_face_numbers: bool = Form(True, description="面番号データを含む / Include face numbers"),
+    output_format: str = Form("svg", description="出力形式 / Output format (svg/json)"),
+    layout_mode: str = Form("paged", description="レイアウトモード / Layout mode (canvas/paged)"),
+    page_format: str = Form("A4", description="ページフォーマット / Page format (A4/A3/Letter)"),
+    page_orientation: str = Form("portrait", description="ページ向き / Orientation (portrait/landscape)"),
+    scale_factor: float = Form(10.0, description="縮尺倍率 / Scale factor (例: 150=1/150)"),
+    texture_mappings: Optional[str] = Form(None, description="テクスチャマッピング情報（JSON） / Texture mappings (JSON)")
 ):
     """
     STEPファイル（.step/.stp）を受け取り、展開図（SVG）を生成するAPI。
 
+    Unfold 3D STEP file to 2D SVG papercraft template.
+
+    **レイアウトモード / Layout Modes**:
+    - `canvas`: フリーキャンバス（全面を1枚に配置） / Free canvas (all faces on one page)
+    - `paged`: ページ分割（A4/A3/Letterサイズに自動配置） / Paginated layout
+
+    **出力形式 / Output Format**:
+    - `svg`: SVGファイル（pagedモードでは全ページを縦に並べて表示） / SVG file (all pages stacked vertically in paged mode)
+    - `json`: JSONレスポンス（SVGコンテンツと統計情報） / JSON response with SVG content and stats
+
     Args:
-        file: STEPファイル (.step/.stp)
-        return_face_numbers: 面番号データを含むかどうか (default: True)
-        output_format: 出力形式 - "svg"=SVGファイル、"json"=JSONレスポンス
-        layout_mode: レイアウトモード - "canvas"=フリーキャンバス、"paged"=ページ分割 (default: "canvas")
-        page_format: ページフォーマット - "A4", "A3", "Letter" (default: "A4")
-        page_orientation: ページ方向 - "portrait"=縦、"landscape"=横 (default: "portrait")
-        scale_factor: 図の縮尺倍率 (default: 10.0) - 例: 150なら1/150スケール
-        texture_mappings: JSON形式のテクスチャマッピング情報 - [{faceNumber, patternId, tileCount}]
+        file: STEPファイル / STEP file (.step/.stp)
+        return_face_numbers: 面番号データを含む / Include face numbers (default: True)
+        output_format: 出力形式 / Output format (svg/json, default: "svg")
+        layout_mode: レイアウトモード / Layout mode (canvas/paged, default: "paged")
+        page_format: ページフォーマット / Page format (A4/A3/Letter, default: "A4")
+        page_orientation: ページ向き / Orientation (portrait/landscape, default: "portrait")
+        scale_factor: 縮尺倍率 / Scale factor (例: 150 = 1/150 scale, default: 10.0)
+        texture_mappings: テクスチャマッピング情報（JSON） / Texture mappings (JSON array)
 
     Returns:
-        - output_format="svg": 単一SVGファイル（pagedモードでは全ページを縦に並べて表示）
-        - output_format="json": JSONレスポンス
+        - output_format="svg": SVGファイル / SVG file
+        - output_format="json": JSONレスポンス / JSON response with SVG content and statistics
     """
     if not OCCT_AVAILABLE:
         raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
@@ -196,31 +229,51 @@ async def unfold_step_to_svg(
                 print(f"[CLEANUP] Failed to remove output_tmpdir {output_tmpdir}: {e}")
 
 # --- STEP → PDF 展開図エンドポイント ---
-@router.post("/api/step/unfold-pdf")
+@router.post(
+    "/api/step/unfold-pdf",
+    summary="STEP → PDF Unfold",
+    tags=["STEP Processing"],
+    responses={
+        200: {
+            "description": "PDF file with paginated papercraft template",
+            "content": {
+                "application/pdf": {
+                    "schema": {"type": "string", "format": "binary"},
+                    "example": "PDF file with multi-page unfold layout"
+                }
+            }
+        },
+        400: {"description": "Invalid file format, empty file, or canvas mode not supported for PDF"},
+        503: {"description": "OpenCASCADE not available"}
+    }
+)
 async def unfold_step_to_pdf(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    layout_mode: str = Form("paged"),
-    page_format: str = Form("A4"),
-    page_orientation: str = Form("portrait"),
-    scale_factor: float = Form(150.0),
-    texture_mappings: Optional[str] = Form(None),
-    mirror_horizontal: bool = Form(False)
+    file: UploadFile = File(..., description="STEP file (.step/.stp)"),
+    layout_mode: str = Form("paged", description="レイアウトモード / Layout mode (only 'paged' supported for PDF)"),
+    page_format: str = Form("A4", description="ページフォーマット / Page format (A4/A3/Letter)"),
+    page_orientation: str = Form("portrait", description="ページ方向 / Page orientation (portrait=縦, landscape=横)"),
+    scale_factor: float = Form(150.0, description="縮尺倍率 / Scale factor (e.g., 150 = 1:150 scale)"),
+    texture_mappings: Optional[str] = Form(None, description="テクスチャマッピング情報（JSON配列） / Texture mappings as JSON array"),
+    mirror_horizontal: bool = Form(False, description="左右反転モード / Mirror horizontally")
 ):
     """
     STEPファイル（.step/.stp）を受け取り、展開図をPDF形式で生成するAPI。
 
-    Args:
-        file: STEPファイル (.step/.stp)
-        layout_mode: レイアウトモード - "canvas"=フリーキャンバス、"paged"=ページ分割 (default: "paged")
-        page_format: ページフォーマット - "A4", "A3", "Letter" (default: "A4")
-        page_orientation: ページ方向 - "portrait"=縦、"landscape"=横 (default: "portrait")
-        scale_factor: 図の縮尺倍率 (default: 150.0) - 例: 150なら1/150スケール
-        texture_mappings: JSON形式のテクスチャマッピング情報 - [{faceNumber, patternId, tileCount}]
-        mirror_horizontal: 左右反転モード - True=水平方向に反転 (default: False)
+    Unfold 3D STEP file to multi-page PDF papercraft template.
 
-    Returns:
-        PDFファイル（application/pdf）
+    **レイアウトモード / Layout Modes**:
+    - `paged`: ページ分割（A4/A3/Letterサイズに自動配置） / Paginated layout (only mode supported for PDF)
+    - `canvas`: ❌ Not supported for PDF export (use SVG endpoint for canvas mode)
+
+    **出力形式 / Output Format**:
+    - PDF file with multiple pages (one page per sheet)
+    - Each page includes fold/cut lines, assembly tabs, and scale bars
+    - Custom headers: X-Layout-Mode, X-Page-Format, X-Page-Orientation, X-Page-Count, X-Scale-Factor
+
+    **テクスチャマッピング / Texture Mappings**:
+    - JSON array: `[{"faceNumber": 1, "patternId": "brick", "tileCount": 5}, ...]`
+    - Overlays SVG patterns on specific faces for realistic papercraft appearance
     """
     if not OCCT_AVAILABLE:
         raise HTTPException(status_code=503, detail="OpenCASCADE Technology が利用できません。STEPファイル処理に必要です。")
@@ -388,15 +441,22 @@ async def unfold_step_to_pdf(
 # --- CityGML → STEP 変換エンドポイント ---
 @router.post(
     "/api/citygml/to-step",
+    summary="CityGML → STEP Conversion",
+    tags=["CityGML Processing"],
     responses={
         200: {
+            "description": "STEP file generated successfully with LOD2/LOD3 geometry",
             "content": {
                 "application/octet-stream": {
-                    "schema": {"type": "string", "format": "binary"}
+                    "schema": {"type": "string", "format": "binary"},
+                    "example": "STEP file (ISO 10303-21 format)"
                 }
-            },
-            "description": "STEP file generated successfully"
-        }
+            }
+        },
+        400: {"description": "Invalid file format, missing file/path, or invalid parameters"},
+        404: {"description": "Specified gml_path not found on server"},
+        413: {"description": "File too large (max 250MB)"},
+        500: {"description": "Conversion error (check debug logs for details)"}
     },
 )
 async def citygml_to_step(
@@ -459,43 +519,56 @@ async def citygml_to_step(
     """
     CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
 
-    **主要機能**:
-    - gml:Solid ジオメトリ抽出（exterior/interior shells、cavity対応）
-    - bldg:BuildingPart 階層構造の自動抽出とマージ
-    - XLink参照（xlink:href）の自動解決
-    - 適応的tolerance管理（座標範囲の0.01%を自動計算、精度モードで調整可能）
-    - 地理座標系を検出した場合、自動的に適切な平面直角座標系に変換
-    - 日本のPLATEAUデータの場合、地域に応じた日本平面直角座標系を自動選択
-    - STEP出力最適化（AP214CD schema、MM単位、1e-6精度）
+    Convert CityGML files to STEP format with LOD1/LOD2/LOD3 support.
 
-    **入力**:
-    - アップロードファイルまたはローカルパス (gml_path) のどちらかを指定
+    **アーキテクチャ / Architecture** (Issue #129):
+    - Modular pipeline: 27 components across 7 architectural layers
+    - Refactored from monolithic 4,683-line file for maintainability
+    - Layers: Core types → Utils → Parsers → Geometry → Transforms → LOD strategies → Pipeline orchestration
 
-    **変換方式** (method):
-    - solid（推奨）: LOD2/3 Solid データを直接使用（PLATEAU LOD2/LOD3建物に最適化）
-    - auto: LOD2/3 Solid → LOD2表面縫合 → フットプリント押し出し の順で自動フォールバック
-    - sew: LOD2の各サーフェスを縫合してソリッド化
-    - extrude: フットプリント＋高さ推定から押し出し（LOD0互換用、明示的指定が必要）
+    **主要機能 / Key Features**:
+    - **LOD Support**: LOD3 → LOD2 → LOD1 hierarchical fallback extraction
+    - **BoundedBy Strategy**: 6 surface types (WallSurface, RoofSurface, GroundSurface, etc.)
+    - **BuildingPart Merging**: Boolean fusion with automatic hierarchy extraction
+    - **XLink Resolution**: Automatic xlink:href reference resolution (Phase 1)
+    - **Coordinate Recentering**: CRITICAL - Executed before tolerance calculation to prevent precision loss (Phase 0)
+    - **Adaptive Tolerance**: Auto-computed from coordinate range (precision_mode adjustable)
+    - **4-Stage Shell Sewing**: Progressive tolerance escalation (10.0→5.0→1.0 multipliers)
+    - **4-Level Auto-Repair**: Minimal → Standard → Aggressive → Ultra escalation
+    - **CRS Transformation**: Auto-detect and reproject to planar coordinate systems
+    - **PLATEAU Optimization**: Japan-specific planar rectangular coordinate system selection
 
-    **精度制御** (新機能):
-    - precision_mode: 座標範囲に対するtoleranceの割合を制御
-      * standard: 0.01% (バランス重視、推奨・デフォルト)
-      * high: 0.001% (細かいディティール保持)
-      * maximum: 0.0001% (最大限の精度、窓枠・階段・バルコニーなどの細部を保持)
-      * ultra: 0.00001% (超高精度、LOD2/LOD3最適化、完璧なデータ用)
-    - shape_fix_level: 形状修正の強度を制御
-      * minimal: 修正を最小限に抑え、細部を優先 (推奨・デフォルト)
-      * standard: 標準的な修正
-      * aggressive: 修正を強化し、堅牢性を優先
-      * ultra: 最大修正、多段階処理、LOD2/LOD3最適化 (完璧なデータ用)
+    **入力 / Input**:
+    - Upload file OR specify server-side gml_path (one required)
+    - Max file size: 250MB (use building_ids filter for larger datasets)
 
-    **建物フィルタリング** (新機能):
-    - building_ids: 処理する建物IDのリスト（カンマ区切り）
-      * 未指定の場合、全建物を処理
-      * 例: "bldg_12345,bldg_67890"
-    - filter_attribute: building_idsと照合する属性
-      * gml:id (デフォルト): 標準のGML識別子で照合
-      * 汎用属性名: gen:genericAttributeの値で照合（例: "buildingID"）
+    **変換方式 / Conversion Methods** (method):
+    - `solid` (推奨): Direct LOD2/LOD3 Solid extraction - optimized for PLATEAU
+    - `auto`: Solid → Sew → Extrude fallback chain
+    - `sew`: Surface sewing method (LOD2 boundedBy surfaces)
+    - `extrude`: Footprint + height extrusion (LOD0/LOD1 fallback)
+
+    **精度制御 / Precision Control**:
+    - `precision_mode`: Tolerance as % of coordinate range
+      * `standard`: 0.01% (balanced, recommended)
+      * `high`: 0.001% (fine details)
+      * `maximum`: 0.0001% (windows, stairs, balconies)
+      * `ultra`: 0.00001% (maximum precision, LOD2/LOD3 optimized)
+    - `shape_fix_level`: Geometry repair aggressiveness
+      * `minimal`: Minimal fixes, preserve details (recommended)
+      * `standard`: Standard repair
+      * `aggressive`: Aggressive repair, prioritize robustness
+      * `ultra`: Maximum repair with multi-stage escalation
+
+    **建物フィルタリング / Building Filtering**:
+    - `building_ids`: Comma-separated building IDs to extract (e.g., "bldg_12345,bldg_67890")
+    - `filter_attribute`: Attribute to match against (default: "gml:id", or generic attribute key like "buildingID")
+    - Unspecified = process all buildings
+
+    **出力 / Output**:
+    - STEP file (ISO 10303-21, AP214CD schema)
+    - Units: MM, Precision: 1e-6
+    - Custom headers: X-Building-Count, X-Method, X-Precision-Mode, X-Shape-Fix-Level
     """
     tmpdir = None
     out_dir = None
@@ -666,15 +739,48 @@ async def citygml_to_step(
 
 
 # --- CityGML 検証（簡易） ---
-@router.post("/api/citygml/validate")
+@router.post(
+    "/api/citygml/validate",
+    summary="CityGML Validation",
+    tags=["CityGML Processing"],
+    responses={
+        200: {
+            "description": "Validation results with building footprint analysis",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "valid": True,
+                        "buildings_with_footprints": 42,
+                        "sample_building_id": "bldg_001",
+                        "notes": "footprint+height extrusion heuristic"
+                    }
+                }
+            }
+        },
+        400: {"description": "Missing file/path or empty file"},
+        404: {"description": "Specified gml_path not found"},
+        500: {"description": "Validation error"}
+    }
+)
 async def citygml_validate(
-    file: Optional[UploadFile] = File(None),
-    gml_path: Optional[str] = Form(None),
-    limit: Optional[int] = Form(10),
+    file: Optional[UploadFile] = File(None, description="CityGML file (.gml/.xml) to validate"),
+    gml_path: Optional[str] = Form(None, description="サーバーローカルのCityGMLパス / Server-side CityGML path"),
+    limit: Optional[int] = Form(10, description="検証する建物数の上限 / Max buildings to validate"),
 ):
     """
     CityGML が当モジュールのヒューリスティックに適合するか簡易チェックします。
-    - bldg:Building が存在し、フットプリント多角形が取得できるかを確認
+
+    Quick validation of CityGML compatibility with this module.
+
+    **検証項目 / Validation Checks**:
+    - bldg:Building 要素の存在確認 / Presence of bldg:Building elements
+    - フットプリント多角形の取得可否 / Extractable footprint polygons
+    - LOD0 FootPrint または RoofEdge の存在 / LOD0 FootPrint or RoofEdge availability
+
+    **用途 / Use Cases**:
+    - CityGML → STEP変換の事前チェック
+    - 建物数の確認（limitパラメータで制御）
+    - サンプル建物IDの取得
     """
     try:
         if file is None and not gml_path:
@@ -716,7 +822,47 @@ async def citygml_validate(
 
 
 # --- PLATEAU Address Search ---
-@router.post("/api/plateau/search-by-address", response_model=PlateauSearchResponse)
+@router.post(
+    "/api/plateau/search-by-address",
+    summary="PLATEAU Building Search by Address",
+    tags=["PLATEAU Integration"],
+    response_model=PlateauSearchResponse,
+    responses={
+        200: {
+            "description": "Building search results with geocoding and distance sorting",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "geocoding": {
+                            "query": "東京駅",
+                            "latitude": 35.681236,
+                            "longitude": 139.767125,
+                            "display_name": "Tokyo Station, Tokyo, Japan"
+                        },
+                        "buildings": [
+                            {
+                                "building_id": "13101-bldg-12345",
+                                "gml_id": "bldg_a1234",
+                                "latitude": 35.681300,
+                                "longitude": 139.767200,
+                                "distance_meters": 10.5,
+                                "height": 45.0,
+                                "usage": "商業施設",
+                                "name": "東京駅丸の内ビル",
+                                "has_lod2": True
+                            }
+                        ],
+                        "found_count": 15,
+                        "search_mode": "hybrid"
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid search parameters"},
+        500: {"description": "Geocoding or PLATEAU API error"}
+    }
+)
 async def plateau_search_by_address(
     request: PlateauSearchRequest
 ):
@@ -725,26 +871,25 @@ async def plateau_search_by_address(
 
     Search for PLATEAU buildings by address or facility name.
 
-    **処理フロー / Process Flow:**
-    1. OpenStreetMap Nominatim APIで住所→座標変換
-    2. PLATEAU Data Catalog APIから周辺のCityGMLデータを取得
-    3. 建物情報を抽出・パース
-    4. 距離順にソート
+    **処理フロー / Process Flow**:
+    1. OpenStreetMap Nominatim APIで住所→座標変換 / Geocoding via OSM Nominatim
+    2. PLATEAU Data Catalog APIから周辺のCityGMLデータを取得 / Fetch nearby CityGML data
+    3. 建物情報を抽出・パース / Extract and parse building information
+    4. 距離・名前類似度でソート / Sort by distance and name similarity
 
-    **入力例 / Example Inputs:**
-    - 施設名: "東京駅", "渋谷スクランブルスクエア"
-    - 完全住所: "東京都千代田区丸の内1-9-1"
-    - 部分住所: "千代田区丸の内"
-    - 郵便番号: "100-0005"
+    **入力例 / Example Inputs**:
+    - 施設名 / Facility name: "東京駅", "渋谷スクランブルスクエア"
+    - 完全住所 / Full address: "東京都千代田区丸の内1-9-1"
+    - 部分住所 / Partial address: "千代田区丸の内"
+    - 郵便番号 / Postal code: "100-0005"
 
-    **レート制限 / Rate Limits:**
-    - Nominatim: 1リクエスト/秒（自動的に適用）
+    **検索モード / Search Modes**:
+    - `distance`: 距離優先 / Distance-based ranking
+    - `name`: 名前類似度優先 / Name similarity ranking
+    - `hybrid`: 距離+名前の複合スコア / Combined distance + name score (default)
 
-    Args:
-        request: PlateauSearchRequest containing query, radius, limit, etc.
-
-    Returns:
-        PlateauSearchResponse with geocoding info and list of buildings
+    **レート制限 / Rate Limits**:
+    - Nominatim: 1リクエスト/秒（自動的に適用） / 1 req/sec (auto-enforced)
 
     Example:
         ```json
@@ -829,45 +974,64 @@ async def plateau_search_by_address(
         raise HTTPException(status_code=500, detail=f"検索エラー: {str(e)}")
 
 
-@router.post("/api/plateau/fetch-and-convert")
+@router.post(
+    "/api/plateau/fetch-and-convert",
+    summary="PLATEAU Fetch & Convert (One-Step)",
+    tags=["PLATEAU Integration"],
+    responses={
+        200: {
+            "description": "STEP file generated from PLATEAU data",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                    "example": "STEP file from PLATEAU building"
+                }
+            }
+        },
+        400: {"description": "Invalid parameters or building_ids format"},
+        500: {"description": "Geocoding, PLATEAU API, or conversion error"}
+    }
+)
 async def plateau_fetch_and_convert(
     background_tasks: BackgroundTasks,
-    query: str = Form(..., description="住所または施設名"),
-    radius: float = Form(0.001, description="検索半径（度）"),
-    auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択"),
-    building_limit: Union[int, str, None] = Form(None, description="変換する建物数（未指定で無制限）"),
-    building_ids: Optional[str] = Form(None, description="ユーザーが選択した建物IDのリスト（カンマ区切り）"),
-    debug: bool = Form(False, description="デバッグモード"),
-    method: str = Form("solid", description="変換方式"),
-    auto_reproject: bool = Form(True, description="自動再投影"),
-    precision_mode: str = Form("ultra", description="精度モード（推奨: ultra）"),
-    shape_fix_level: str = Form("minimal", description="形状修正レベル（推奨: minimal）"),
-    merge_building_parts: bool = Form(False, description="BuildingPartを単一ソリッドに結合（詳細保持優先: False推奨）"),
+    query: str = Form(..., description="住所または施設名 / Address or facility name (e.g., '東京駅')"),
+    radius: float = Form(0.001, description="検索半径（度、約100m） / Search radius in degrees (~100m)"),
+    auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択 / Auto-select nearest building"),
+    building_limit: Union[int, str, None] = Form(None, description="変換する建物数（未指定で無制限） / Max buildings to convert"),
+    building_ids: Optional[str] = Form(None, description="ユーザー選択の建物IDリスト（カンマ区切り） / User-selected building IDs (comma-separated)"),
+    debug: bool = Form(False, description="デバッグモード / Debug mode"),
+    method: str = Form("solid", description="変換方式 / Conversion method (solid/auto/sew/extrude)"),
+    auto_reproject: bool = Form(True, description="自動再投影 / Auto-reproject to planar CRS"),
+    precision_mode: str = Form("ultra", description="精度モード / Precision mode (standard/high/maximum/ultra, recommended: ultra)"),
+    shape_fix_level: str = Form("minimal", description="形状修正レベル / Shape fix level (minimal/standard/aggressive/ultra, recommended: minimal)"),
+    merge_building_parts: bool = Form(False, description="BuildingPart結合 / Merge BuildingPart (False recommended for detail preservation)"),
 ):
     """
     住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
 
     Automatically fetch PLATEAU buildings by address/facility name and convert to STEP.
 
-    **ワンステップ処理 / One-Step Process:**
-    1. 住所検索（Nominatim）
-    2. CityGML取得（PLATEAU API） ← 1回のみ
-    3. 最近傍建物特定
-    4. STEP変換（取得済みCityGMLを再利用）
-    5. ファイル返却
+    **ワンステップ処理 / One-Step Process**:
+    1. 住所検索（Nominatim） / Geocoding via Nominatim
+    2. CityGML取得（PLATEAU API） ← 1回のみ / Fetch CityGML once
+    3. 最近傍建物特定 / Identify nearest building
+    4. STEP変換（取得済みCityGMLを再利用） / Convert to STEP (reuse fetched data)
+    5. ファイル返却 / Return STEP file
 
-    **入力例 / Example:**
-    - query: "東京駅"
-    - radius: 0.001 (約100m)
-    - building_limit: 1 (最近傍の1棟のみ)
+    **入力例 / Example**:
+    - query: "東京駅" (Tokyo Station)
+    - radius: 0.001 (約100m / ~100m)
+    - building_limit: 1 (最近傍の1棟のみ / nearest building only)
 
-    **利点 / Benefits:**
-    - ✅ CityGMLファイルの手動ダウンロード不要
-    - ✅ 必要な建物のみを取得（軽量）
-    - ✅ 常に最新のPLATEAUデータを使用
+    **建物選択 / Building Selection**:
+    - `auto_select_nearest=True` + `building_ids=None`: 最近傍N棟を自動選択 / Auto-select N nearest buildings
+    - `building_ids="id1,id2"`: ユーザー指定の建物のみ変換 / Convert only user-specified buildings
 
-    Returns:
-        STEPファイル（application/octet-stream）
+    **利点 / Benefits**:
+    - ✅ CityGMLファイルの手動ダウンロード不要 / No manual CityGML download required
+    - ✅ 必要な建物のみを取得（軽量） / Fetch only needed buildings (lightweight)
+    - ✅ 常に最新のPLATEAUデータを使用 / Always uses latest PLATEAU data
+    - ✅ 1回のAPIコールで完結 / Single API call workflow
     """
     tmpdir = None
     out_dir = None
@@ -1073,22 +1237,65 @@ async def plateau_fetch_and_convert(
 
 
 # --- PLATEAU: Building ID Search ---
-@router.post("/api/plateau/search-by-id", response_model=PlateauBuildingIdSearchResponse)
+@router.post(
+    "/api/plateau/search-by-id",
+    summary="PLATEAU Building Search by ID",
+    tags=["PLATEAU Integration"],
+    response_model=PlateauBuildingIdSearchResponse,
+    responses={
+        200: {
+            "description": "Building information retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "building": {
+                            "building_id": "13101-bldg-2287",
+                            "gml_id": "bldg_a1234",
+                            "latitude": 35.681236,
+                            "longitude": 139.767125,
+                            "height": 45.0,
+                            "has_lod2": True
+                        },
+                        "municipality_code": "13101",
+                        "municipality_name": "千代田区",
+                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/bldg_53394611_op.gml"
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid building ID format"},
+        404: {"description": "Building not found in PLATEAU Data Catalog"},
+        500: {"description": "PLATEAU API error or parsing error"}
+    }
+)
 async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
     """
+    建物IDから特定のPLATEAU建物を検索します。
+
     Search for a specific PLATEAU building by its building ID.
 
-    Args:
-        request: PlateauBuildingIdRequest with building_id
+    **建物ID形式 / Building ID Format**:
+    - PLATEAU標準: `{市区町村コード}-bldg-{連番}` (例: "13101-bldg-2287")
+    - 市区町村コード: 5桁の自治体コード (例: 13101 = 千代田区)
 
-    Returns:
-        PlateauBuildingIdSearchResponse with building information or error details
+    **処理フロー / Process Flow**:
+    1. 建物IDから市区町村コードを抽出 / Extract municipality code from building ID
+    2. PLATEAU APIで該当する市区町村のCityGMLファイルを検索 / Search CityGML files for the municipality
+    3. ファイルをダウンロードして建物を検索 / Download and search for the building
+    4. 建物情報を返却 / Return building information
 
-    Example:
-        POST /api/plateau/search-by-id
-        {
-            "building_id": "13101-bldg-2287"
-        }
+    **入力例 / Example Input**:
+    ```json
+    {
+        "building_id": "13101-bldg-2287"
+    }
+    ```
+
+    **特徴 / Features**:
+    - 完全なファイルダウンロード不要（軽量検索） / Lightweight search without full file download
+    - 市区町村コード自動抽出 / Automatic municipality code extraction
+    - CityGMLファイル情報を返却 / Returns CityGML file information
     """
     try:
         print(f"\n{'='*60}")
@@ -1154,27 +1361,42 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
         )
 
 
-@router.post("/api/plateau/fetch-by-id")
+@router.post(
+    "/api/plateau/fetch-by-id",
+    summary="PLATEAU Fetch & Convert by ID",
+    tags=["PLATEAU Integration"],
+    responses={
+        200: {
+            "description": "STEP file generated from PLATEAU building",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                    "example": "STEP file for building 13101-bldg-2287"
+                }
+            }
+        },
+        400: {"description": "Invalid building ID format"},
+        404: {"description": "Building not found"},
+        500: {"description": "PLATEAU API error or conversion error"}
+    }
+)
 async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
     """
+    建物IDから直接PLATEAU建物を取得してSTEP変換します。
+
     Fetch PLATEAU building by ID and convert to STEP format.
 
-    This endpoint combines search and conversion in one step:
-    1. Searches for building by ID
-    2. Converts the building to STEP format
-    3. Returns STEP file
+    **ワンステップ処理 / One-Step Process**:
+    1. 建物IDで検索 / Search by building ID
+    2. CityGML取得 / Fetch CityGML data
+    3. STEP変換 / Convert to STEP
+    4. ファイル返却 / Return STEP file
 
-    Args:
-        request: PlateauBuildingIdRequest with building_id and conversion options
-
-    Returns:
-        STEP file as application/octet-stream
-
-    Example:
-        POST /api/plateau/fetch-by-id
-        {
-            "building_id": "13101-bldg-2287",
-            "precision_mode": "ultra",
+    **入力例 / Example Input**:
+    ```json
+    {
+        "building_id": "13101-bldg-2287",
+        "precision_mode": "ultra",
             "shape_fix_level": "minimal"
         }
     """
@@ -1265,26 +1487,63 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
 
 
 # --- PLATEAU: Building ID + Mesh Code Search (Optimized) ---
-@router.post("/api/plateau/search-by-id-and-mesh", response_model=PlateauBuildingIdSearchResponse)
+@router.post(
+    "/api/plateau/search-by-id-and-mesh",
+    summary="PLATEAU Building Search by ID + Mesh (Optimized)",
+    tags=["PLATEAU Integration"],
+    response_model=PlateauBuildingIdSearchResponse,
+    responses={
+        200: {
+            "description": "Building information from 1km² mesh area (fast)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "building": {
+                            "building_id": "13101-bldg-2287",
+                            "gml_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
+                            "latitude": 35.681236,
+                            "longitude": 139.767125,
+                            "height": 45.0,
+                            "has_lod2": True
+                        },
+                        "municipality_code": "13101",
+                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/53394511_bldg_6697_op.gml"
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid mesh code format (must be 8 digits)"},
+        404: {"description": "Building not found in specified mesh"},
+        500: {"description": "PLATEAU API error"}
+    }
+)
 async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
-    Search for a specific PLATEAU building by GML ID + mesh code (optimized).
+    建物ID＋メッシュコードで検索（最適化版、高速）。
 
-    This endpoint is much faster than /api/plateau/search-by-id because it only
-    downloads 1km² area instead of the entire municipality.
+    Search for a specific PLATEAU building by GML ID + mesh code (optimized, fast).
 
-    Args:
-        request: PlateauBuildingIdWithMeshRequest with building_id (GML ID) and mesh_code
+    **最適化 / Optimization**:
+    - ✅ 1km²のメッシュのみダウンロード / Download only 1km² mesh area
+    - ✅ 市区町村全体のダウンロード不要 / No need to download entire municipality
+    - ⚡ `/api/plateau/search-by-id`より大幅に高速 / Much faster than /search-by-id
 
-    Returns:
-        PlateauBuildingIdSearchResponse with building information or error details
+    **メッシュコード / Mesh Code**:
+    - 3次メッシュコード（8桁、1km区画） / 3rd mesh code (8 digits, 1km area)
+    - 例 / Example: "53394511" (東京駅付近)
 
-    Example:
-        POST /api/plateau/search-by-id-and-mesh
-        {
-            "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
-            "mesh_code": "53394511"
-        }
+    **入力例 / Example Input**:
+    ```json
+    {
+        "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
+        "mesh_code": "53394511"
+    }
+    ```
+
+    **用途 / Use Cases**:
+    - メッシュコードが既知の場合の高速検索 / Fast search when mesh code is known
+    - 大量建物の一括処理 / Batch processing of many buildings
     """
     try:
         print(f"\n{'='*60}")
@@ -1355,27 +1614,43 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
         )
 
 
-@router.post("/api/plateau/fetch-by-id-and-mesh")
+@router.post(
+    "/api/plateau/fetch-by-id-and-mesh",
+    summary="PLATEAU Fetch & Convert by ID + Mesh (Optimized)",
+    tags=["PLATEAU Integration"],
+    responses={
+        200: {
+            "description": "STEP file from 1km² mesh area (fast)",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                    "example": "STEP file from mesh 53394511"
+                }
+            }
+        },
+        400: {"description": "Invalid mesh code format"},
+        404: {"description": "Building not found in mesh"},
+        500: {"description": "PLATEAU API or conversion error"}
+    }
+)
 async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
-    Fetch PLATEAU building by GML ID + mesh code and convert to STEP format (optimized).
+    建物ID＋メッシュコードでSTEP変換（最適化版、高速）。
 
-    This endpoint is much faster than /api/plateau/fetch-by-id because it only
-    downloads 1km² area instead of the entire municipality.
+    Fetch PLATEAU building by GML ID + mesh code and convert to STEP format (optimized, fast).
 
-    Args:
-        request: PlateauBuildingIdWithMeshRequest with building_id (GML ID), mesh_code, and conversion options
+    **最適化 / Optimization**:
+    - ✅ 1km²のメッシュのみダウンロード / Download only 1km² mesh area
+    - ⚡ `/api/plateau/fetch-by-id`より大幅に高速 / Much faster than /fetch-by-id
+    - 💾 データ転送量が大幅削減 / Significantly reduced data transfer
 
-    Returns:
-        STEP file as application/octet-stream
-
-    Example:
-        POST /api/plateau/fetch-by-id-and-mesh
-        {
-            "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
-            "mesh_code": "53394511",
-            "precision_mode": "ultra",
-            "shape_fix_level": "minimal"
+    **入力例 / Example Input**:
+    ```json
+    {
+        "building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
+        "mesh_code": "53394511",
+        "precision_mode": "ultra",
+        "shape_fix_level": "minimal"
         }
     """
     if not OCCT_AVAILABLE:
@@ -1470,32 +1745,88 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
 
 # --- ヘルスチェック ---
-@router.get("/api/health", status_code=200)
+@router.get(
+    "/api/health",
+    summary="Health Check",
+    tags=["System"],
+    status_code=200,
+    responses={
+        200: {
+            "description": "System health status and available features",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "healthy",
+                        "opencascade_available": True,
+                        "supported_formats": ["STEP", "BREP", "CityGML", "PLATEAU"],
+                        "features": {
+                            "step_unfold": True,
+                            "citygml_conversion": True,
+                            "plateau_integration": True,
+                            "pdf_export": True
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
 async def api_health_check():
+    """
+    システムのヘルスチェックと利用可能な機能を返します。
+
+    System health check and available features.
+
+    **ステータス / Status**:
+    - `healthy`: すべての機能が利用可能 / All features available
+    - `degraded`: OpenCASCADE未利用、一部機能制限 / OCCT unavailable, limited features
+
+    **機能フラグ / Feature Flags**:
+    - `step_unfold`: STEP → SVG/PDF展開図生成 / STEP to SVG/PDF unfold
+    - `citygml_conversion`: CityGML → STEP変換 / CityGML to STEP conversion
+    - `plateau_integration`: PLATEAU API統合 / PLATEAU API integration
+    - `pdf_export`: PDF出力機能 / PDF export functionality
+
+    **用途 / Use Cases**:
+    - サーバーの起動確認 / Server startup verification
+    - 機能の利用可否チェック / Feature availability check
+    - モニタリング・ヘルスチェック / Monitoring health checks
+    """
     return {
         "status": "healthy" if OCCT_AVAILABLE else "degraded",
-        "version": "1.0.0",
         "opencascade_available": OCCT_AVAILABLE,
-        "supported_formats": ["step", "stp", "brep"] if OCCT_AVAILABLE else [],
+        "supported_formats": ["STEP", "BREP", "CityGML", "PLATEAU"] if OCCT_AVAILABLE else [],
         "features": {
-            "step_to_svg_unfold": OCCT_AVAILABLE,
-            "face_numbering": True,
-            "multi_page_layout": True,
-            "canvas_layout": True,
-            "paged_layout": True
+            "step_unfold": OCCT_AVAILABLE,
+            "citygml_conversion": OCCT_AVAILABLE,
+            "plateau_integration": True,
+            "pdf_export": OCCT_AVAILABLE
         }
     }
 
 # --- デバッグ: CORS設定確認 ---
-@router.get("/api/debug/cors-config")
+@router.get(
+    "/api/debug/cors-config",
+    summary="CORS Configuration Debug",
+    tags=["System"],
+    include_in_schema=False,  # 本番ドキュメントから除外 / Exclude from production docs
+)
 async def debug_cors_config():
     """
     CORS設定の診断情報を返す（デバッグ用）
 
-    **警告**: 本番環境では検証後にこのエンドポイントを削除することを推奨
+    Returns CORS configuration diagnostic information (for debugging only).
 
-    Returns:
-        dict: 現在のCORS設定とレスポンスヘッダーのプレビュー
+    **警告 / Warning**:
+    - 本番環境では検証後にこのエンドポイントを削除することを推奨
+    - Recommend removing this endpoint after validation in production
+    - `include_in_schema=False` により Swagger UI には表示されません
+    - Not visible in Swagger UI due to `include_in_schema=False`
+
+    **診断情報 / Diagnostic Info**:
+    - 現在のCORS設定 / Current CORS settings
+    - 環境変数の値 / Environment variable values
+    - レスポンスヘッダーのプレビュー / Response header preview
     """
     import os
     from config import FRONTEND_URL, CORS_ALLOW_ALL

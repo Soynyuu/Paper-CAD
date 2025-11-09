@@ -50,19 +50,9 @@ python main.py        # Starts server on http://localhost:8001
 # Demo mode (production performance on localhost)
 ENV=demo python main.py    # Production settings + localhost CORS
 
-# Tests (26+ test files available)
-# Run specific tests:
-python test_polygon_overlap.py      # Polygon overlap detection
-python test_improved_unfold.py       # Core unfolding algorithm
-python test_adjacency_fix.py         # Edge adjacency detection
-python test_brep_export.py           # BREP export functionality
-python test_citygml_to_step.py       # CityGML → STEP conversion
-python test_plateau_api.py           # PLATEAU API integration
-python test_nominatim.py             # Geocoding service
-bash test_layout_modes.sh            # Layout mode comparison
-bash test_face_numbers.sh            # Face numbering verification
-
-# Pattern: test_*.py for unit/integration tests, test_*.sh for multi-step workflows
+# Tests
+# Backend testing is currently done manually via API endpoints
+# Use Swagger UI for interactive API testing: http://localhost:8001/docs
 
 # Docker/Podman
 docker compose up -d
@@ -238,9 +228,9 @@ The backend includes comprehensive support for Japan's PLATEAU 3D city data:
 - **Workspace structure**: Frontend uses npm workspaces. Always run `npm install` from the root `/frontend` directory.
 - **API URL configuration**: Update `STEP_UNFOLD_API_URL` in frontend/.env files or rspack.config.js to point to your backend instance.
 - **Environment variables**:
-  - Frontend: Uses `.env.development` and `.env.production` (loaded by rspack.config.js)
-  - Backend: No `.env` files in repo (configuration via `config.py` or environment variables)
-  - Key variables: `STEP_UNFOLD_API_URL` (frontend), `CORS_ALLOW_ALL` (backend development)
+  - Frontend: Uses `.env.development`, `.env.demo`, `.env.production.example` (loaded by rspack.config.js)
+  - Backend: Uses `.env.development`, `.env.demo`, `.env.production` (loaded by config.py via python-dotenv)
+  - Key variables: `STEP_UNFOLD_API_URL` (frontend), `CORS_ALLOW_ALL` (backend development), `FRONTEND_URL` (backend CORS), `PORT` (backend)
 - **CORS configuration**: Backend allows configured origins (see `config.py`). Set `CORS_ALLOW_ALL=true` for development.
 - **Git branch**: Main branch is `main`. Use `git branch` or `git log` to see the current branch.
 - **PDF export dependencies**: Backend uses `cairosvg` (primary) and `reportlab`/`pypdf` (fallback) for PDF generation.
@@ -257,28 +247,37 @@ The backend includes comprehensive support for Japan's PLATEAU 3D city data:
 - **"OpenCASCADE not available" / 503 errors**: Activate conda environment with `conda activate paper-cad`. Verify OCCT installation with `python -c "from OCC.Core.BRep import BRep_Builder; print('OK')"`
 - **CORS errors in browser console**: Set `CORS_ALLOW_ALL=true` environment variable or add your frontend URL to `config.py` origins list
 - **CityGML conversion fails**: Check that `geopy`, `pyproj`, and `shapely` are installed (via conda environment.yml). For specific buildings, verify building IDs using `/api/citygml/validate` endpoint first
-- **Test failures**: Ensure conda environment is activated and all dependencies are installed. Some tests (e.g., `test_plateau_api.py`) require internet connectivity
+- **Frontend test failures**: Run `npm install` from `/frontend` directory and ensure all workspace dependencies are installed
 
 ## Testing
 
-- Frontend tests use Jest with jsdom environment
-- Backend tests are primarily integration tests (test_*.py) and shell scripts (test_*.sh)
-- Always run tests after significant changes to unfolding algorithms or UI components
+**Frontend:**
+- Uses Jest with jsdom environment for unit tests
+- Test files located in `packages/*/test/*.test.ts`
+- Run with `npm test` (from `/frontend` directory)
+- Coverage report: `npm run testc`
+- Example test files: `observer.test.ts`, `linkedList.test.ts`, `converter.test.ts`, etc.
+
+**Backend:**
+- Manual testing via Swagger UI: http://localhost:8001/docs
+- Interactive API documentation with request/response examples
+- Test endpoints individually with different parameters
+- ReDoc alternative: http://localhost:8001/redoc
 
 ## Deployment
 
 - **Frontend**: Cloudflare Pages (npm run deploy)
 - **Backend**: Docker/Podman containers with conda environment
 - **Production URLs**:
-  - Frontend: `https://paper-cad.soynyuu.com`
+  - Frontend: `https://paper-cad.soynyuu.com` or `https://app-paper-cad.soynyuu.com`
   - Backend: `https://backend-paper-cad.soynyuu.com`
 
 ## Common Development Patterns
 
 When modifying the unfolding algorithm:
 1. Update logic in `backend/core/unfold_engine.py`
-2. Test with `python test_improved_unfold.py` or `bash test_layout_modes.sh`
-3. If changing adjacency detection, run `python test_adjacency_fix.py`
+2. Test manually via Swagger UI (http://localhost:8001/docs) using the `/api/step/unfold` or `/api/step/unfold-pdf` endpoints
+3. Verify with real STEP files and different parameters (scale_factor, page_format, layout_mode)
 4. For PDF/SVG export changes: Verify scale_factor propagation through the pipeline (unfold_engine.py → layout_manager.py → svg_exporter.py/pdf_exporter.py)
 
 When adding UI features:
@@ -292,7 +291,7 @@ When modifying 3D operations:
 3. Remember to rebuild WASM with `npm run build:wasm` if changing C++ code
 
 When working with PLATEAU/CityGML features:
-1. Test with real PLATEAU data using `test_plateau_api.py` or `test_citygml_to_step.py`
+1. Test with real PLATEAU data via Swagger UI endpoints: `/api/plateau/search-by-address`, `/api/plateau/fetch-and-convert`, `/api/citygml/to-step`
 2. Key files: `services/plateau_fetcher.py` (API integration), `services/citygml_to_step.py` (conversion logic)
 3. Coordinate system handling is in `services/coordinate_utils.py`
 4. Building ID filtering logic is in `citygml_to_step.py` (see `extract_buildings_from_citygml` function)

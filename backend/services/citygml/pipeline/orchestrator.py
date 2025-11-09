@@ -19,6 +19,13 @@ from ..transforms.transformers import make_xy_transformer, make_xyz_transformer
 from ..transforms.recentering import compute_offset_and_wrap_transform
 from ..lod.extractor import extract_building_geometry
 from ..geometry.solid_builder import make_solid_with_cavities, is_valid_shape
+from ..geometry.building_part_merger import merge_building_parts as merge_parts_fn
+from ..geometry.sew_builder import build_sewn_shape_from_building
+from ..lod.footprint_extractor import (
+    parse_citygml_footprints,
+    extrude_footprint,
+    Footprint
+)
 
 # Import coordinate utilities
 try:
@@ -113,9 +120,6 @@ def export_step_from_citygml(
 
     # Import remaining dependencies from original citygml_to_step.py
     from ...citygml_to_step import (
-        parse_citygml_footprints,
-        extrude_footprint,
-        build_sewn_shape_from_building,
         _export_step_compound_local as export_step_compound_local,
         _log_geometry_diagnostics as log_geometry_diagnostics,
         _filter_buildings_by_coordinates as filter_buildings_by_coordinates,
@@ -246,10 +250,33 @@ def export_step_from_citygml(
     # PHASE:0 - Coordinate recentering (⚠️ CRITICAL)
     xyz_transform, coord_offset = compute_offset_and_wrap_transform(bldgs, xyz_transform, debug)
 
+    # =========================================================================
     # PHASE:2 - Geometry extraction
+    # =========================================================================
     shapes: List[Any] = []  # List[TopoDS_Shape]
     tried_solid = False
+    tried_sew = False
 
+    # Helper function for solid extraction with BuildingPart merging
+    def extract_single_solid(building_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
+        """Extract solid from single building element using LOD extractor."""
+        result = extract_building_geometry(building_elem, xyz_tx, id_idx, dbg)
+        if not result.exterior_faces:
+            return None
+
+        # Build solid from extracted faces
+        return make_solid_with_cavities(
+            result.exterior_faces,
+            result.interior_shells,
+            None,  # auto-compute tolerance
+            dbg,
+            prec_mode,
+            fix_level
+        )
+
+    # -------------------------------------------------------------------------
+    # Method 1: Solid extraction (LOD2/LOD3 Solid data)
+    # -------------------------------------------------------------------------
     if method in ("solid", "auto"):
         tried_solid = True
         count = 0
@@ -259,6 +286,7 @@ def export_step_from_citygml(
         log(f"{'='*80}")
         log(f"[INFO] Total buildings to process: {len(bldgs)}")
         log(f"[INFO] Limit: {limit if limit else 'unlimited'}")
+        log(f"[INFO] BuildingPart merging: {'enabled' if merge_building_parts else 'disabled'}")
         log(f"")
 
         for i, b in enumerate(bldgs):
@@ -271,26 +299,20 @@ def export_step_from_citygml(
             log(f"[BUILDING {i+1}/{len(bldgs)}] Processing: {building_id[:60]}")
 
             try:
-                # Extract using refactored LOD extractor
-                result = extract_building_geometry(b, xyz_transform, id_index, debug)
-
-                if not result.exterior_faces:
-                    log(f"└─ [RESULT] Skipping (no geometry extracted)")
-                    continue
-
-                # Build solid from extracted faces
-                log(f"├─ [STEP 2/3] Building solid from {len(result.exterior_faces)} faces...")
-                shp = make_solid_with_cavities(
-                    result.exterior_faces,
-                    result.interior_shells,
-                    None,  # auto-compute tolerance
+                # Use BuildingPart merger for complete extraction
+                shp = merge_parts_fn(
+                    b,
+                    extract_single_solid,
+                    xyz_transform,
+                    id_index,
                     debug,
                     precision_mode,
-                    shape_fix_level
+                    shape_fix_level,
+                    merge_building_parts
                 )
 
                 if shp is None or shp.IsNull():
-                    log(f"└─ [RESULT] Skipping (solid construction failed)")
+                    log(f"└─ [RESULT] Skipping (extraction returned None/Null)")
                     continue
 
                 # Validate
@@ -309,9 +331,108 @@ def export_step_from_citygml(
                 continue
 
         log(f"\n{'='*80}")
-        log(f"[PHASE:2] EXTRACTION SUMMARY")
+        log(f"[PHASE:2] EXTRACTION SUMMARY (Solid Method)")
         log(f"{'='*80}")
         log(f"[INFO] Shapes extracted: {count}")
+        log(f"")
+
+    # -------------------------------------------------------------------------
+    # Method 2: Surface sewing (LOD2 BoundarySurfaces)
+    # -------------------------------------------------------------------------
+    if not shapes and method in ("sew", "auto"):
+        tried_sew = True
+        count = 0
+
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Sew Method)")
+        log(f"{'='*80}")
+        log(f"[INFO] Total buildings to process: {len(bldgs)}")
+        log(f"[INFO] Limit: {limit if limit else 'unlimited'}")
+        log(f"")
+
+        for i, b in enumerate(bldgs):
+            if limit is not None and count >= limit:
+                log(f"\n[INFO] Reached limit of {limit} buildings, stopping sewing")
+                break
+
+            building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
+            log(f"\n{'─'*80}")
+            log(f"[BUILDING {i+1}/{len(bldgs)}] Sewing: {building_id[:60]}")
+
+            try:
+                shp = build_sewn_shape_from_building(
+                    b,
+                    sew_tolerance=sew_tolerance,  # Will be auto-computed if None
+                    debug=debug,
+                    xyz_transform=xyz_transform,
+                    precision_mode=precision_mode,
+                    shape_fix_level=shape_fix_level
+                )
+
+                if shp is not None and not shp.IsNull():
+                    shapes.append(shp)
+                    count += 1
+                    log(f"└─ [RESULT] ✓ Successfully sewn (total: {count})")
+                else:
+                    log(f"└─ [RESULT] Skipping (sewing returned None/Null)")
+
+            except Exception as e:
+                log(f"├─ [ERROR] ✗ Exception: {type(e).__name__}: {str(e)}")
+                log(f"└─ [RESULT] ✗ Failed, skipping")
+                continue
+
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] EXTRACTION SUMMARY (Sew Method)")
+        log(f"{'='*80}")
+        log(f"[INFO] Shapes sewn: {count}")
+        log(f"")
+
+    # -------------------------------------------------------------------------
+    # Method 3: Footprint extrusion (LOD0/LOD1 fallback)
+    # -------------------------------------------------------------------------
+    if not shapes and method in ("extrude", "auto"):
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Extrude Method)")
+        log(f"{'='*80}")
+
+        # Note: Use xy_transform for 2D footprints, not xyz_transform
+        xy_transform = None
+        if xyz_transform:
+            # Wrap xyz_transform to work as xy_transform
+            def xy_tx(x, y):
+                X, Y, _ = xyz_transform(x, y, 0.0)
+                return X, Y
+            xy_transform = xy_tx
+
+        # Parse footprints from CityGML file
+        default_height = 10.0
+        fplist = parse_citygml_footprints(
+            gml_path,
+            default_height=default_height,
+            limit=limit,
+            xy_transform=xy_transform,
+        )
+
+        if debug:
+            log(f"[EXTRUDE] Parsed {len(fplist)} buildings with footprints")
+
+        count = 0
+        for i, fp in enumerate(fplist):
+            try:
+                shp = extrude_footprint(fp)
+                shapes.append(shp)
+                count += 1
+                if debug:
+                    log(f"[EXTRUDE] {i+1}/{len(fplist)}: {fp.building_id} → height {fp.height}m")
+            except Exception as e:
+                if debug:
+                    log(f"[EXTRUDE] {i+1}/{len(fplist)}: {fp.building_id} FAILED: {e}")
+                continue
+
+        log(f"\n{'='*80}")
+        log(f"[PHASE:2] EXTRACTION SUMMARY (Extrude Method)")
+        log(f"{'='*80}")
+        log(f"[INFO] Shapes extruded: {count}")
         log(f"")
 
     # PHASE:7 - STEP Export
@@ -322,8 +443,22 @@ def export_step_from_citygml(
 
     if not shapes:
         log(f"[ERROR] ✗ No valid shapes to export")
+        log(f"[ERROR] Conversion method used: {method}")
+        log(f"[ERROR] Buildings attempted: {len(bldgs)}")
+        log(f"[ERROR] Tried solid method: {tried_solid}")
+        log(f"[ERROR] Tried sew method: {tried_sew}")
         close_log_file()
-        return False, "No shapes created via extraction."
+
+        if method == "auto":
+            return False, "No shapes created via solid extraction, sewing, or extrusion."
+        elif method == "solid":
+            return False, "Solid method produced no shapes (no LOD1/LOD2/LOD3 solid data found)."
+        elif method == "sew":
+            return False, "Sew method produced no shapes (insufficient LOD2 surfaces)."
+        elif method == "extrude":
+            return False, "Extrude method produced no shapes (no footprints found)."
+        else:
+            return False, f"No shapes created via {method} method."
 
     # Pre-export validation
     log(f"\n[VALIDATION] Pre-export shape validation:")

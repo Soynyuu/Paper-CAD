@@ -50,12 +50,237 @@ except ImportError:
 # Check OCCT availability
 try:
     from OCC.Core.BRepCheck import BRepCheck_Analyzer
-    from OCC.Core.TopoDS import TopoDS_Shape
+    from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Compound
+    from OCC.Core.BRep import BRep_Builder
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+    from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
+    from OCC.Core.IFSelect import IFSelect_ReturnStatus
+    from OCC.Core.Interface import Interface_Static
     OCCT_AVAILABLE = True
 except ImportError:
     OCCT_AVAILABLE = False
     TopoDS_Shape = Any
+    TopoDS_Compound = Any
 
+
+# ============================================================================
+# Internal Helper Functions
+# ============================================================================
+
+def _filter_buildings(
+    buildings: List[ET.Element],
+    building_ids: Optional[List[str]] = None,
+    filter_attribute: str = "gml:id"
+) -> List[ET.Element]:
+    """Filter buildings by IDs using specified attribute."""
+    if not building_ids:
+        return buildings
+
+    building_ids_set = {bid.strip() for bid in building_ids}
+    filtered: List[ET.Element] = []
+
+    for b in buildings:
+        match_found = False
+
+        if filter_attribute == "gml:id":
+            gml_id = b.get("{http://www.opengis.net/gml}id") or b.get("id")
+            if gml_id and gml_id in building_ids_set:
+                match_found = True
+        else:
+            # Match by generic attribute - simplified version
+            for attr_name, attr_value in b.attrib.items():
+                if filter_attribute in attr_name and attr_value in building_ids_set:
+                    match_found = True
+                    break
+
+        if match_found:
+            filtered.append(b)
+
+    return filtered
+
+
+def _filter_buildings_by_coordinates(
+    buildings: List[ET.Element],
+    target_latitude: float,
+    target_longitude: float,
+    radius_meters: float,
+    debug: bool = False
+) -> List[ET.Element]:
+    """Filter buildings by distance from target coordinates."""
+    try:
+        from shapely.geometry import Point
+        from shapely import distance as shapely_distance
+    except ImportError:
+        log("[WARNING] shapely not available, coordinate filtering disabled")
+        return buildings
+
+    target_point = Point(target_longitude, target_latitude)
+    filtered: List[ET.Element] = []
+
+    if debug:
+        log(f"[COORD FILTER] Target: ({target_latitude}, {target_longitude})")
+        log(f"[COORD FILTER] Radius: {radius_meters}m")
+
+    for building in buildings:
+        # Try to extract representative coordinates
+        poslist_elem = building.find(".//gml:posList", NS)
+        if poslist_elem is None or not poslist_elem.text:
+            continue
+
+        # Parse first coordinate
+        coords_text = poslist_elem.text.strip().split()
+        if len(coords_text) < 3:
+            continue
+
+        try:
+            x, y = float(coords_text[0]), float(coords_text[1])
+
+            # Detect order (lat/lon or lon/lat)
+            if 20 <= x <= 50 and 120 <= y <= 155:
+                lat, lon = x, y
+            elif 120 <= x <= 155 and 20 <= y <= 50:
+                lat, lon = y, x
+            else:
+                continue
+
+            building_point = Point(lon, lat)
+            dist_degrees = shapely_distance(target_point, building_point)
+            dist_meters = float(dist_degrees) * 100000  # Rough conversion
+
+            if dist_meters <= radius_meters:
+                filtered.append(building)
+                if debug:
+                    gml_id = building.get("{http://www.opengis.net/gml}id") or "unknown"
+                    log(f"[COORD FILTER] ✓ {gml_id[:20]}: {dist_meters:.1f}m")
+        except (ValueError, IndexError):
+            continue
+
+    if debug:
+        log(f"[COORD FILTER] Filtered: {len(buildings)} → {len(filtered)} buildings")
+
+    return filtered
+
+
+def _compute_bounding_box(shape: Any) -> Tuple[float, float, float, float, float, float]:
+    """Compute bounding box of a shape."""
+    if not OCCT_AVAILABLE:
+        return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    bbox = Bnd_Box()
+    brepbndlib.Add(shape, bbox)
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+    return (xmin, ymin, zmin, xmax, ymax, zmax)
+
+
+def _log_geometry_diagnostics(shapes: List[Any], debug: bool = False) -> None:
+    """Log detailed geometry diagnostics including bounding boxes."""
+    if not shapes:
+        return
+
+    log(f"\n{'='*80}")
+    log(f"[DIAGNOSTICS] GEOMETRY ANALYSIS")
+    log(f"{'='*80}")
+
+    for i, shape in enumerate(shapes):
+        xmin, ymin, zmin, xmax, ymax, zmax = _compute_bounding_box(shape)
+
+        width = xmax - xmin
+        height = zmax - zmin
+        depth = ymax - ymin
+        center_x = (xmin + xmax) / 2
+        center_y = (ymin + ymax) / 2
+        center_z = (zmin + zmax) / 2
+        distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
+
+        log(f"\n[SHAPE {i+1}/{len(shapes)}] Bounding box analysis:")
+        log(f"  Position (center): ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
+        log(f"  Size: {width:.3f} × {depth:.3f} × {height:.3f} (W×D×H)")
+        log(f"  Range X: [{xmin:.3f}, {xmax:.3f}]")
+        log(f"  Range Y: [{ymin:.3f}, {ymax:.3f}]")
+        log(f"  Range Z: [{zmin:.3f}, {zmax:.3f}]")
+        log(f"  Distance from origin: {distance_from_origin:.3f}")
+
+        if distance_from_origin > 100000:
+            log(f"  ⚠ WARNING: Geometry is very far from origin ({distance_from_origin/1000:.1f} km)")
+        if max(width, depth, height) < 1:
+            log(f"  ⚠ WARNING: Geometry is very small (< 1 unit)")
+        if max(width, depth, height) > 1000000:
+            log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
+
+
+def export_step_compound_local(shapes: List[Any], out_step: str, debug: bool = False) -> Tuple[bool, str]:
+    """Export shapes to STEP file using local STEP writer."""
+    if not OCCT_AVAILABLE:
+        return False, "OCCT not available"
+
+    if not shapes:
+        return False, "No shapes to export"
+
+    # Build compound
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    any_valid = False
+    for s in shapes:
+        if s is not None and not s.IsNull():
+            builder.Add(compound, s)
+            any_valid = True
+
+    if not any_valid:
+        return False, "All shapes invalid"
+
+    # Configure STEP writer
+    try:
+        Interface_Static.SetCVal("write.step.schema", "AP214CD")
+        Interface_Static.SetCVal("write.step.unit", "MM")
+        Interface_Static.SetIVal("write.precision.mode", 1)
+        Interface_Static.SetRVal("write.precision.val", 1e-6)
+        Interface_Static.SetIVal("write.surfacecurve.mode", 0)
+        if debug:
+            log("STEP writer configured: AP214CD schema, MM units, 1e-6 precision")
+    except Exception as e:
+        if debug:
+            log(f"Warning: STEP writer configuration failed: {e}")
+
+    log(f"[STEP EXPORT] Using local STEP writer...")
+    log(f"[STEP EXPORT] Configuration: AP214CD schema, MM units, 1e-6 precision")
+
+    writer = STEPControl_Writer()
+
+    log(f"[STEP EXPORT] Transferring geometry to STEP format...")
+    tr = writer.Transfer(compound, STEPControl_AsIs)
+    if tr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Transfer failed with status: {tr}")
+        return False, f"STEP transfer failed: {tr}"
+    log(f"[STEP EXPORT] ✓ Transfer successful")
+
+    log(f"[STEP EXPORT] Writing to file: {out_step}")
+    wr = writer.Write(out_step)
+    if wr != IFSelect_ReturnStatus.IFSelect_RetDone:
+        log(f"[STEP EXPORT] ✗ Write failed with status: {wr}")
+        return False, f"STEP write failed: {wr}"
+
+    # Verify file
+    if os.path.exists(out_step):
+        file_size = os.path.getsize(out_step)
+        log(f"[STEP EXPORT] ✓ File written successfully")
+        log(f"  - File: {out_step}")
+        log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+
+        if file_size == 0:
+            log(f"[STEP EXPORT] ⚠ WARNING: File size is 0 bytes")
+            return False, "STEP file created but is empty"
+    else:
+        log(f"[STEP EXPORT] ⚠ WARNING: Write reported success but file not found")
+        return False, "STEP write completed but file not found"
+
+    return True, out_step
+
+
+# ============================================================================
+# Main Export Function
+# ============================================================================
 
 def export_step_from_citygml(
     gml_path: str,
@@ -117,14 +342,6 @@ def export_step_from_citygml(
     """
     if not OCCT_AVAILABLE:
         return False, "OCCT is not available; cannot export STEP."
-
-    # Import remaining dependencies from original citygml_to_step.py
-    from ...citygml_to_step import (
-        _export_step_compound_local as export_step_compound_local,
-        _log_geometry_diagnostics as log_geometry_diagnostics,
-        _filter_buildings_by_coordinates as filter_buildings_by_coordinates,
-        _filter_buildings as filter_buildings,
-    )
 
     # Normalize limit
     if limit is not None and limit <= 0:

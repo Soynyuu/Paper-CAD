@@ -168,7 +168,15 @@ npm run demo
 
 - **`services/`**: Business logic
   - `step_processor.py`: Orchestrates the unfolding pipeline (calls core modules)
-  - `citygml_to_step.py`: CityGML → STEP conversion with LOD2/LOD3 support
+  - `citygml/`: **Modular CityGML → STEP conversion system** (27 modules, 7 layers)
+    - `core/`: Types and constants
+    - `utils/`: Logging, XML parsing, XLink resolution
+    - `parsers/`: Coordinate and polygon parsing
+    - `geometry/`: Wire/face/shell/solid builders, tolerance, repair, BuildingPart merging
+    - `transforms/`: CRS detection, coordinate transformation, recentering
+    - `lod/`: LOD1/2/3 extraction strategies, boundary surfaces, footprint extrusion
+    - `pipeline/orchestrator.py`: Main orchestrator with 4 conversion methods (solid/sew/extrude/auto)
+    - `__init__.py`: Public API - `export_step_from_citygml()`
   - `plateau_fetcher.py`: PLATEAU Data Catalog API integration (geocoding, building search)
   - `coordinate_utils.py`: Coordinate transformation utilities (CRS conversion)
 
@@ -221,6 +229,24 @@ The backend includes comprehensive support for Japan's PLATEAU 3D city data:
 - `requests`: HTTP client for PLATEAU API
 - `pyproj`: Coordinate system transformations
 - `shapely`: Geometry operations
+
+### CityGML Refactored Architecture (Issue #129)
+
+The CityGML to STEP conversion system was refactored from a 4,683-line monolithic file into 27 focused modules across 7 architectural layers:
+
+**Architecture Benefits:**
+- **Modularity**: Average ~200 lines per module (95% complexity reduction)
+- **Testability**: Each module can be unit tested independently
+- **Maintainability**: Clear separation of concerns with no circular dependencies
+- **Extensibility**: Easy to add new LOD strategies or conversion methods
+
+**Critical Execution Phases** (must execute in order):
+1. **PHASE:0** - Coordinate recentering (`transforms/recentering.py`): Prevents precision loss for coordinates far from origin
+2. **PHASE:1** - XLink index building (`utils/xlink_resolver.py`): Required before any geometry extraction
+3. **PHASE:2-6** - LOD extraction, geometry construction, validation
+4. **PHASE:7** - STEP export
+
+**Detailed documentation**: See `backend/services/citygml/REFACTORING.md` for complete module mapping, critical sequences, and migration notes.
 
 ## Important Notes
 
@@ -292,11 +318,22 @@ When modifying 3D operations:
 
 When working with PLATEAU/CityGML features:
 1. Test with real PLATEAU data via Swagger UI endpoints: `/api/plateau/search-by-address`, `/api/plateau/fetch-and-convert`, `/api/citygml/to-step`
-2. Key files: `services/plateau_fetcher.py` (API integration), `services/citygml_to_step.py` (conversion logic)
-3. Coordinate system handling is in `services/coordinate_utils.py`
-4. Building ID filtering logic is in `citygml_to_step.py` (see `extract_buildings_from_citygml` function)
-5. For XLink reference resolution, see the `resolve_xlink_references` function in `citygml_to_step.py`
-6. **LOD (Level of Detail) Support**: The `_extract_single_solid()` function in `citygml_to_step.py` implements a comprehensive LOD extraction hierarchy with priority-based fallback:
+2. **Key files in refactored architecture**:
+   - `services/plateau_fetcher.py`: PLATEAU API integration, geocoding, building search
+   - `services/citygml/pipeline/orchestrator.py`: Main conversion orchestrator (`export_step_from_citygml`)
+   - `services/citygml/lod/extractor.py`: LOD3→LOD2→LOD1 fallback logic
+   - `services/citygml/lod/lod1_strategy.py`, `lod2_strategy.py`, `lod3_strategy.py`: LOD-specific extraction
+   - `services/citygml/geometry/building_part_merger.py`: BuildingPart Boolean fusion
+   - `services/citygml/utils/xlink_resolver.py`: XLink reference resolution
+   - `services/coordinate_utils.py`: Coordinate system transformations
+3. **Building ID filtering**: Handled in `pipeline/orchestrator.py` (lines 360-370) via `_filter_buildings()` helper
+4. **XLink resolution**: Automatic via `utils/xlink_resolver.py::build_id_index()` at pipeline start
+5. **Conversion methods**: `orchestrator.py` supports 4 methods:
+   - `solid`: LOD1/2/3 solid extraction with BuildingPart merging (default)
+   - `sew`: Surface sewing from LOD2 boundary surfaces
+   - `extrude`: LOD0 footprint extrusion with height
+   - `auto`: Fallback chain (solid → sew → extrude)
+6. **LOD (Level of Detail) Support**: The `lod/extractor.py::extract_building_geometry()` function implements a comprehensive LOD extraction hierarchy with priority-based fallback:
 
    **LOD3 (Highest Detail - Architectural Models):**
    - Strategy 1: `bldg:lod3Solid//gml:Solid` - Detailed solid structure with architectural elements

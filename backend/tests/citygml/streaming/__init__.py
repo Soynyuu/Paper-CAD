@@ -1,0 +1,1 @@
+"""Streaming parser tests package."""

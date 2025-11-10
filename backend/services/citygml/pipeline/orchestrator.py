@@ -368,6 +368,10 @@ def export_step_from_citygml(
 
     # === Streaming Parser Path (NEW: Issue #131) ===
     if use_streaming_actual:
+        print(f"[STREAMING] Using streaming parser (memory-optimized)")
+        print(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
+        print(f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}")
+
         if debug:
             log(f"[STREAMING] Using streaming parser (memory-optimized)")
             log(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
@@ -376,7 +380,15 @@ def export_step_from_citygml(
         # Track buildings for processing
         buildings_to_process = []
 
+        # Calculate expected count for early termination
+        expected_count = None
+        if limit is not None:
+            expected_count = limit
+        elif building_ids:
+            expected_count = len(building_ids)
+
         # Stream-parse buildings one at a time
+        building_count = 0
         for building_elem, local_xlink_index in stream_parse_buildings(
             gml_path,
             limit=limit,
@@ -386,6 +398,18 @@ def export_step_from_citygml(
         ):
             # Store building with its XLink index
             buildings_to_process.append((building_elem, local_xlink_index))
+            building_count += 1
+
+            # Progress logging (every 10 buildings or when target found)
+            if building_count % 10 == 0 or (expected_count and building_count >= expected_count):
+                print(f"[STREAMING] Progress: {building_count} building(s) found")
+
+            # Early termination: If we found all requested buildings, stop
+            if expected_count and building_count >= expected_count:
+                print(f"[STREAMING] Found all {expected_count} requested building(s), stopping parse")
+                break
+
+        print(f"[STREAMING] Parse complete: {building_count} building(s) loaded")
 
         if not buildings_to_process:
             if building_ids:
@@ -535,7 +559,9 @@ def export_step_from_citygml(
             return False, f"Reprojection setup failed: {e}"
 
     # PHASE:0 - Coordinate recentering (⚠️ CRITICAL)
+    print(f"[PHASE:0] Computing coordinate offset for {len(bldgs)} building(s)...")
     xyz_transform, coord_offset = compute_offset_and_wrap_transform(bldgs, xyz_transform, debug)
+    print(f"[PHASE:0] Coordinate offset computed: {coord_offset}")
 
     # =========================================================================
     # PHASE:2 - Geometry extraction
@@ -582,12 +608,14 @@ def export_step_from_citygml(
                 break
 
             building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
+            print(f"[PHASE:2] Processing building {i+1}/{len(bldgs)}: {building_id[:40]}...")
             log(f"\n{'─'*80}")
             log(f"[BUILDING {i+1}/{len(bldgs)}] Processing: {building_id[:60]}")
 
             try:
                 # Use BuildingPart merger for complete extraction
                 # Note: Use local XLink index for streaming mode, shared index for legacy
+                print(f"[PHASE:2]   Extracting geometry (merge_building_parts={merge_building_parts})...")
                 shp = merge_parts_fn(
                     b,
                     extract_single_solid,
@@ -598,6 +626,7 @@ def export_step_from_citygml(
                     shape_fix_level,
                     merge_building_parts
                 )
+                print(f"[PHASE:2]   Geometry extraction complete")
 
                 if shp is None or shp.IsNull():
                     log(f"└─ [RESULT] Skipping (extraction returned None/Null)")
@@ -758,7 +787,9 @@ def export_step_from_citygml(
     log(f"[INFO] Target file: {out_step}")
 
     # Export using legacy function (delegates to core STEPExporter)
+    print(f"[PHASE:7] Exporting {len(shapes)} shape(s) to STEP file...")
     result = export_step_compound_local(shapes, out_step, debug=debug)
+    print(f"[PHASE:7] STEP export complete: {out_step}")
 
     close_log_file()
     return result

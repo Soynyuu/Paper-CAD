@@ -15,7 +15,8 @@ class SVGExporter:
                  tab_width: float = 5.0, show_scale: bool = True,
                  show_fold_lines: bool = True, show_cut_lines: bool = True,
                  page_format: str = "A4", layout_mode: str = "canvas",
-                 page_orientation: str = "portrait", mirror_horizontal: bool = False):
+                 page_orientation: str = "portrait", mirror_horizontal: bool = False,
+                 show_inner_edges: bool = False):
         """
         SVGExporterを初期化。
 
@@ -26,6 +27,7 @@ class SVGExporter:
             show_scale: スケールバーを表示するか
             show_fold_lines: 折り線を表示するか
             show_cut_lines: 切断線を表示するか
+            show_inner_edges: 内部線（窓、扉などの構造線）を表示するか
             page_format: ページフォーマット (A4, A3, Letter)
             layout_mode: レイアウトモード ("canvas" or "paged")
             page_orientation: ページ方向 ("portrait" or "landscape")
@@ -37,6 +39,7 @@ class SVGExporter:
         self.show_scale = show_scale
         self.show_fold_lines = show_fold_lines
         self.show_cut_lines = show_cut_lines
+        self.show_inner_edges = show_inner_edges
         self.page_format = page_format
         self.layout_mode = layout_mode
         self.page_orientation = page_orientation
@@ -185,11 +188,13 @@ class SVGExporter:
 
             # 複数のポリゴンがある場合は穴付きポリゴンとして描画（SVG path使用）
             if len(polygons) > 1:
-                print(f"  複数ポリゴン検出（{len(polygons)}個）→ 穴付き形状として描画")
+                # show_inner_edges=Falseの場合、外形線（polygons[0]）のみを描画
+                polygons_to_draw = polygons if self.show_inner_edges else polygons[0:1]
+                print(f"  複数ポリゴン検出（{len(polygons)}個、描画: {len(polygons_to_draw)}個）→ 穴付き形状として描画（show_inner_edges={self.show_inner_edges}）")
                 path_parts = []
                 all_points = []  # 面番号配置用
 
-                for poly_idx, polygon in enumerate(polygons):
+                for poly_idx, polygon in enumerate(polygons_to_draw):
                     if len(polygon) >= 3:
                         # スケールファクターを適用
                         points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in polygon]
@@ -1141,7 +1146,8 @@ class SVGExporter:
                        layout_mode: Optional[str] = None,
                        page_format: Optional[str] = None,
                        page_orientation: Optional[str] = None,
-                       mirror_horizontal: Optional[bool] = None):
+                       mirror_horizontal: Optional[bool] = None,
+                       show_inner_edges: Optional[bool] = None):
         """
         設定を更新する
         """
@@ -1157,6 +1163,8 @@ class SVGExporter:
             self.show_fold_lines = show_fold_lines
         if show_cut_lines is not None:
             self.show_cut_lines = show_cut_lines
+        if show_inner_edges is not None:
+            self.show_inner_edges = show_inner_edges
         if layout_mode is not None:
             self.layout_mode = layout_mode
         if page_format is not None:

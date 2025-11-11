@@ -375,6 +375,7 @@ class StepUnfoldGenerator:
             self.show_scale = request.show_scale
             self.show_fold_lines = request.show_fold_lines
             self.show_cut_lines = request.show_cut_lines
+            self.show_inner_edges = request.show_inner_edges
             self.layout_mode = request.layout_mode
             self.page_format = request.page_format
             self.page_orientation = request.page_orientation
@@ -386,6 +387,7 @@ class StepUnfoldGenerator:
             self.layout_manager.scale_factor = self.scale_factor
             self.svg_exporter.scale_factor = self.scale_factor
             self.svg_exporter.tab_width = self.tab_width
+            self.svg_exporter.show_inner_edges = self.show_inner_edges
             self.svg_exporter.layout_mode = self.layout_mode
             self.svg_exporter.page_format = self.page_format
             self.svg_exporter.page_orientation = self.page_orientation

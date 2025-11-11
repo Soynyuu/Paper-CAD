@@ -255,7 +255,8 @@ async def unfold_step_to_pdf(
     page_orientation: str = Form("portrait", description="ページ方向 / Page orientation (portrait=縦, landscape=横)"),
     scale_factor: float = Form(150.0, description="縮尺倍率 / Scale factor (e.g., 150 = 1:150 scale)"),
     texture_mappings: Optional[str] = Form(None, description="テクスチャマッピング情報（JSON配列） / Texture mappings as JSON array"),
-    mirror_horizontal: bool = Form(False, description="左右反転モード / Mirror horizontally")
+    mirror_horizontal: bool = Form(False, description="左右反転モード / Mirror horizontally"),
+    show_inner_edges: bool = Form(False, description="内部線を表示（窓、扉などの構造線） / Show inner edges (holes, windows, doors)")
 ):
     """
     STEPファイル（.step/.stp）を受け取り、展開図をPDF形式で生成するAPI。
@@ -327,7 +328,8 @@ async def unfold_step_to_pdf(
             page_format=page_format,
             page_orientation=page_orientation,
             scale_factor=scale_factor,
-            mirror_horizontal=mirror_horizontal
+            mirror_horizontal=mirror_horizontal,
+            show_inner_edges=show_inner_edges
         )
 
         # テクスチャマッピングを設定
@@ -357,6 +359,7 @@ async def unfold_step_to_pdf(
         generator.svg_exporter.show_scale = request.show_scale
         generator.svg_exporter.show_fold_lines = request.show_fold_lines
         generator.svg_exporter.show_cut_lines = request.show_cut_lines
+        generator.svg_exporter.show_inner_edges = request.show_inner_edges
         generator.svg_exporter.layout_mode = request.layout_mode
         generator.svg_exporter.page_format = request.page_format
         generator.svg_exporter.page_orientation = request.page_orientation
@@ -373,6 +376,7 @@ async def unfold_step_to_pdf(
         print(f"  show_scale: {request.show_scale}")
         print(f"  show_fold_lines: {request.show_fold_lines}")
         print(f"  show_cut_lines: {request.show_cut_lines}")
+        print(f"  show_inner_edges: {request.show_inner_edges}")
         print(f"  layout_mode: {request.layout_mode}")
         print(f"  page_format: {request.page_format}")
         print(f"  page_orientation: {request.page_orientation}")

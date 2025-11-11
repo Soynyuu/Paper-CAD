@@ -62,6 +62,11 @@ class BrepPapercraftRequest(BaseModel):
         description="切り線を表示 / Show cut lines",
         example=True
     )
+    show_inner_edges: bool = Field(
+        default=False,
+        description="内部線を表示（窓、扉などの構造線） / Show inner edges (holes, windows, doors)",
+        example=False
+    )
     layout_mode: str = Field(
         default="paged",
         description="レイアウトモード / Layout mode (canvas=フリーキャンバス, paged=ページ分割)",

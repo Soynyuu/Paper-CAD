@@ -51,8 +51,10 @@ python main.py        # Starts server on http://localhost:8001
 ENV=demo python main.py    # Production settings + localhost CORS
 
 # Tests
-# Backend testing is currently done manually via API endpoints
-# Use Swagger UI for interactive API testing: http://localhost:8001/docs
+pytest                # Run unit tests (streaming parser, coordinate optimizer, etc.)
+pytest -v             # Run with verbose output
+pytest tests/citygml/streaming/  # Run specific test directory
+# Manual API testing via Swagger UI: http://localhost:8001/docs
 
 # Docker/Podman
 docker compose up -d
@@ -82,9 +84,9 @@ npm run dev  # Starts on http://localhost:8080
 
 **Development Workflow:**
 - Frontend (port 8080) communicates with backend (port 8001) via REST API
-- Backend API base URL is configured in `rspack.config.js` via `STEP_UNFOLD_API_URL` environment variable
+- Backend API base URL is configured in `/frontend/rspack.config.js` via `STEP_UNFOLD_API_URL` environment variable
 - For local development, backend must be running before testing unfold functionality in frontend
-- Frontend has git pre-commit hooks (via `simple-git-hooks` + `lint-staged`) that automatically format code on commit
+- Frontend has git pre-commit hooks (via `simple-git-hooks` + `lint-staged`) that automatically run `npm run format` on staged files before each commit
 
 ### Demo Mode
 
@@ -135,8 +137,9 @@ npm run demo
 
 **Build Configuration:**
 - Entry point: `packages/chili-web/src/index.ts`
-- Build tool: Rspack (rspack.config.js)
+- Build tool: Rspack (`/frontend/rspack.config.js`)
 - The frontend communicates with backend via environment variable `STEP_UNFOLD_API_URL` (default: `https://backend-paper-cad.soynyuu.com/api`)
+- Environment files: `.env.development`, `.env.demo`, `.env.production.example` define `STEP_UNFOLD_API_URL` for each mode
 
 **C++ WebAssembly Kernel** (`/frontend/cpp/src`):
 - OpenCASCADE-based CAD operations compiled to WebAssembly
@@ -246,6 +249,19 @@ The CityGML to STEP conversion system was refactored from a 4,683-line monolithi
 3. **PHASE:2-6** - LOD extraction, geometry construction, validation
 4. **PHASE:7** - STEP export
 
+**Streaming Parser** (New Feature - 98% Memory Reduction):
+- **Location**: `services/citygml/streaming/`
+- **Purpose**: Process large CityGML files (>10GB) with minimal memory usage
+- **Memory**: O(1 Building) ≈ 10-100MB per building (vs. legacy O(entire file) ≈ 20-50GB)
+- **Speed**: 3-5x faster due to SAX-style incremental parsing
+- **Key modules**:
+  - `parser.py`: Core streaming parser with `stream_parse_buildings()` generator
+  - `xlink_cache.py`: Per-building XLink resolution cache (auto-cleanup)
+  - `coordinate_optimizer.py`: Memory-efficient coordinate buffering
+  - `memory_profiler.py`: Optional memory usage tracking for debugging
+- **Usage**: Automatically used for building_ids filtering or large files
+- **Configuration**: `StreamingConfig` dataclass with limit/filter controls
+
 **Detailed documentation**: See `backend/services/citygml/REFACTORING.md` for complete module mapping, critical sequences, and migration notes.
 
 ## Important Notes
@@ -273,6 +289,7 @@ The CityGML to STEP conversion system was refactored from a 4,683-line monolithi
 - **"OpenCASCADE not available" / 503 errors**: Activate conda environment with `conda activate paper-cad`. Verify OCCT installation with `python -c "from OCC.Core.BRep import BRep_Builder; print('OK')"`
 - **CORS errors in browser console**: Set `CORS_ALLOW_ALL=true` environment variable or add your frontend URL to `config.py` origins list
 - **CityGML conversion fails**: Check that `geopy`, `pyproj`, and `shapely` are installed (via conda environment.yml). For specific buildings, verify building IDs using `/api/citygml/validate` endpoint first
+- **Backend test failures**: Ensure conda environment is activated (`conda activate paper-cad`) and all dependencies are installed. Run `pytest -v` for verbose error output
 - **Frontend test failures**: Run `npm install` from `/frontend` directory and ensure all workspace dependencies are installed
 
 ## Testing
@@ -285,10 +302,14 @@ The CityGML to STEP conversion system was refactored from a 4,683-line monolithi
 - Example test files: `observer.test.ts`, `linkedList.test.ts`, `converter.test.ts`, etc.
 
 **Backend:**
-- Manual testing via Swagger UI: http://localhost:8001/docs
-- Interactive API documentation with request/response examples
-- Test endpoints individually with different parameters
-- ReDoc alternative: http://localhost:8001/redoc
+- **Unit tests**: `pytest` from `/backend` directory
+  - Test coverage includes streaming parser (`tests/citygml/streaming/test_parser.py`)
+  - Coordinate optimizer tests (`tests/citygml/streaming/test_coordinate_optimizer.py`)
+  - Benchmarking script available: `tests/citygml/streaming/benchmark_streaming.py`
+- **Manual API testing**: Swagger UI at http://localhost:8001/docs
+  - Interactive API documentation with request/response examples
+  - Test endpoints individually with different parameters
+  - ReDoc alternative: http://localhost:8001/redoc
 
 ## Deployment
 

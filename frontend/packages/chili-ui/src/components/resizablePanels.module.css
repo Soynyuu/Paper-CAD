@@ -20,55 +20,76 @@
 }
 
 .resizer {
-    width: 4px;
+    width: 8px;
     height: 100%;
-    background-color: var(--border-color);
+    background: linear-gradient(
+        to right,
+        var(--border-color) 0%,
+        color-mix(in srgb, var(--border-color) 90%, black 10%) 50%,
+        var(--border-color) 100%
+    );
+    box-shadow: var(--shadow-sm);
     cursor: col-resize;
     position: relative;
-    flex: 0 0 4px;
-    transition: background-color var(--transition-base);
+    flex: 0 0 8px;
+    transition: all var(--transition-base);
+}
+
+/* 縦型グリッパーハンドル（3つのドット） */
+.resizer::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    background: repeating-linear-gradient(
+        to bottom,
+        currentColor 0px,
+        currentColor 8px,
+        transparent 8px,
+        transparent 14px
+    );
+    color: color-mix(in srgb, var(--border-color) 60%, black 40%);
+    opacity: 0.4;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    pointer-events: none;
 }
 
 .resizer:hover {
-    background-color: #007acc;
+    background: color-mix(in srgb, var(--brand-primary) 15%, var(--background-color) 85%);
+    box-shadow: var(--shadow-md);
+}
+
+.resizer:hover::before {
+    opacity: 1;
+    color: var(--brand-primary);
 }
 
 .resizer.resizing {
-    background-color: #007acc;
+    background: color-mix(in srgb, var(--brand-primary) 25%, var(--background-color) 75%);
+    box-shadow: var(--shadow-lg);
+    transform: scaleX(1.05);
 }
 
+.resizer.resizing::before {
+    opacity: 1;
+    color: var(--brand-primary);
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* より簡単につかめるように拡大したヒットエリア */
 .resizer::after {
     content: "";
     position: absolute;
-    left: -2px;
+    left: -6px;
     top: 0;
-    width: 8px;
+    width: 20px;
     height: 100%;
     background: transparent;
-}
-
-/* リサイズ中のビジュアルフィードバック */
-.resizer.resizing::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 122, 204, 0.3);
-    animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-    0% {
-        opacity: 0.3;
-    }
-    50% {
-        opacity: 0.7;
-    }
-    100% {
-        opacity: 0.3;
-    }
+    cursor: col-resize;
 }
 
 /* モバイル対応 */

@@ -49,7 +49,7 @@ export class ResizablePanels extends HTMLElement {
         const savedWidth = this._loadWidth();
         const initialWidth = savedWidth || props.initialLeftWidth || 400;
         this._leftPanel.style.width = `${initialWidth}px`;
-        this._rightPanel.style.width = `calc(100% - ${initialWidth}px - 4px)`;
+        this._rightPanel.style.width = `calc(100% - ${initialWidth}px - 8px)`;
 
         this._render();
         this._bindEvents();
@@ -89,7 +89,7 @@ export class ResizablePanels extends HTMLElement {
         const clampedWidth = Math.max(this._minLeftWidth, Math.min(this._maxLeftWidth, newLeftWidth));
 
         this._leftPanel.style.width = `${clampedWidth}px`;
-        this._rightPanel.style.width = `calc(100% - ${clampedWidth}px - 4px)`;
+        this._rightPanel.style.width = `calc(100% - ${clampedWidth}px - 8px)`;
 
         // 幅をローカルストレージに保存
         this._saveWidth(clampedWidth);
@@ -126,7 +126,7 @@ export class ResizablePanels extends HTMLElement {
         const clampedWidth = Math.max(this._minLeftWidth, Math.min(this._maxLeftWidth, width));
 
         this._leftPanel.style.width = `${clampedWidth}px`;
-        this._rightPanel.style.width = `calc(100% - ${clampedWidth}px - 4px)`;
+        this._rightPanel.style.width = `calc(100% - ${clampedWidth}px - 8px)`;
 
         // 幅をローカルストレージに保存
         this._saveWidth(clampedWidth);

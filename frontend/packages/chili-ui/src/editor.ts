@@ -76,17 +76,17 @@ export class Editor extends HTMLElement {
         }
 
         // リサイズ可能なパネルを作成
-        // サイドバーの幅を考慮して、残りの領域を50:50に分割
+        // サイドバーの幅を考慮して、3Dビューポートを優先（65:35の比率）
         const sidebarWidth = this._sidebarCollapsed ? 40 : 280;
         const availableWidth = window.innerWidth - sidebarWidth;
         this._resizablePanels = new ResizablePanels({
             leftPanel: this._viewportContainer,
             rightPanel: this._stepUnfoldPanel,
-            initialLeftWidth: availableWidth * 0.5, // 利用可能な幅の50%を初期値に（半々の比率）
+            initialLeftWidth: availableWidth * 0.65, // 3D viewport gets 65% (more workspace)
             minLeftWidth: 400,
             maxLeftWidth: availableWidth - 400, // 右パネルが最低400px確保できるように
             className: style.resizableContent,
-            storageKey: "editor-main-panels-v2", // v2に変更して新しい初期値を適用
+            storageKey: "editor-main-panels-v3", // v3: New 65/35 default split
         });
 
         this.clearSelectionControl();

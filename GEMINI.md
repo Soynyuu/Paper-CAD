@@ -1,80 +1,98 @@
-# GEMINI.md
+# Paper-CAD Gemini Context
+
+This document provides instructional context for Gemini, the AI assistant, to understand and effectively assist with the Paper-CAD project.
 
 ## Project Overview
 
-This project, **Paper-CAD**, is a web-based CAD tool designed to automatically generate 2D SVG layouts from 3D building models, simplifying the process of creating paper models.
+Paper-CAD is a web-based CAD tool designed to simplify the creation of paper models of buildings. It allows users to create or import 3D building models and automatically generates 2D development drawings (in SVG format) that can be printed, cut out, and assembled.
 
-The project is a monorepo with a `frontend` and a `backend`.
+The project is a monorepo consisting of a frontend application and a backend API.
 
-### Frontend
+*   **Frontend:** The frontend is a web application built with TypeScript and custom Web Components. It uses Three.js for 3D rendering and includes a WebAssembly component written in C++ for CAD functionalities. The build tool is Rspack.
 
-The frontend is a sophisticated TypeScript application built with custom Web Components and the Chili UI Framework. It uses `three.js` for 3D rendering and a WebAssembly module (built from C++ source) for the core CAD functionalities. `rspack` is used as the build tool.
-
-- **Key Technologies:** TypeScript, Custom Web Components, Three.js, WebAssembly (C++/Emscripten), rspack, Chili UI Framework.
-- **Directory:** `frontend/`
-- **Entry Point:** `frontend/packages/chili/src/application.ts`
-
-### Backend
-
-The backend is a Python-based API server built with the FastAPI framework. It leverages the powerful OpenCASCADE Technology (OCCT) via `pythonocc-core` for the CAD processing and unfolding algorithms. It's designed to be containerized with Docker or Podman.
-
-- **Key Technologies:** Python, FastAPI, OpenCASCADE Technology (OCCT), pythonocc-core, uvicorn.
-- **Directory:** `backend/`
-- **Entry Point:** `backend/main.py`
+*   **Backend:** The backend is a Python-based API server built with the FastAPI framework. It utilizes the OpenCASCADE Technology library for the core CAD operations, specifically for unfolding the 3D models into 2D patterns.
 
 ## Building and Running
 
-### Prerequisites
-
-- Node.js 18+
-- Python 3.10+
-- Conda (recommended)
-
-### Backend Setup
+### Backend (FastAPI)
 
 1.  **Navigate to the backend directory:**
     ```bash
     cd backend
     ```
-2.  **Create and activate the Conda environment:**
+
+2.  **Set up the Python environment:**
+    It is recommended to use Conda to create an environment from the `environment.yml` file.
     ```bash
     conda env create -f environment.yml
     conda activate paper-cad
     ```
-3.  **Start the server:**
+
+3.  **Run the development server:**
     ```bash
     python main.py
     ```
-    The backend will be running at `http://localhost:8001`.
+    The backend server will be running at `http://localhost:8001`.
 
-### Frontend Setup
+### Frontend (TypeScript/Web Components)
 
 1.  **Navigate to the frontend directory:**
     ```bash
     cd frontend
     ```
+
 2.  **Install dependencies:**
     ```bash
     npm install
     ```
-3.  **Start the development server:**
+
+3.  **Run the development server:**
     ```bash
     npm run dev
     ```
-    The frontend will be running at `http://localhost:8080`.
+    The frontend application will be accessible at `http://localhost:8080`.
 
 ## Development Conventions
 
 ### Testing
 
--   **Frontend:** Run tests using `npm test` in the `frontend` directory.
--   **Backend:** Run tests using `pytest` in the `backend` directory.
+*   **Frontend:** Tests are run using Jest.
+    ```bash
+    cd frontend
+    npm test
+    ```
 
-### Formatting
+*   **Backend:** Tests are run using pytest.
+    ```bash
+    cd backend
+    pytest
+    ```
 
--   **Frontend:** Run `npm run format` in the `frontend` directory to format TypeScript, JavaScript, CSS, JSON, and Markdown files with Prettier, and C/C++ files with clang-format.
--   **Backend:** Run `black .` in the `backend` directory to format Python files.
+### Code Formatting
 
-### Commits
+*   **Frontend:** Code is formatted using Prettier for TypeScript/JavaScript and clang-format for C++.
+    ```bash
+    cd frontend
+    npm run format
+    ```
 
-This project uses `simple-git-hooks` and `lint-staged` to automatically format files before committing.
+*   **Backend:** Code is formatted using Black.
+    ```bash
+    cd backend
+    black .
+    ```
+
+## Key Files and Directories
+
+*   `README.md`: The main project documentation, including setup instructions and an overview.
+*   `backend/`: The backend FastAPI application.
+    *   `main.py`: The entry point for the backend server.
+    *   `api/endpoints.py`: Defines the API endpoints.
+    *   `core/`: Contains the core logic for the CAD operations, including the unfolding engine.
+    *   `environment.yml`: The Conda environment definition for the backend.
+*   `frontend/`: The frontend web application.
+    *   `package.json`: Defines the frontend dependencies and scripts.
+    *   `rspack.config.js`: The configuration file for the Rspack build tool.
+    *   `packages/`: Contains the different modules of the frontend application.
+    *   `cpp/`: The C++ source code for the WebAssembly module.
+*   `docs/`: Project documentation.

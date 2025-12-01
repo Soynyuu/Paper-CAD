@@ -39,7 +39,7 @@ export class PlateauSearchDialog {
         // Create form inputs
         const queryInput = input({
             type: "text",
-            placeholder: '例: "東京駅", "渋谷スクランブルスクエア"',
+            placeholder: '例: "JPタワー"',
             style: {
                 width: "100%",
                 padding: "8px",
@@ -124,7 +124,7 @@ export class PlateauSearchDialog {
             style: { cursor: "pointer", marginRight: "8px" },
             onchange: () => {
                 searchType = "facility";
-                queryInput.placeholder = '例: "東京駅", "渋谷スクランブルスクエア"';
+                queryInput.placeholder = '例: "JPタワー"';
                 hintText.textContent = "💡 ヒント: 施設名で検索すると、建物名マッチングで精度が向上します";
                 radiusContainer.style.display = "block"; // 検索半径スライダーを表示
                 if (meshCodeContainer) meshCodeContainer.style.display = "none"; // メッシュコード入力を非表示
@@ -414,7 +414,17 @@ export class PlateauSearchDialog {
                                         fontStyle: "italic",
                                     },
                                 },
-                                '例: "東京駅", "渋谷スクランブルスクエア"',
+                                '例: "JPタワー"',
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--orange-600)",
+                                        marginTop: "4px",
+                                    },
+                                },
+                                "⚠️ 注意: 全ての建物に対応しているわけではありません",
                             ),
                         ),
                     ),
@@ -523,6 +533,16 @@ export class PlateauSearchDialog {
                                     },
                                 },
                                 '例: "bldg_48aa415d-b82f-4e8f-97e1-..."',
+                            ),
+                            div(
+                                {
+                                    style: {
+                                        fontSize: "var(--font-size-xs)",
+                                        color: "var(--primary-color)",
+                                        marginTop: "4px",
+                                    },
+                                },
+                                "💡 GML IDはPLATEAU Viewで確認できます",
                             ),
                         ),
                     ),

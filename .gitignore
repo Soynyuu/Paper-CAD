@@ -36,8 +36,9 @@ dist/
 build/
 *.log
 
-# Documentation (large PDFs)
-docs/
+# Documentation (large PDFs, but keep markdown)
+docs/*
+!docs/*.md
 
 # Backend test scripts and logs
 backend/test_*.py

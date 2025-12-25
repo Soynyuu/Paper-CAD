@@ -1,8 +1,7 @@
 # Paper-CAD
 
-**建物模型制作のための3D→2D展開図自動生成ツール**
+**建物模型制作のための 3D → 2D 展開図（SVG）自動生成 CAD**
 ![paper_cad](https://github.com/user-attachments/assets/6b45ec18-dbe1-4e00-812e-2045f14d8a6f)
-
 
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8-blue.svg)](https://www.typescriptlang.org/)
@@ -10,133 +9,93 @@
 
 ## 概要
 
-Paper-CADは建物模型制作のためのWebベースCADツールです。3D建物モデルを作成・インポートし、紙用2D展開図（SVG）へ自動変換することが可能です。
-
-これまでは立体構造物である建物を平面に展開する"設計"作業が模型制作上の大きな負担でしたが、Paper-CADでは3D建物モデルから展開図を自動生成することで直感的・簡単に設計作業が行えます。これにより、模型制作のハードルを下げ、初心者も経験者も短時間で高精度な街並みを制作できるようになります。
+Paper-CAD は、ブラウザで建物の 3D モデルを作成・インポートし、紙模型用の 2D 展開図（SVG）へ自動変換する Web ベース CAD です。OpenCASCADE を利用した高精度な展開処理で、設計負担を大きく削減します。
 
 ## 主な特徴
 
-### 🏢 建物モデリング
-- **3Dモデル作成**: ブラウザ上で直感的に建物の3Dモデルを作成
-- **STEPインポート**: 既存のCADデータ（STEP形式）をインポート可能
-- **リアルタイムプレビュー**: 3Dビューで建物をあらゆる角度から確認
+- **モデリング**: 3D モデル作成、STEP インポート、3D リアルタイム表示
+- **展開**: 折り線・切り線の分類、面番号付与、A4/A3/Letter に対応
+- **出力**: SVG を中心に、印刷・加工に適したレイアウトを生成
 
-### 📐 展開図自動生成
-- **高精度展開**: OpenCASCADE技術による正確な展開処理
-- **折り線・切り線**: 組み立てに必要な線種を自動判別
-- **組み立てタブ**: のりしろタブを自動配置
-- **面番号管理**: 組み立て順序を示す面番号を付与
+## クイックスタート
 
-### 🖨️ 印刷最適化
-- **複数用紙サイズ対応**: A4、A3、Letter用紙に対応
-- **レイアウト自動調整**: 用紙サイズに合わせて展開図を最適配置
-- **スケール調整**: 模型のサイズを自由に調整可能
-- **SVGエクスポート**: 高品質な印刷用SVGファイルを出力
+前提:
+- Node.js 18 以上
+- Python 3.10 以上（Conda 推奨）
 
-## セットアップ
-
-### 前提条件
-- Node.js 18以上
-- Python 3.10以上
-- Conda（推奨）またはPython仮想環境
-
-### インストール手順
-
-
-#### 2. バックエンドのセットアップ
+### バックエンド
 ```bash
 cd backend
-
-# Conda環境の作成（推奨）
 conda env create -f environment.yml
 conda activate paper-cad
-# サーバー起動
 python main.py  # http://localhost:8001
 ```
 
-#### 3. フロントエンドのセットアップ
+### フロントエンド
 ```bash
-cd ../frontend
-
-# 依存パッケージのインストール
+cd frontend
 npm install
+npm run dev  # http://localhost:8080
+```
 
-# 開発サーバー起動
+## 実行モード
+
+### 開発モード
+```bash
+# backend
+python main.py
+
+# frontend (別ターミナル)
 npm run dev
 ```
 
-### 実行モード
-
-Paper-CADは用途に応じて3つの実行モードを提供しています。
-
-#### 🔧 開発モード（デフォルト）
-通常の開発作業用。ホットリロード有効。
-
+### デモモード（本番相当の最適化）
 ```bash
-# バックエンド
-cd backend
-python main.py  # http://localhost:8001
+# backend
+ENV=demo python main.py
 
-# フロントエンド（別ターミナル）
-cd frontend
-npm run dev     # http://localhost:8080
+# frontend (別ターミナル)
+npm run demo
 ```
 
-#### 🎬 デモモード（推奨）
-**localhostで本番環境並みのパフォーマンスを実現**。デモやプレゼンテーションに最適。
-
+### 本番ビルド/デプロイ
 ```bash
-# バックエンド
-cd backend
-ENV=demo python main.py  # http://localhost:8001
-
-# フロントエンド（別ターミナル）
-cd frontend
-npm run demo             # http://localhost:8080
-```
-
-**特徴:**
-- ✅ 本番と同等の速度（minification、tree-shaking、複数ワーカー）
-- ✅ 開発モードと同じポート（8080/8001）
-- ✅ ホットリロード無効化による高速化
-
-#### 🚀 本番モード
-本番環境へのデプロイ用。
-
-```bash
-# フロントエンド（Cloudflare Pages）
-cd frontend
+# frontend
+npm run build
 npm run deploy:production
 
-# バックエンド（Docker/Podman）
-cd backend
+# backend
 docker compose up -d
 ```
 
-## 使い方
+## 開発コマンド（補足）
 
-### 基本的なワークフロー
+フロントエンド:
+- `npm run build:wasm`: C++ WebAssembly モジュールをビルド
+- `npm test` / `npm run testc`: Jest テスト（`testc` はカバレッジ付き）
+- `npm run format`: Prettier + clang-format
 
-1. **3Dモデルの準備**
-   - Paper-CADで新規作成、または
-   - 既存のSTEPファイルをインポート
+バックエンド:
+- `pytest`: テスト実行
+- `pytest tests/citygml/streaming/`: CityGML ストリーミング関連のみ
 
-2. **展開設定の調整**
-   - 用紙サイズ（A4/A3/Letter）を選択
-   - スケールファクターを設定
-   - 向き（縦/横）を選択
+## 設定（環境変数）
 
-3. **展開図の生成**
-   - 「展開」ボタンをクリック
-   - プレビューで確認
+フロントエンド（ビルド時に埋め込み）:
+- `STEP_UNFOLD_API_URL`（必須）: `http://localhost:8001/api`
+- `STEP_UNFOLD_WS_URL`（任意）: `ws://localhost:8001/ws/preview`
 
-4. **ダウンロード・印刷**
-   - SVGファイルをダウンロード
-   - 印刷して切り抜き、組み立て
+`.env.development` / `.env.demo` / `.env.production.example` を使用します。
 
-### APIの使用（上級者向け）
+バックエンド:
+- `PORT`（デフォルト 8001）
+- `FRONTEND_URL`（CORS 用）
+- `CORS_ALLOW_ALL`（開発向け）
 
-STEPファイルから直接SVGを生成：
+`.env.development` / `.env.demo` / `.env.production` を使用します。
+
+## API 例
+
 ```bash
 curl -X POST \
   -F "file=@building.step" \
@@ -146,74 +105,92 @@ curl -X POST \
   -o building.svg
 ```
 
-## 技術スタック
+## プロジェクト構成（AI 向け詳細）
 
-### フロントエンド
-- **フレームワーク**: TypeScript + Custom Web Components
-- **3D描画**: Three.js
-- **CADカーネル**: WebAssembly (C++/Emscripten)
-- **ビルドツール**: Rspack
-- **UI**: Chili UI Framework
-
-### バックエンド
-- **フレームワーク**: FastAPI (Python)
-- **CADエンジン**: OpenCASCADE Technology
-- **展開アルゴリズム**: カスタム実装
-- **コンテナ**: Docker/Podman対応
-
-## プロジェクト構成
+人が流し読みするよりも、エージェントが正確に構造を把握できることを優先しています。
 
 ```
 Paper-CAD/
-├── frontend/           # Webフロントエンド
-│   ├── packages/       # モジュール群
-│   │   ├── chili/      # メインアプリケーション
-│   │   ├── chili-ui/   # UIコンポーネント
-│   │   ├── chili-core/ # コアロジック
-│   │   └── chili-three/ # 3D描画
-│   └── cpp/            # WebAssemblyソース
-└── backend/            # APIサーバー
-    ├── core/           # 展開処理エンジン
-    ├── api/            # FastAPIエンドポイント
-    └── services/       # ビジネスロジック
+├── frontend/                          # TypeScript monorepo（npm workspaces）
+│   ├── packages/
+│   │   ├── chili-web/                 # フロントエンド入口（index.ts など）
+│   │   ├── chili/                     # メインアプリケーション
+│   │   ├── chili-ui/                  # Web Components + CSS Modules UI
+│   │   ├── chili-core/                # Document/Model/Material/Selection などのコア
+│   │   ├── chili-three/               # Three.js 連携・3D 描画
+│   │   ├── chili-wasm/                # WebAssembly バインディング
+│   │   ├── chili-controls/            # 操作/入力系の補助
+│   │   ├── chili-geo/                 # 幾何/座標補助
+│   │   ├── chili-vis/                 # 可視化ユーティリティ
+│   │   ├── chili-storage/             # 永続化/ストレージ
+│   │   └── chili-builder/             # ビルド補助
+│   ├── cpp/                           # OpenCASCADE ベース C++ → WASM
+│   ├── rspack.config.js               # ビルド設定
+│   └── .env.*                         # フロント用環境変数
+├── backend/                           # FastAPI サーバー
+│   ├── api/                           # REST API ルーティング（endpoints.py）
+│   ├── core/                          # 展開パイプライン
+│   │   ├── file_loaders.py            # STEP/BREP 読み込み
+│   │   ├── geometry_analyzer.py       # 面/エッジ/隣接解析
+│   │   ├── unfold_engine.py           # 3D→2D 展開エンジン
+│   │   ├── layout_manager.py          # 配置/レイアウト
+│   │   ├── svg_exporter.py            # SVG 出力
+│   │   ├── pdf_exporter.py            # PDF 出力
+│   │   └── step_exporter.py           # STEP 書き出し
+│   ├── services/
+│   │   ├── step_processor.py          # パイプライン統合
+│   │   ├── plateau_fetcher.py         # PLATEAU 連携
+│   │   └── citygml/                   # CityGML → STEP 変換（多層構造）
+│   │       ├── core/                  # 型・定数
+│   │       ├── utils/                 # XML/XLink/ログ
+│   │       ├── parsers/               # 座標/ポリゴン解析
+│   │       ├── geometry/              # ワイヤ/面/シェル構築
+│   │       ├── transforms/            # CRS 変換/リセンタリング
+│   │       ├── lod/                   # LOD 抽出戦略
+│   │       └── pipeline/              # オーケストレーター
+│   ├── models/                        # Pydantic モデル
+│   ├── utils/                         # 共有ユーティリティ
+│   ├── tests/                         # pytest テスト
+│   ├── config.py                      # CORS/OCCT 設定
+│   └── main.py                        # FastAPI 起動
+├── docs/                              # 運用・最適化ドキュメント
+├── AGENTS.md                          # Contributor ガイド
+└── CLAUDE.md                          # アーキテクチャ詳細（AI 向け）
 ```
+
+## アーキテクチャ概要（AI 向け）
+
+### フロントエンド
+- **入口**: `frontend/packages/chili-web/src/index.ts`
+- **UI**: `chili-ui` の Web Components、CSS Modules を使用
+- **3D**: `chili-three` が Three.js を統合
+- **CAD カーネル**: `frontend/cpp/` の C++ を WASM 化して `chili-wasm` から呼び出し
+- **設定**: `STEP_UNFOLD_API_URL` はビルド時注入（`.env.*`）
+
+### バックエンド
+- **主 API**: `POST /api/step/unfold`（STEP → SVG/JSON）
+- **処理フロー**: `step_processor.py` → `file_loaders.py` → `geometry_analyzer.py` → `unfold_engine.py` → `layout_manager.py` → `svg_exporter.py`
+- **CityGML**: `services/citygml/` 以下に多層構造（LOD 抽出と変換パイプライン）
+
+### 重要な注意
+- OpenCASCADE が未インストールでも API は起動しますが、STEP 展開系は 503 になります。
+- フロントエンドは `npm install` を `frontend/` で実行する必要があります（workspaces 依存）。
+
+### CityGML 変換の必須フェーズ（AI 注意点）
+- **PHASE:0** 座標のリセンタリング（精度劣化を防ぐ）
+- **PHASE:1** XLink インデックス構築（参照解決の前提）
+- **PHASE:2-6** LOD 抽出 → 形状構築 → 検証
+- **PHASE:7** STEP 出力
 
 ## 開発に参加する
 
-### コントリビューション
-Issue報告やPull Requestを歓迎します。詳細は[CONTRIBUTING.md](CONTRIBUTING.md)をご覧ください。
-
-### 開発環境
-```bash
-# テスト実行（フロントエンド）
-cd frontend && npm test
-
-# テスト実行（バックエンド）
-cd backend && pytest
-
-# フォーマット
-npm run format  # フロントエンド
-black .         # バックエンド
-```
-
-## ロードマップ
-
-- [ ] 複雑な建物形状への対応強化
-- [ ] テクスチャマッピング機能
-- [ ] 複数建物の一括処理
-- [ ] 組み立て手順書の自動生成
-- [ ] AR組み立てガイド
-- [ ] コラボレーション機能
+Issue/PR を歓迎します。変更点・背景・再現手順（必要なら SVG のスクショ）を添えてください。コミットは `feat: ...` / `fix: ...` など短く明確に。
 
 ## ライセンス
 
-MIT License - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+MIT License - 詳細は[LICENSE](LICENSE)をご覧ください。
 
 ## 謝辞
 
 - OpenCASCADE Technology
 - 一般社団法人未踏 未踏ジュニア（2025年度採択プロジェクト）
-
-## サポート
-
-**Paper-CAD** - 建物模型制作を、もっと楽しく、もっと簡単に。

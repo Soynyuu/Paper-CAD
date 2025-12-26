@@ -18,6 +18,7 @@ from core.unfold_engine import UnfoldEngine
 from core.layout_manager import LayoutManager
 from core.svg_exporter import SVGExporter
 from core.pdf_exporter import PDFExporter
+from models.request_models import BrepPapercraftRequest
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder, BRep_Tool
@@ -235,7 +236,7 @@ class StepUnfoldGenerator:
         # レイアウトマネージャーに処理を委譲
         return self.layout_manager.layout_unfolded_groups(unfolded_groups)
 
-    def apply_request_settings(self, request) -> None:
+    def apply_request_settings(self, request: BrepPapercraftRequest) -> None:
         """
         リクエストパラメータを内部設定へ反映する。
         """
@@ -390,7 +391,7 @@ class StepUnfoldGenerator:
                 print(f"一時ディレクトリを削除: {temp_dir}")
 
 
-    def generate_brep_papercraft_pages(self, request) -> Tuple[List[List[Dict]], Dict]:
+    def generate_brep_papercraft_pages(self, request: BrepPapercraftRequest) -> Tuple[List[List[Dict]], Dict]:
         """
         BREPソリッドからページ単位の展開図データを生成する。
         """
@@ -430,7 +431,11 @@ class StepUnfoldGenerator:
             raise ValueError(f"BREP展開図生成エラー: {str(e)}")
 
 
-    def generate_brep_papercraft(self, request, output_path: Optional[str] = None) -> Tuple[str, Dict]:
+    def generate_brep_papercraft(
+        self,
+        request: BrepPapercraftRequest,
+        output_path: Optional[str] = None
+    ) -> Tuple[str, Dict]:
         """
         BREPソリッドから展開図を一括生成。
         商用グレードの完全なワークフロー。

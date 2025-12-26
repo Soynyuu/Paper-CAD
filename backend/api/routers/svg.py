@@ -7,14 +7,17 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse
 
 from api.helpers import cleanup_temp_dir
+from config import SVG_UPLOAD_LIMITS
 from core.pdf_exporter import PDFExporter
 
 router = APIRouter()
 
-MAX_SVG_FILES = 100
-MAX_SVG_FILE_SIZE_BYTES = 50 * 1024 * 1024
-MAX_SVG_TOTAL_BYTES = 200 * 1024 * 1024
+MAX_SVG_FILES = SVG_UPLOAD_LIMITS["max_files"]
+MAX_SVG_FILE_SIZE_BYTES = SVG_UPLOAD_LIMITS["max_file_size_bytes"]
+MAX_SVG_TOTAL_BYTES = SVG_UPLOAD_LIMITS["max_total_bytes"]
 SVG_READ_CHUNK_SIZE = 1024 * 1024
+SVG_SCAN_BUFFER_BYTES = 64
+FORBIDDEN_SVG_TOKENS = (b"<!doctype", b"<!entity")
 
 
 @router.post(
@@ -75,11 +78,19 @@ async def convert_svg_to_pdf(
 
             output_path = os.path.join(tmpdir, f"page_{index:03d}.svg")
             file_total = 0
+            scan_tail = b""
             with open(output_path, "wb") as dst:
                 while True:
                     chunk = await upload.read(SVG_READ_CHUNK_SIZE)
                     if not chunk:
                         break
+                    scan_window = (scan_tail + chunk).lower()
+                    if any(token in scan_window for token in FORBIDDEN_SVG_TOKENS):
+                        raise HTTPException(
+                            status_code=400,
+                            detail="SVGに危険なXML宣言が含まれているため処理できません。"
+                        )
+                    scan_tail = scan_window[-SVG_SCAN_BUFFER_BYTES:]
                     chunk_size = len(chunk)
                     file_total += chunk_size
                     total_bytes += chunk_size

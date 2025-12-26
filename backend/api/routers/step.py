@@ -1,7 +1,7 @@
 import os
 import tempfile
 import uuid
-from typing import Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -12,6 +12,51 @@ from models.request_models import BrepPapercraftRequest
 from services.step_processor import StepUnfoldGenerator
 
 router = APIRouter()
+
+
+def _log_pdf_parameters(request: BrepPapercraftRequest) -> None:
+    print("[PDF] Parameters set:")
+    print(f"  scale_factor: {request.scale_factor}")
+    print(f"  units: {request.units}")
+    print(f"  tab_width: {request.tab_width}")
+    print(f"  show_scale: {request.show_scale}")
+    print(f"  show_fold_lines: {request.show_fold_lines}")
+    print(f"  show_cut_lines: {request.show_cut_lines}")
+    print(f"  layout_mode: {request.layout_mode}")
+    print(f"  page_format: {request.page_format}")
+    print(f"  page_orientation: {request.page_orientation}")
+    print(f"  mirror_horizontal: {request.mirror_horizontal}")
+
+
+def _create_pdf_response_from_pages(
+    generator: StepUnfoldGenerator,
+    paged_groups: List[List[Dict]],
+    output_dir: str,
+    page_format: str,
+    page_orientation: str,
+    layout_mode: str,
+    scale_factor: float,
+    page_count: Optional[int] = None
+) -> tuple[FileResponse, str]:
+    pdf_path = os.path.join(output_dir, f"step_unfold_{uuid.uuid4()}.pdf")
+    result_path = generator.export_to_pdf_paged(paged_groups, pdf_path)
+    resolved_page_count = page_count if page_count is not None else len(paged_groups)
+
+    print(f"[PDF] Generated PDF with {resolved_page_count} pages: {result_path}")
+
+    response = FileResponse(
+        path=result_path,
+        media_type="application/pdf",
+        filename=f"step_unfold_{page_format}_{page_orientation}_{uuid.uuid4()}.pdf",
+        headers={
+            "X-Layout-Mode": layout_mode,
+            "X-Page-Format": page_format,
+            "X-Page-Orientation": page_orientation,
+            "X-Page-Count": str(resolved_page_count),
+            "X-Scale-Factor": str(scale_factor)
+        }
+    )
+    return response, result_path
 
 
 # --- STEP専用APIエンドポイント ---
@@ -213,52 +258,49 @@ async def unfold_step_to_svg(
 
         if output_format_normalized == "svg_pages":
             output_tmpdir = tempfile.mkdtemp()
-            try:
-                svg_paths = step_unfold_generator.export_to_svg_paged_files(paged_groups, output_tmpdir)
+            svg_paths = step_unfold_generator.export_to_svg_paged_files(paged_groups, output_tmpdir)
 
-                pages = []
-                for svg_path in svg_paths:
-                    with open(svg_path, 'r', encoding='utf-8') as svg_file:
-                        pages.append(svg_file.read())
+            pages = []
+            for svg_path in svg_paths:
+                with open(svg_path, 'r', encoding='utf-8') as svg_file:
+                    pages.append(svg_file.read())
 
-                response_data = {
-                    "pages": pages,
-                    "stats": stats
-                }
+            response_data = {
+                "pages": pages,
+                "stats": stats
+            }
 
-                if "warnings" in stats and stats["warnings"]:
-                    response_data["warnings"] = stats["warnings"]
+            if "warnings" in stats and stats["warnings"]:
+                response_data["warnings"] = stats["warnings"]
 
-                if return_face_numbers:
-                    face_numbers = step_unfold_generator.get_face_numbers()
-                    response_data["face_numbers"] = face_numbers
+            if return_face_numbers:
+                face_numbers = step_unfold_generator.get_face_numbers()
+                response_data["face_numbers"] = face_numbers
 
-                success = True
-                return response_data
-            finally:
-                cleanup_temp_dir(output_tmpdir, label="output_tmpdir")
-                output_tmpdir = None
+            cleanup_in_background = True
+            background_tasks.add_task(cleanup_temp_dir, tmpdir, "tmpdir")
+            background_tasks.add_task(cleanup_temp_dir, output_tmpdir, "output_tmpdir")
+            success = True
+            return response_data
 
+        _log_pdf_parameters(request)
         output_tmpdir = tempfile.mkdtemp()
-        pdf_path = os.path.join(output_tmpdir, f"step_unfold_{uuid.uuid4()}.pdf")
-        result_path = step_unfold_generator.export_to_pdf_paged(paged_groups, pdf_path)
+        pdf_response, _ = _create_pdf_response_from_pages(
+            step_unfold_generator,
+            paged_groups,
+            output_tmpdir,
+            page_format,
+            page_orientation,
+            layout_mode,
+            scale_factor,
+            page_count=stats.get("page_count")
+        )
 
         cleanup_in_background = True
         background_tasks.add_task(cleanup_temp_dir, tmpdir, "tmpdir")
         background_tasks.add_task(cleanup_temp_dir, output_tmpdir, "output_tmpdir")
         success = True
-        return FileResponse(
-            path=result_path,
-            media_type="application/pdf",
-            filename=f"step_unfold_{page_format}_{page_orientation}_{uuid.uuid4()}.pdf",
-            headers={
-                "X-Layout-Mode": layout_mode,
-                "X-Page-Format": page_format,
-                "X-Page-Orientation": page_orientation,
-                "X-Page-Count": str(stats.get("page_count", len(paged_groups))),
-                "X-Scale-Factor": str(scale_factor)
-            }
-        )
+        return pdf_response
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -373,25 +415,21 @@ async def unfold_step_to_pdf(
                 detail="PDF出力は現在 layout_mode='paged' のみサポートしています。"
             )
 
+        _log_pdf_parameters(request)
         paged_groups, stats = generator.generate_brep_papercraft_pages(request)
-        pdf_path = os.path.join(tmpdir, f"unfold_{uuid.uuid4()}.pdf")
-        result_path = generator.export_to_pdf_paged(paged_groups, pdf_path)
-
-        print(f"[PDF] Generated PDF with {len(paged_groups)} pages: {result_path}")
+        pdf_response, result_path = _create_pdf_response_from_pages(
+            generator,
+            paged_groups,
+            tmpdir,
+            page_format,
+            page_orientation,
+            layout_mode,
+            scale_factor,
+            page_count=stats.get("page_count")
+        )
 
         background_tasks.add_task(cleanup_temp_dir, tmpdir, "tmpdir")
-        return FileResponse(
-            path=result_path,
-            media_type="application/pdf",
-            filename=f"step_unfold_{page_format}_{page_orientation}_{uuid.uuid4()}.pdf",
-            headers={
-                "X-Layout-Mode": layout_mode,
-                "X-Page-Format": page_format,
-                "X-Page-Orientation": page_orientation,
-                "X-Page-Count": str(stats.get("page_count", len(paged_groups))),
-                "X-Scale-Factor": str(scale_factor)
-            }
-        )
+        return pdf_response
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

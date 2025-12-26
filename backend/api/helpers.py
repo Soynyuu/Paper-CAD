@@ -40,26 +40,7 @@ def parse_csv_ids(value: Optional[str]) -> Optional[list[str]]:
     return None
 
 
-def normalize_limit_param(value: Union[int, str, None]) -> Optional[int]:
-    if value is None:
-        return None
-
-    if isinstance(value, str):
-        if value.strip() == "" or value == "0":
-            return None
-        try:
-            parsed = int(value)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"limit must be a valid integer, got: {value}")
-        return parsed if parsed > 0 else None
-
-    if isinstance(value, int):
-        return value if value > 0 else None
-
-    return None
-
-
-def normalize_building_limit_param(value: Union[int, str, None]) -> Optional[int]:
+def normalize_limit_param(value: Union[int, str, None], param_name: str = "limit") -> Optional[int]:
     if value is None:
         return None
 
@@ -71,7 +52,7 @@ def normalize_building_limit_param(value: Union[int, str, None]) -> Optional[int
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"building_limit must be a valid positive integer, got: {value}",
+                detail=f"{param_name} must be a valid integer, got: {value}",
             )
         return parsed if parsed > 0 else None
 

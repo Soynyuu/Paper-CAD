@@ -1,6 +1,5 @@
 import os
 import tempfile
-import uuid
 from typing import Optional, Union
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
@@ -72,7 +71,7 @@ async def citygml_to_step(
     ),
     precision_mode: str = Form(
         "ultra",
-        description="精度モード: standard（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化、推奨）",
+        description="精度モード: standard（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化、推奨）, auto（自動）",
         example="ultra",
     ),
     shape_fix_level: str = Form(
@@ -129,6 +128,7 @@ async def citygml_to_step(
       * `high`: 0.001% (fine details)
       * `maximum`: 0.0001% (windows, stairs, balconies)
       * `ultra`: 0.00001% (maximum precision, LOD2/LOD3 optimized)
+      * `auto`: automatic selection (fallbacks to standard precision)
     - `shape_fix_level`: Geometry repair aggressiveness
       * `minimal`: Minimal fixes, preserve details (recommended)
       * `standard`: Standard repair
@@ -147,6 +147,7 @@ async def citygml_to_step(
     """
     tmpdir = None
     out_dir = None
+    success = False
     try:
         # Normalize limit parameter (handle empty string from form)
         normalized_limit = normalize_limit_param(limit)
@@ -254,6 +255,7 @@ async def citygml_to_step(
 
         # FileResponseを使用して大容量ファイルを効率的にストリーミング
         # Note: CORS headers are automatically handled by CORSMiddleware
+        success = True
         return FileResponse(
             path=out_path,
             media_type="application/octet-stream",
@@ -271,21 +273,9 @@ async def citygml_to_step(
     finally:
         # エラー時の一時ディレクトリクリーンアップ
         # 成功時はbackground_tasksが処理するため、エラー時のみクリーンアップ
-        import shutil
-        import sys
-        if sys.exc_info()[0] is not None:  # 例外が発生している場合のみ
-            if tmpdir and os.path.exists(tmpdir):
-                try:
-                    shutil.rmtree(tmpdir)
-                    print(f"[CLEANUP] Removed tmpdir on error: {tmpdir}")
-                except Exception as cleanup_e:
-                    print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {cleanup_e}")
-            if out_dir and os.path.exists(out_dir):
-                try:
-                    shutil.rmtree(out_dir)
-                    print(f"[CLEANUP] Removed out_dir on error: {out_dir}")
-                except Exception as cleanup_e:
-                    print(f"[CLEANUP] Failed to remove out_dir {out_dir}: {cleanup_e}")
+        if not success:
+            cleanup_temp_dir(tmpdir, label="tmpdir")
+            cleanup_temp_dir(out_dir, label="out_dir")
 
 
 # --- CityGML 検証（簡易） ---

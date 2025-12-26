@@ -6,7 +6,7 @@ from typing import Optional, Union
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException
 from fastapi.responses import FileResponse
 
-from api.helpers import normalize_building_limit_param, parse_csv_ids
+from api.helpers import cleanup_temp_dir, normalize_limit_param, parse_csv_ids
 from config import OCCT_AVAILABLE
 from models.request_models import (
     BuildingInfoResponse,
@@ -241,9 +241,10 @@ async def plateau_fetch_and_convert(
     """
     tmpdir = None
     out_dir = None
+    success = False
     try:
         # Normalize building_limit parameter (handle empty string, "0", or None)
-        normalized_building_limit = normalize_building_limit_param(building_limit)
+        normalized_building_limit = normalize_limit_param(building_limit, param_name="building_limit")
 
         # Normalize building_ids parameter (comma-separated string to list)
         normalized_building_ids = parse_csv_ids(building_ids)
@@ -387,6 +388,7 @@ async def plateau_fetch_and_convert(
 
         background_tasks.add_task(cleanup_temp_files)
 
+        success = True
         return FileResponse(
             path=out_path,
             media_type="application/octet-stream",
@@ -405,21 +407,9 @@ async def plateau_fetch_and_convert(
     finally:
         # エラー時の一時ディレクトリクリーンアップ
         # 成功時はbackground_tasksが処理するため、エラー時のみクリーンアップ
-        import shutil
-        import sys
-        if sys.exc_info()[0] is not None:  # 例外が発生している場合のみ
-            if tmpdir and os.path.exists(tmpdir):
-                try:
-                    shutil.rmtree(tmpdir)
-                    print(f"[CLEANUP] Removed tmpdir on error: {tmpdir}")
-                except Exception as cleanup_e:
-                    print(f"[CLEANUP] Failed to remove tmpdir {tmpdir}: {cleanup_e}")
-            if out_dir and os.path.exists(out_dir):
-                try:
-                    shutil.rmtree(out_dir)
-                    print(f"[CLEANUP] Removed out_dir on error: {out_dir}")
-                except Exception as cleanup_e:
-                    print(f"[CLEANUP] Failed to remove out_dir {out_dir}: {cleanup_e}")
+        if not success:
+            cleanup_temp_dir(tmpdir, label="tmpdir")
+            cleanup_temp_dir(out_dir, label="out_dir")
 
 
 # --- PLATEAU: Building ID Search ---
@@ -583,8 +573,9 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
     {
         "building_id": "13101-bldg-2287",
         "precision_mode": "ultra",
-            "shape_fix_level": "minimal"
-        }
+        "shape_fix_level": "minimal"
+    }
+    ```
     """
     if not OCCT_AVAILABLE:
         raise HTTPException(
@@ -837,7 +828,8 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         "mesh_code": "53394511",
         "precision_mode": "ultra",
         "shape_fix_level": "minimal"
-        }
+    }
+    ```
     """
     if not OCCT_AVAILABLE:
         raise HTTPException(

@@ -144,8 +144,8 @@ async def unfold_step_to_svg(
 
             try:
                 os.unlink(svg_path)
-            except:
-                pass
+            except OSError as e:
+                print(f"[CLEANUP] Warning: Failed to remove {svg_path}: {e}")
 
             # 面番号データを含める場合
             if return_face_numbers:
@@ -343,7 +343,7 @@ async def unfold_step_to_pdf(
             print(f"[PDF] Generated PDF with {len(paged_groups)} pages: {result_path}")
 
             # PDFファイルを返す（レスポンス送信後にtmpdirをクリーンアップ）
-            background_tasks.add_task(cleanup_temp_dir, tmpdir)
+            background_tasks.add_task(cleanup_temp_dir, tmpdir, "tmpdir")
             return FileResponse(
                 path=result_path,
                 media_type="application/pdf",

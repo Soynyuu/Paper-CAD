@@ -11,6 +11,11 @@ from core.pdf_exporter import PDFExporter
 
 router = APIRouter()
 
+MAX_SVG_FILES = 100
+MAX_SVG_FILE_SIZE_BYTES = 50 * 1024 * 1024
+MAX_SVG_TOTAL_BYTES = 200 * 1024 * 1024
+SVG_READ_CHUNK_SIZE = 1024 * 1024
+
 
 @router.post(
     "/api/svg/to-pdf",
@@ -48,6 +53,11 @@ async def convert_svg_to_pdf(
     try:
         if not files:
             raise HTTPException(status_code=400, detail="SVGファイルが指定されていません。")
+        if len(files) > MAX_SVG_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"SVGファイル数は最大{MAX_SVG_FILES}件までです。"
+            )
 
         if page_format not in {"A4", "A3", "Letter"}:
             raise HTTPException(status_code=400, detail="page_formatはA4/A3/Letterのみ対応しています。")
@@ -57,22 +67,35 @@ async def convert_svg_to_pdf(
         tmpdir = tempfile.mkdtemp()
         svg_paths: List[str] = []
 
+        total_bytes = 0
         for index, upload in enumerate(files, 1):
             filename = upload.filename or f"page_{index}.svg"
             if not filename.lower().endswith(".svg"):
                 raise HTTPException(status_code=400, detail="SVGファイルのみ対応です。")
 
             output_path = os.path.join(tmpdir, f"page_{index:03d}.svg")
-            total = 0
+            file_total = 0
             with open(output_path, "wb") as dst:
                 while True:
-                    chunk = await upload.read(1024 * 1024)
+                    chunk = await upload.read(SVG_READ_CHUNK_SIZE)
                     if not chunk:
                         break
-                    total += len(chunk)
+                    chunk_size = len(chunk)
+                    file_total += chunk_size
+                    total_bytes += chunk_size
+                    if file_total > MAX_SVG_FILE_SIZE_BYTES:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"SVGファイルのサイズは{MAX_SVG_FILE_SIZE_BYTES // (1024 * 1024)}MBまでです。"
+                        )
+                    if total_bytes > MAX_SVG_TOTAL_BYTES:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"SVGファイルの合計サイズは{MAX_SVG_TOTAL_BYTES // (1024 * 1024)}MBまでです。"
+                        )
                     dst.write(chunk)
 
-            if total == 0:
+            if file_total == 0:
                 raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
 
             svg_paths.append(output_path)

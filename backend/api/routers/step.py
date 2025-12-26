@@ -143,7 +143,7 @@ async def unfold_step_to_svg(
         if output_format_normalized not in supported_formats:
             raise HTTPException(
                 status_code=400,
-                detail=f"output_formatは{sorted(supported_formats)}のみ対応です。"
+                detail=f"output_formatは{', '.join(sorted(supported_formats))}のみ対応です。"
             )
         if output_format_normalized in {"svg_pages", "pdf"} and layout_mode != "paged":
             raise HTTPException(
@@ -209,32 +209,36 @@ async def unfold_step_to_svg(
                 }
             )
 
-        if output_format_normalized == "svg_pages":
-            paged_groups, stats = step_unfold_generator.generate_brep_papercraft_pages(request)
-            output_tmpdir = tempfile.mkdtemp()
-            svg_paths = step_unfold_generator.export_to_svg_paged_files(paged_groups, output_tmpdir)
-
-            pages = []
-            for svg_path in svg_paths:
-                with open(svg_path, 'r', encoding='utf-8') as svg_file:
-                    pages.append(svg_file.read())
-
-            response_data = {
-                "pages": pages,
-                "stats": stats
-            }
-
-            if "warnings" in stats and stats["warnings"]:
-                response_data["warnings"] = stats["warnings"]
-
-            if return_face_numbers:
-                face_numbers = step_unfold_generator.get_face_numbers()
-                response_data["face_numbers"] = face_numbers
-
-            success = True
-            return response_data
-
         paged_groups, stats = step_unfold_generator.generate_brep_papercraft_pages(request)
+
+        if output_format_normalized == "svg_pages":
+            output_tmpdir = tempfile.mkdtemp()
+            try:
+                svg_paths = step_unfold_generator.export_to_svg_paged_files(paged_groups, output_tmpdir)
+
+                pages = []
+                for svg_path in svg_paths:
+                    with open(svg_path, 'r', encoding='utf-8') as svg_file:
+                        pages.append(svg_file.read())
+
+                response_data = {
+                    "pages": pages,
+                    "stats": stats
+                }
+
+                if "warnings" in stats and stats["warnings"]:
+                    response_data["warnings"] = stats["warnings"]
+
+                if return_face_numbers:
+                    face_numbers = step_unfold_generator.get_face_numbers()
+                    response_data["face_numbers"] = face_numbers
+
+                success = True
+                return response_data
+            finally:
+                cleanup_temp_dir(output_tmpdir, label="output_tmpdir")
+                output_tmpdir = None
+
         output_tmpdir = tempfile.mkdtemp()
         pdf_path = os.path.join(output_tmpdir, f"step_unfold_{uuid.uuid4()}.pdf")
         result_path = step_unfold_generator.export_to_pdf_paged(paged_groups, pdf_path)

@@ -167,7 +167,7 @@ async def citygml_to_step(
         normalized_filter_attribute = filter_attribute if filter_attribute and filter_attribute.strip() else "gml:id"
 
         # Validate precision_mode
-        valid_precision_modes = ["auto", "high", "maximum", "ultra"]
+        valid_precision_modes = ["auto", "standard", "high", "maximum", "ultra"]
         if normalized_precision_mode not in valid_precision_modes:
             raise HTTPException(
                 status_code=400,
@@ -210,7 +210,7 @@ async def citygml_to_step(
         out_dir = tempfile.mkdtemp()
         # 入力ファイル名からベース名を取得
         if file is not None:
-            base_name = os.path.splitext(file.filename)[0]
+            base_name = os.path.splitext(os.path.basename(file.filename))[0]
         elif normalized_gml_path:
             base_name = os.path.splitext(os.path.basename(normalized_gml_path))[0]
         else:

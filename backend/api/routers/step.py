@@ -40,6 +40,7 @@ router = APIRouter()
     }
 )
 async def unfold_step_to_svg(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="STEP file (.step/.stp)"),
     return_face_numbers: bool = Form(True, description="面番号データを含む / Include face numbers"),
     output_format: str = Form("svg", description="出力形式 / Output format (svg/json)"),
@@ -81,6 +82,8 @@ async def unfold_step_to_svg(
 
     tmpdir = None
     output_tmpdir = None
+    success = False
+    cleanup_in_background = False
     try:
         # ファイル拡張子チェック
         if not (file.filename.lower().endswith('.step') or file.filename.lower().endswith('.stp')):
@@ -152,10 +155,15 @@ async def unfold_step_to_svg(
                 face_numbers = step_unfold_generator.get_face_numbers()
                 response_data["face_numbers"] = face_numbers
 
+            success = True
             return response_data
         else:
             # SVGファイルレスポンス
             # ページモードでも単一ファイルに全ページが含まれる
+            cleanup_in_background = True
+            background_tasks.add_task(cleanup_temp_dir, tmpdir, "tmpdir")
+            background_tasks.add_task(cleanup_temp_dir, output_tmpdir, "output_tmpdir")
+            success = True
             return FileResponse(
                 path=svg_path,
                 media_type="image/svg+xml",
@@ -175,9 +183,10 @@ async def unfold_step_to_svg(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
     finally:
-        # 一時ディレクトリのクリーンアップ
-        cleanup_temp_dir(tmpdir, label="tmpdir")
-        cleanup_temp_dir(output_tmpdir, label="output_tmpdir")
+        # BackgroundTasksを使わない場合は即時クリーンアップする
+        if not cleanup_in_background or not success:
+            cleanup_temp_dir(tmpdir, label="tmpdir")
+            cleanup_temp_dir(output_tmpdir, label="output_tmpdir")
 
 
 # --- STEP → PDF 展開図エンドポイント ---

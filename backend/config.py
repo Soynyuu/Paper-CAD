@@ -126,6 +126,10 @@ TAGS_METADATA = [
         },
     },
     {
+        "name": "SVG Processing",
+        "description": "SVG to PDF conversion (SVG → PDF変換)",
+    },
+    {
         "name": "CityGML Processing",
         "description": "CityGML to STEP conversion with LOD1/LOD2/LOD3 support (CityGML → STEP変換)",
         "externalDocs": {

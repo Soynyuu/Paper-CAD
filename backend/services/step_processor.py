@@ -235,6 +235,40 @@ class StepUnfoldGenerator:
         # レイアウトマネージャーに処理を委譲
         return self.layout_manager.layout_unfolded_groups(unfolded_groups)
 
+    def apply_request_settings(self, request) -> None:
+        """
+        リクエストパラメータを内部設定へ反映する。
+        """
+        self.scale_factor = request.scale_factor
+        self.units = request.units
+        self.tab_width = request.tab_width
+        self.show_scale = request.show_scale
+        self.show_fold_lines = request.show_fold_lines
+        self.show_cut_lines = request.show_cut_lines
+        self.layout_mode = request.layout_mode
+        self.page_format = request.page_format
+        self.page_orientation = request.page_orientation
+        self.mirror_horizontal = request.mirror_horizontal
+
+        self.unfold_engine.scale_factor = self.scale_factor
+        self.unfold_engine.tab_width = self.tab_width
+        self.layout_manager.update_scale_factor(self.scale_factor)
+        self.layout_manager.update_page_settings(
+            page_format=self.page_format,
+            page_orientation=self.page_orientation
+        )
+        self.svg_exporter.update_settings(
+            scale_factor=self.scale_factor,
+            units=self.units,
+            tab_width=self.tab_width,
+            show_scale=self.show_scale,
+            show_fold_lines=self.show_fold_lines,
+            show_cut_lines=self.show_cut_lines,
+            layout_mode=self.layout_mode,
+            page_format=self.page_format,
+            page_orientation=self.page_orientation,
+            mirror_horizontal=self.mirror_horizontal
+        )
 
     def export_to_svg(self, placed_groups: List[Dict], output_path: str) -> str:
         """
@@ -287,6 +321,28 @@ class StepUnfoldGenerator:
         # SVGエクスポーターに処理を委譲
         return self.svg_exporter.export_to_svg_paged_single_file(paged_groups, output_path)
 
+    def export_to_svg_paged_files(self, paged_groups: List[List[Dict]], output_dir: str) -> List[str]:
+        """
+        ページ分割された展開図を複数SVGファイルとして出力。
+        """
+        self.svg_exporter.update_settings(
+            scale_factor=self.scale_factor,
+            units=self.units,
+            tab_width=self.tab_width,
+            show_scale=self.show_scale,
+            show_fold_lines=self.show_fold_lines,
+            show_cut_lines=self.show_cut_lines,
+            layout_mode=self.layout_mode,
+            page_format=self.page_format,
+            page_orientation=self.page_orientation,
+            mirror_horizontal=self.mirror_horizontal
+        )
+
+        if self.texture_mappings:
+            self.svg_exporter.set_texture_mappings(self.texture_mappings)
+
+        return self.svg_exporter.export_to_svg_paged(paged_groups, output_dir)
+
     def export_to_pdf_paged(self, paged_groups: List[List[Dict]], output_path: str) -> str:
         """
         ページ分割された展開図をPDF形式で出力。
@@ -308,26 +364,8 @@ class StepUnfoldGenerator:
         svg_paths = []
 
         try:
-            # SVGエクスポーターの設定を更新
-            self.svg_exporter.update_settings(
-                scale_factor=self.scale_factor,
-                units=self.units,
-                tab_width=self.tab_width,
-                show_scale=self.show_scale,
-                show_fold_lines=self.show_fold_lines,
-                show_cut_lines=self.show_cut_lines,
-                layout_mode=self.layout_mode,
-                page_format=self.page_format,
-                page_orientation=self.page_orientation,
-                mirror_horizontal=self.mirror_horizontal
-            )
-
-            # テクスチャマッピングを設定
-            if self.texture_mappings:
-                self.svg_exporter.set_texture_mappings(self.texture_mappings)
-
             # 各ページを個別のSVGファイルとして保存
-            svg_paths = self.svg_exporter.export_to_svg_paged(paged_groups, temp_dir)
+            svg_paths = self.export_to_svg_paged_files(paged_groups, temp_dir)
 
             print(f"SVG生成完了: {len(svg_paths)}ファイル")
 
@@ -352,6 +390,45 @@ class StepUnfoldGenerator:
                 print(f"一時ディレクトリを削除: {temp_dir}")
 
 
+    def generate_brep_papercraft_pages(self, request) -> Tuple[List[List[Dict]], Dict]:
+        """
+        BREPソリッドからページ単位の展開図データを生成する。
+        """
+        if self.solid_shape is None:
+            raise ValueError("BREPソリッドが読み込まれていません")
+        if request.layout_mode != "paged":
+            raise ValueError("paged出力は layout_mode='paged' のみ対応しています")
+
+        try:
+            start_time = time.time()
+
+            self.apply_request_settings(request)
+
+            self.analyze_brep_topology()
+            self.group_faces_for_unfolding(request.max_faces)
+            unfolded_groups = self.unfold_face_groups()
+
+            paged_groups, layout_warnings = self.layout_manager.layout_for_pages(unfolded_groups)
+
+            end_time = time.time()
+            self.stats["processing_time"] = end_time - start_time
+            self.stats["unfoldable_faces"] = sum(
+                len(group["polygons"])
+                for page in paged_groups
+                for group in page
+            )
+            self.stats["layout_mode"] = "paged"
+            self.stats["page_count"] = len(paged_groups)
+            if layout_warnings:
+                self.stats["warnings"] = layout_warnings
+
+            return paged_groups, self.stats
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise ValueError(f"BREP展開図生成エラー: {str(e)}")
+
 
     def generate_brep_papercraft(self, request, output_path: Optional[str] = None) -> Tuple[str, Dict]:
         """
@@ -368,28 +445,7 @@ class StepUnfoldGenerator:
         try:
             start_time = time.time()
             
-            # パラメータ設定
-            self.scale_factor = request.scale_factor
-            self.units = request.units
-            self.tab_width = request.tab_width
-            self.show_scale = request.show_scale
-            self.show_fold_lines = request.show_fold_lines
-            self.show_cut_lines = request.show_cut_lines
-            self.layout_mode = request.layout_mode
-            self.page_format = request.page_format
-            self.page_orientation = request.page_orientation
-            self.mirror_horizontal = request.mirror_horizontal
-
-            # UnfoldEngine、LayoutManager、SVGExporterのscale_factorを更新
-            self.unfold_engine.scale_factor = self.scale_factor
-            self.unfold_engine.tab_width = self.tab_width
-            self.layout_manager.scale_factor = self.scale_factor
-            self.svg_exporter.scale_factor = self.scale_factor
-            self.svg_exporter.tab_width = self.tab_width
-            self.svg_exporter.layout_mode = self.layout_mode
-            self.svg_exporter.page_format = self.page_format
-            self.svg_exporter.page_orientation = self.page_orientation
-            self.svg_exporter.mirror_horizontal = self.mirror_horizontal
+            self.apply_request_settings(request)
             
             # 1. BREPトポロジ解析
             self.analyze_brep_topology()

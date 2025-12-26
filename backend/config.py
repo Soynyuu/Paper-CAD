@@ -115,6 +115,23 @@ APP_CONFIG = {
     }
 }
 
+
+def _get_int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+SVG_UPLOAD_LIMITS = {
+    "max_files": _get_int_env("SVG_MAX_FILES", 100),
+    "max_file_size_bytes": _get_int_env("SVG_MAX_FILE_SIZE_MB", 50) * 1024 * 1024,
+    "max_total_bytes": _get_int_env("SVG_MAX_TOTAL_SIZE_MB", 200) * 1024 * 1024
+}
+
 # OpenAPI タグのメタデータ
 TAGS_METADATA = [
     {
@@ -124,6 +141,10 @@ TAGS_METADATA = [
             "description": "STEP format documentation",
             "url": "https://en.wikipedia.org/wiki/ISO_10303-21",
         },
+    },
+    {
+        "name": "SVG Processing",
+        "description": "SVG to PDF conversion (SVG → PDF変換)",
     },
     {
         "name": "CityGML Processing",

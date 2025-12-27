@@ -19,10 +19,10 @@ import {
  * Test coordinates: Tokyo Station (35.681236, 139.767125)
  * Expected mesh codes (from Python implementation):
  * - 1st mesh (80km): "5339"
- * - 2nd mesh (10km): "533945"
- * - 3rd mesh (1km): "53394511"
- * - 1/2 mesh (500m): "533945111"
- * - 1/4 mesh (250m): "5339451111"
+ * - 2nd mesh (10km): "533946"
+ * - 3rd mesh (1km): "53394611"
+ * - 1/2 mesh (500m): "533946113"
+ * - 1/4 mesh (250m): "5339461132"
  */
 
 describe("Japanese Standard Regional Mesh Code Utilities", () => {
@@ -48,7 +48,7 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
     describe("latLonToMesh2nd", () => {
         test("should calculate 2nd mesh code (10km, 6 digits) for Tokyo Station", () => {
             const result = latLonToMesh2nd(TOKYO_STATION_LAT, TOKYO_STATION_LON);
-            expect(result).toBe("533945");
+            expect(result).toBe("533946");
             expect(result.length).toBe(6);
         });
 
@@ -62,7 +62,7 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
     describe("latLonToMesh3rd", () => {
         test("should calculate 3rd mesh code (1km, 8 digits) for Tokyo Station", () => {
             const result = latLonToMesh3rd(TOKYO_STATION_LAT, TOKYO_STATION_LON);
-            expect(result).toBe("53394511");
+            expect(result).toBe("53394611");
             expect(result.length).toBe(8);
         });
 
@@ -85,7 +85,7 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
     describe("latLonToMeshHalf", () => {
         test("should calculate 1/2 mesh code (500m, 9 digits) for Tokyo Station", () => {
             const result = latLonToMeshHalf(TOKYO_STATION_LAT, TOKYO_STATION_LON);
-            expect(result).toBe("533945111");
+            expect(result).toBe("533946113");
             expect(result.length).toBe(9);
         });
 
@@ -106,7 +106,7 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
     describe("latLonToMeshQuarter", () => {
         test("should calculate 1/4 mesh code (250m, 10 digits) for Tokyo Station", () => {
             const result = latLonToMeshQuarter(TOKYO_STATION_LAT, TOKYO_STATION_LON);
-            expect(result).toBe("5339451111");
+            expect(result).toBe("5339461132");
             expect(result.length).toBe(10);
         });
 
@@ -130,19 +130,19 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
         });
 
         test("should detect 2nd mesh (6 digits)", () => {
-            expect(detectMeshLevel("533945")).toBe("mesh2nd");
+            expect(detectMeshLevel("533946")).toBe("mesh2nd");
         });
 
         test("should detect 3rd mesh (8 digits)", () => {
-            expect(detectMeshLevel("53394511")).toBe("mesh3rd");
+            expect(detectMeshLevel("53394611")).toBe("mesh3rd");
         });
 
         test("should detect 1/2 mesh (9 digits)", () => {
-            expect(detectMeshLevel("533945111")).toBe("meshHalf");
+            expect(detectMeshLevel("533946113")).toBe("meshHalf");
         });
 
         test("should detect 1/4 mesh (10 digits)", () => {
-            expect(detectMeshLevel("5339451111")).toBe("meshQuarter");
+            expect(detectMeshLevel("5339461132")).toBe("meshQuarter");
         });
 
         test("should default to mesh3rd if no code provided", () => {
@@ -159,11 +159,11 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
     describe("calculateMeshCode", () => {
         test("should calculate mesh code at all levels", () => {
             expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "mesh1st")).toBe("5339");
-            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "mesh2nd")).toBe("533945");
-            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "mesh3rd")).toBe("53394511");
-            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "meshHalf")).toBe("533945111");
+            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "mesh2nd")).toBe("533946");
+            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "mesh3rd")).toBe("53394611");
+            expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "meshHalf")).toBe("533946113");
             expect(calculateMeshCode(TOKYO_STATION_LAT, TOKYO_STATION_LON, "meshQuarter")).toBe(
-                "5339451111",
+                "5339461132",
             );
         });
 
@@ -197,7 +197,7 @@ describe("Japanese Standard Regional Mesh Code Utilities", () => {
         test("should calculate mesh codes for known PLATEAU landmarks", () => {
             // JPタワー (Tokyo Station area)
             const jpTower = { lat: 35.681167, lon: 139.766947 };
-            expect(latLonToMesh3rd(jpTower.lat, jpTower.lon)).toBe("53394511");
+            expect(latLonToMesh3rd(jpTower.lat, jpTower.lon)).toBe("53394611");
 
             // 渋谷スクランブルスクエア
             const shibuyaScramble = { lat: 35.658517, lon: 139.701334 };

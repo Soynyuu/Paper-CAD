@@ -103,6 +103,18 @@ const config = defineConfig({
                         ignore: ["**/*.html", "**/*.js", "**/*.map"],
                     },
                 },
+                {
+                    from: "./node_modules/cesium/Build/Cesium/Workers",
+                    to: "cesium/Workers",
+                },
+                {
+                    from: "./node_modules/cesium/Build/Cesium/Assets",
+                    to: "cesium/Assets",
+                },
+                {
+                    from: "./node_modules/cesium/Build/Cesium/Widgets",
+                    to: "cesium/Widgets",
+                },
             ],
         }),
         new rspack.DefinePlugin({
@@ -112,6 +124,8 @@ const config = defineConfig({
                 stepUnfoldApiUrl:
                     process.env.STEP_UNFOLD_API_URL || "https://backend-paper-cad.soynyuu.com/api",
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
+                cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
+                cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",
             }),
         }),
         new rspack.HtmlRspackPlugin({

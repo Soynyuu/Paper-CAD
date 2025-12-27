@@ -49,7 +49,7 @@ export class CesiumTilesetLoader {
 
                 // Performance settings
                 maximumScreenSpaceError: 16,
-                maximumMemoryUsage: 512,
+                // maximumMemoryUsage removed - not a valid Cesium property
 
                 // Skip LOD levels for faster loading
                 skipLevelOfDetail: true,
@@ -73,8 +73,7 @@ export class CesiumTilesetLoader {
             this.viewer.scene.primitives.add(tileset);
             this.currentTileset = tileset;
 
-            // Wait for tileset to be ready
-            await tileset.readyPromise;
+            // Tileset is already ready from fromUrl() - no need to await readyPromise
 
             // Apply default styling
             this.setDefaultStyle(tileset);

@@ -158,7 +158,7 @@ export class PlateauCesiumPickerDialog {
         const loadCity = async (cityKey: string) => {
             const cityConfig = getCityConfig(cityKey);
             if (!cityConfig) {
-                PubSub.default.pub("showToast", `City not found: ${cityKey}`);
+                PubSub.default.pub("showToast", "error.plateau.cityNotFound:{0}", cityKey);
                 return;
             }
 
@@ -185,7 +185,9 @@ export class PlateauCesiumPickerDialog {
                 console.error("[PlateauCesiumPickerDialog] Failed to load city:", error);
                 PubSub.default.pub(
                     "showToast",
-                    `Failed to load ${cityConfig.name}: ${error instanceof Error ? error.message : String(error)}`,
+                    "error.plateau.cityLoadFailed:{0}:{1}",
+                    cityConfig.name,
+                    error instanceof Error ? error.message : String(error),
                 );
             } finally {
                 loadingIndicator.style.display = "none";
@@ -489,7 +491,11 @@ export class PlateauCesiumPickerDialog {
                         updateSelectedPanel();
                     } catch (error) {
                         if (error instanceof Error) {
-                            PubSub.default.pub("showToast", error.message);
+                            PubSub.default.pub(
+                                "showToast",
+                                "error.plateau.selectionFailed:{0}",
+                                error.message,
+                            );
                         }
                     }
                 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -502,7 +508,8 @@ export class PlateauCesiumPickerDialog {
                 console.error("[PlateauCesiumPickerDialog] Initialization error:", error);
                 PubSub.default.pub(
                     "showToast",
-                    `Failed to initialize Cesium: ${error instanceof Error ? error.message : String(error)}`,
+                    "error.plateau.cesiumInitFailed:{0}",
+                    error instanceof Error ? error.message : String(error),
                 );
             }
         }, 100); // Delay to ensure container is rendered

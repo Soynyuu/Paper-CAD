@@ -115,6 +115,10 @@ const config = defineConfig({
                     from: "./node_modules/cesium/Build/Cesium/Widgets",
                     to: "cesium/Widgets",
                 },
+                {
+                    from: "./node_modules/cesium/Build/Cesium/ThirdParty",
+                    to: "cesium/ThirdParty",
+                },
             ],
         }),
         new rspack.DefinePlugin({

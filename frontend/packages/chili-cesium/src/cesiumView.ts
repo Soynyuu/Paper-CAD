@@ -4,6 +4,15 @@
 import * as Cesium from "cesium";
 import type { CityConfig } from "./types";
 
+// Load Cesium CSS dynamically
+if (typeof document !== "undefined" && !document.getElementById("cesium-widget-css")) {
+    const link = document.createElement("link");
+    link.id = "cesium-widget-css";
+    link.rel = "stylesheet";
+    link.href = "/cesium/Widgets/CesiumWidget/CesiumWidget.css";
+    document.head.appendChild(link);
+}
+
 /**
  * CesiumView
  *

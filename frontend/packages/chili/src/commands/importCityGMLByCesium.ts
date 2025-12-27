@@ -54,10 +54,8 @@ export class ImportCityGMLByCesium implements ICommand {
                         try {
                             PubSub.default.pub(
                                 "showToast",
-                                I18n.translate("toast.plateau.converting").replace(
-                                    "{0}",
-                                    buildings.length.toString(),
-                                ),
+                                "toast.plateau.converting:{0}",
+                                buildings.length.toString(),
                             );
 
                             const stepBlobs: Blob[] = [];
@@ -103,7 +101,8 @@ export class ImportCityGMLByCesium implements ICommand {
                             if (stepBlobs.length === 0) {
                                 PubSub.default.pub(
                                     "showToast",
-                                    `All conversions failed. Failed buildings: ${failedBuildings.join(", ")}`,
+                                    "toast.plateau.allConversionsFailed:{0}",
+                                    failedBuildings.join(", "),
                                 );
                                 return;
                             }
@@ -129,19 +128,21 @@ export class ImportCityGMLByCesium implements ICommand {
                             document.application.activeView?.cameraController.fitContent();
 
                             // Success message
-                            const successMsg =
-                                failedBuildings.length > 0
-                                    ? I18n.translate("toast.plateau.cesiumImportSuccess")
-                                          .replace("{0}", stepBlobs.length.toString())
-                                          .concat(
-                                              ` (${failedBuildings.length} failed: ${failedBuildings.join(", ")})`,
-                                          )
-                                    : I18n.translate("toast.plateau.cesiumImportSuccess").replace(
-                                          "{0}",
-                                          stepBlobs.length.toString(),
-                                      );
-
-                            PubSub.default.pub("showToast", successMsg);
+                            if (failedBuildings.length > 0) {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}",
+                                    stepBlobs.length.toString(),
+                                    failedBuildings.length.toString(),
+                                    failedBuildings.join(", "),
+                                );
+                            } else {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.cesiumImportSuccess:{0}",
+                                    stepBlobs.length.toString(),
+                                );
+                            }
 
                             console.log("[ImportCityGMLByCesium] Import successful:", {
                                 succeeded: stepBlobs.length,
@@ -149,12 +150,16 @@ export class ImportCityGMLByCesium implements ICommand {
                             });
                         } catch (error) {
                             const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                            PubSub.default.pub("showToast", `Import failed: ${errorMessage}`);
+                            PubSub.default.pub(
+                                "showToast",
+                                "toast.plateau.cesiumImportFailed:{0}",
+                                errorMessage,
+                            );
                             console.error("[ImportCityGMLByCesium] Import failed:", error);
                         }
                     },
                     "toast.excuting{0}",
-                    I18n.translate("command.file.importCityGMLByCesium"),
+                    "command.file.importCityGMLByCesium",
                 );
             },
         );

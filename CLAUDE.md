@@ -159,15 +159,23 @@ npm run demo
   - `step_exporter.py`: Exports back to STEP format
   - `brep_exporter.py`: Exports to BREP format
 
-- **`api/`**: FastAPI routes
-  - `endpoints.py`: REST API endpoints
-    - `POST /api/step/unfold`: STEP → SVG unfolding (single-page or multi-page layout)
-    - `POST /api/step/unfold-pdf`: STEP → PDF export (multi-page papercraft templates)
-    - `POST /api/citygml/to-step`: CityGML → STEP conversion
-    - `POST /api/citygml/validate`: CityGML validation
-    - `POST /api/plateau/search-by-address`: PLATEAU building search by address
-    - `POST /api/plateau/fetch-and-convert`: One-step PLATEAU fetch & convert
-    - `GET /api/health`: Health check
+- **`api/`**: FastAPI routes (modular router structure since Issue #138)
+  - `endpoints.py`: Main router aggregator (includes all sub-routers)
+  - `routers/`: Modular API endpoints
+    - `step.py`: STEP file processing
+      - `POST /api/step/unfold`: STEP → SVG unfolding (single-page or multi-page layout)
+      - `POST /api/step/unfold-pdf`: STEP → PDF export (multi-page papercraft templates)
+    - `svg.py`: SVG processing
+      - `POST /api/svg/to-pdf`: SVG → PDF conversion
+    - `citygml.py`: CityGML conversion
+      - `POST /api/citygml/to-step`: CityGML → STEP conversion
+      - `POST /api/citygml/validate`: CityGML validation
+    - `plateau.py`: PLATEAU integration
+      - `POST /api/plateau/search-by-address`: PLATEAU building search by address
+      - `POST /api/plateau/fetch-and-convert`: One-step PLATEAU fetch & convert
+    - `system.py`: System information
+      - `GET /api/health`: Health check
+  - `helpers.py`: Shared API utilities (temp file cleanup, upload handling)
 
 - **`services/`**: Business logic
   - `step_processor.py`: Orchestrates the unfolding pipeline (calls core modules)

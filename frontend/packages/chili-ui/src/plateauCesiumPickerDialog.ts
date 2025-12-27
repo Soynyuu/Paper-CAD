@@ -10,6 +10,7 @@ import {
     getAllCities,
     getCityConfig,
     type PickedBuilding,
+    type CityConfig,
 } from "chili-cesium";
 import * as Cesium from "cesium";
 import style from "./dialog.module.css";
@@ -74,7 +75,7 @@ export class PlateauCesiumPickerDialog {
 
         // City selector dropdown
         const cities = getAllCities();
-        const cityOptions = cities.map((city) => ({
+        const cityOptions = cities.map((city: CityConfig) => ({
             value: city.key,
             text: city.name,
         }));
@@ -94,7 +95,7 @@ export class PlateauCesiumPickerDialog {
                     await loadCity(cityKey);
                 },
             },
-            ...cityOptions.map((opt) =>
+            ...cityOptions.map((opt: { value: string; text: string }) =>
                 Object.assign(document.createElement("option"), {
                     value: opt.value,
                     textContent: opt.text,
@@ -330,7 +331,7 @@ export class PlateauCesiumPickerDialog {
                     ),
                 );
             } else {
-                selected.forEach((building, index) => {
+                selected.forEach((building: PickedBuilding, index: number) => {
                     selectedPanelContainer.appendChild(createBuildingCard(building, index));
                 });
             }

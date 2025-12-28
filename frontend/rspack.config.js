@@ -61,13 +61,21 @@ const config = defineConfig({
                 type: "asset",
             },
             {
-                test: /\.(j|t)s$/,
+                test: /\.(j|t)sx?$/,
                 loader: "builtin:swc-loader",
                 options: {
                     jsc: {
                         parser: {
                             syntax: "typescript",
+                            tsx: true,
                             decorators: true,
+                        },
+                        transform: {
+                            react: {
+                                runtime: "automatic",
+                                development: process.env.NODE_ENV === "development",
+                                refresh: process.env.NODE_ENV === "development",
+                            },
                         },
                         target: "esnext",
                     },
@@ -76,7 +84,7 @@ const config = defineConfig({
         ],
     },
     resolve: {
-        extensions: [".ts", ".js"],
+        extensions: [".ts", ".tsx", ".js", ".jsx"],
         fallback: {
             fs: false,
             perf_hooks: false,
@@ -130,6 +138,7 @@ const config = defineConfig({
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
                 cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
                 cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",
+                useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),
         new rspack.HtmlRspackPlugin({

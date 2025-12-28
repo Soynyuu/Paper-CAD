@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  @apply bg-white text-slate-900;
+  /* Proportional metrics for Japanese fonts */
+  font-feature-settings: "palt";
+}
+
+.font-serif {
+  font-family: 'Shippori Mincho', serif;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}

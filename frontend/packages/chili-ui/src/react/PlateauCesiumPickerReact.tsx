@@ -3,8 +3,8 @@
 
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import { useAtom } from "jotai";
-import { CoreVisualizer, useVisualizer } from "@reearth/core";
-import type { Layer, Camera, ComputedFeature } from "@reearth/core";
+import { Viewer, Cesium3DTileset, CameraFlyTo } from "resium";
+import * as Cesium from "cesium";
 import { DialogResult, I18n, PubSub } from "chili-core";
 import type { PickedBuilding } from "chili-cesium";
 import { getAllCities, getCityConfig } from "chili-cesium";
@@ -25,20 +25,23 @@ export interface PlateauCesiumPickerReactProps {
 }
 
 /**
- * PlateauCesiumPickerReactContent - Internal component with visualizer context
+ * PlateauCesiumPickerReact - React-based PLATEAU building picker using resium
  *
- * Separated to use useVisualizer hook (must be inside CoreVisualizer context).
+ * Uses resium (React bindings for Cesium) instead of @reearth/core for better compatibility.
  */
-function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactProps) {
-    const visualizer = useVisualizer();
+export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactProps) {
+    const viewerRef = useRef<Cesium.Viewer | null>(null);
+    const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
+    const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
+    const selectedFeatureIdsRef = useRef<Set<string>>(new Set());
+    const selectedFeaturesRef = useRef<Map<string, any>>(new Map());
+
     const [currentCity, setCurrentCity] = useAtom(currentCityAtom);
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
     const [loading, setLoading] = useAtom(loadingAtom);
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
-    const [camera, setCamera] = useState<Camera | undefined>();
-    const [layers, setLayers] = useState<Layer[]>([]);
-    const currentTilesetIdRef = useRef<string | null>(null);
-    const selectedFeatureIdsRef = useRef<Set<string>>(new Set());
+    const [tilesetUrl, setTilesetUrl] = useState<string>("");
+    const [cameraDestination, setCameraDestination] = useState<Cesium.Cartesian3 | undefined>();
 
     // Initialize with first city
     useEffect(() => {
@@ -50,117 +53,73 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
 
     // Load city tileset when city changes
     useEffect(() => {
-        if (!currentCity || !visualizer.current) return;
+        if (!currentCity) return;
 
-        const loadCityTileset = async () => {
-            const cityConfig = getCityConfig(currentCity);
-            if (!cityConfig) {
-                PubSub.default.pub("showToast", "error.plateau.cityNotFound:{0}", currentCity);
-                return;
-            }
+        const cityConfig = getCityConfig(currentCity);
+        if (!cityConfig) {
+            PubSub.default.pub("showToast", "error.plateau.cityNotFound:{0}", currentCity);
+            return;
+        }
 
-            try {
-                setLoading(true);
-                setLoadingMessage(I18n.translate("plateau.cesium.loading"));
+        setLoading(true);
+        setLoadingMessage(I18n.translate("plateau.cesium.loading"));
 
-                // Clear previous selections
-                setSelectedBuildings([]);
-                selectedFeatureIdsRef.current.clear();
+        // Clear previous selections
+        setSelectedBuildings([]);
+        selectedFeatureIdsRef.current.clear();
 
-                // Remove old tileset if exists
-                if (currentTilesetIdRef.current && visualizer.current) {
-                    visualizer.current.layers.deleteLayer(currentTilesetIdRef.current);
-                }
+        // Update tileset URL
+        setTilesetUrl(cityConfig.tilesetUrl);
 
-                // Create new tileset layer
-                const tilesetId = `plateau-tileset-${currentCity}`;
-                const newLayer: Layer = {
-                    type: "simple",
-                    id: tilesetId,
-                    title: cityConfig.name,
-                    visible: true,
-                    data: {
-                        type: "3dtiles",
-                        url: cityConfig.tilesetUrl,
-                    },
-                    "3dtiles": {
-                        show: true,
-                        color: "#ffffff",
-                        selectedFeatureColor: "#ffeb3b",
-                        shadows: "enabled",
-                    },
-                };
+        // Set camera destination
+        const destination = Cesium.Cartesian3.fromDegrees(
+            cityConfig.initialView.longitude,
+            cityConfig.initialView.latitude,
+            cityConfig.initialView.height,
+        );
+        setCameraDestination(destination);
 
-                if (!visualizer.current) {
-                    throw new Error("Visualizer not initialized");
-                }
+        // Loading will be cleared when tileset loads
+    }, [currentCity, setSelectedBuildings, setLoading, setLoadingMessage]);
 
-                const addedLayer = visualizer.current.layers.add(newLayer);
-                currentTilesetIdRef.current = tilesetId;
+    // Setup click handler when viewer is ready
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer) return;
 
-                // Update layers state
-                setLayers([newLayer]);
+        // Clean up old handler
+        if (handlerRef.current) {
+            handlerRef.current.destroy();
+        }
 
-                // Fly to city
-                await visualizer.current.engine.flyTo(
-                    {
-                        lat: cityConfig.initialView.latitude,
-                        lng: cityConfig.initialView.longitude,
-                        height: cityConfig.initialView.height,
-                        heading: 0,
-                        pitch: -Math.PI / 4,
-                        roll: 0,
-                        fov: Math.PI / 3,
-                    },
-                    { duration: 2 },
-                );
+        // Create new handler
+        const handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+        handlerRef.current = handler;
 
-                setCamera({
-                    lat: cityConfig.initialView.latitude,
-                    lng: cityConfig.initialView.longitude,
-                    height: cityConfig.initialView.height,
-                    heading: 0,
-                    pitch: -Math.PI / 4,
-                    roll: 0,
-                    fov: Math.PI / 3,
-                });
-            } catch (error) {
-                console.error("[PlateauCesiumPickerReact] Failed to load city:", error);
-                PubSub.default.pub(
-                    "showToast",
-                    "error.plateau.cityLoadFailed:{0}:{1}",
-                    cityConfig?.name || currentCity,
-                    error instanceof Error ? error.message : String(error),
-                );
-            } finally {
-                setLoading(false);
-                setLoadingMessage("");
-            }
-        };
+        handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+            const pickedObject = viewer.scene.pick(click.position);
+            if (!pickedObject || !pickedObject.content) return;
 
-        loadCityTileset();
-    }, [currentCity, visualizer, setSelectedBuildings, setLoading, setLoadingMessage]);
-
-    // Handle layer selection (building picking)
-    const handleLayerSelect = useCallback(
-        async (
-            layerId: string | undefined,
-            layerGetter: (() => Promise<any>) | undefined,
-            feature: ComputedFeature | undefined,
-            reason: any,
-        ) => {
-            if (!feature || !layerId) return;
+            const feature = pickedObject.content.getFeature(pickedObject.featureId);
+            if (!feature) return;
 
             // Get feature properties
-            const properties = feature.properties || {};
-            const featureType = properties.feature_type;
-            const gmlId = properties["gml:id"] || properties.gmlid;
+            const properties: Record<string, any> = {};
+            const propertyIds = feature.getPropertyIds();
+            propertyIds.forEach((id: string) => {
+                properties[id] = feature.getProperty(id);
+            });
+
+            const featureType = properties["feature_type"];
+            const gmlId = properties["gml:id"] || properties["gmlid"];
 
             // Only process building features
             if (featureType !== "bldg:Building" || !gmlId) return;
 
             // Check if Ctrl key was pressed (multi-select)
-            const isMultiSelect = (reason as any)?.ctrlKey || false;
+            const isMultiSelect =
+                viewer.scene.screenSpaceCameraController.enableInputs &&
+                (click as any).modifier === Cesium.KeyboardEventModifier.CTRL;
 
             // Toggle selection
             const isSelected = selectedFeatureIdsRef.current.has(gmlId);
@@ -168,50 +127,58 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
             if (isSelected) {
                 // Remove from selection
                 selectedFeatureIdsRef.current.delete(gmlId);
+                selectedFeaturesRef.current.delete(gmlId);
                 setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
+                feature.color = Cesium.Color.WHITE;
             } else {
                 // Add to selection
                 if (!isMultiSelect) {
                     // Single select: clear previous
+                    selectedFeaturesRef.current.forEach((prevFeature) => {
+                        prevFeature.color = Cesium.Color.WHITE;
+                    });
                     selectedFeatureIdsRef.current.clear();
+                    selectedFeaturesRef.current.clear();
                     setSelectedBuildings([]);
                 }
 
-                // Extract building data
-                // Note: feature.geometry.coordinates type is complex (Position | Position[] | ...)
-                // For Point geometry, it's [lng, lat, height] as Position type
-                const coords = feature.geometry?.coordinates;
-                const getCoordinate = (index: number): number => {
-                    if (Array.isArray(coords) && typeof coords[index] === "number") {
-                        return coords[index] as number;
-                    }
-                    return 0;
-                };
+                // Get building position from cartographic
+                const cartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(
+                    pickedObject.content.tile.boundingSphere.center,
+                );
 
                 const pickedBuilding: PickedBuilding = {
                     gmlId,
-                    meshCode: properties.meshcode || "",
+                    meshCode: properties["meshcode"] || "",
                     position: {
-                        latitude: getCoordinate(1),
-                        longitude: getCoordinate(0),
-                        height: getCoordinate(2),
+                        latitude: Cesium.Math.toDegrees(cartographic.latitude),
+                        longitude: Cesium.Math.toDegrees(cartographic.longitude),
+                        height: cartographic.height,
                     },
                     properties: {
                         name: properties["gml:name"] || undefined,
                         usage: properties["bldg:usage"] || undefined,
                         measuredHeight: properties["bldg:measuredHeight"] || 0,
                         cityName: getCityConfig(currentCity)?.name || "",
-                        meshcode: properties.meshcode || "",
+                        meshcode: properties["meshcode"] || "",
                         featureType: "bldg:Building",
                     },
                 };
 
                 selectedFeatureIdsRef.current.add(gmlId);
+                selectedFeaturesRef.current.set(gmlId, feature);
                 setSelectedBuildings((prev) => [...prev, pickedBuilding]);
+                feature.color = Cesium.Color.YELLOW;
             }
-        },
-        [currentCity, setSelectedBuildings],
-    );
+        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        return () => {
+            if (handlerRef.current) {
+                handlerRef.current.destroy();
+                handlerRef.current = null;
+            }
+        };
+    }, [currentCity, setSelectedBuildings]);
 
     // Handle city change
     const handleCityChange = useCallback(
@@ -226,6 +193,13 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
         (gmlId: string) => {
             selectedFeatureIdsRef.current.delete(gmlId);
             setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
+
+            // Reset color using stored feature reference
+            const feature = selectedFeaturesRef.current.get(gmlId);
+            if (feature) {
+                feature.color = Cesium.Color.WHITE;
+            }
+            selectedFeaturesRef.current.delete(gmlId);
         },
         [setSelectedBuildings],
     );
@@ -241,7 +215,13 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
 
     // Handle clear
     const handleClear = useCallback(() => {
+        // Reset all colors using stored feature references
+        selectedFeaturesRef.current.forEach((feature) => {
+            feature.color = Cesium.Color.WHITE;
+        });
+
         selectedFeatureIdsRef.current.clear();
+        selectedFeaturesRef.current.clear();
         setSelectedBuildings([]);
     }, [setSelectedBuildings]);
 
@@ -250,8 +230,26 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
         onClose(DialogResult.cancel);
     }, [onClose]);
 
+    // Handle tileset ready
+    const handleTilesetReady = useCallback(
+        (tileset: Cesium.Cesium3DTileset) => {
+            tilesetRef.current = tileset;
+            setLoading(false);
+            setLoadingMessage("");
+        },
+        [setLoading, setLoadingMessage],
+    );
+
+    // Handle viewer ready
+    const handleViewerReady = useCallback((ref: any) => {
+        // resium refs contain the Cesium element in cesiumElement property
+        if (ref && ref.cesiumElement) {
+            viewerRef.current = ref.cesiumElement;
+        }
+    }, []);
+
     return (
-        <>
+        <div className={styles.dialog}>
             <Header
                 currentCity={currentCity}
                 onCityChange={handleCityChange}
@@ -260,22 +258,37 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
             />
             <div className={styles.body}>
                 <div className={styles.mapContainer}>
-                    <CoreVisualizer
-                        engine="cesium"
-                        ready={true}
-                        layers={layers}
-                        camera={camera}
-                        onLayerSelect={handleLayerSelect}
-                        sceneProperty={{
-                            tiles: [
-                                {
-                                    id: "default",
-                                    tile_type: "default",
-                                },
-                            ],
-                        }}
+                    <Viewer
+                        full
+                        ref={handleViewerReady}
+                        timeline={false}
+                        animation={false}
+                        baseLayerPicker={false}
+                        geocoder={false}
+                        homeButton={false}
+                        navigationHelpButton={false}
+                        sceneModePicker={false}
+                        selectionIndicator={false}
+                        infoBox={false}
                         style={{ width: "100%", height: "100%" }}
-                    />
+                    >
+                        {tilesetUrl && (
+                            <>
+                                <Cesium3DTileset url={tilesetUrl} onReady={handleTilesetReady} />
+                                {cameraDestination && (
+                                    <CameraFlyTo
+                                        destination={cameraDestination}
+                                        duration={2}
+                                        orientation={{
+                                            heading: 0,
+                                            pitch: Cesium.Math.toRadians(-45),
+                                            roll: 0,
+                                        }}
+                                    />
+                                )}
+                            </>
+                        )}
+                    </Viewer>
                     <Instructions />
                     {loading && <Loading message={loadingMessage} />}
                 </div>
@@ -286,19 +299,6 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
                     onClear={handleClear}
                 />
             </div>
-        </>
-    );
-}
-
-/**
- * PlateauCesiumPickerReact - React-based PLATEAU building picker using @reearth/core
- *
- * Main dialog component that provides visualizer context.
- */
-export function PlateauCesiumPickerReact(props: PlateauCesiumPickerReactProps) {
-    return (
-        <div className={styles.dialog}>
-            <PlateauCesiumPickerReactContent {...props} />
         </div>
     );
 }

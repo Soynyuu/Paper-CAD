@@ -4,6 +4,8 @@
 export { PlateauCesiumPickerReact } from "./PlateauCesiumPickerReact";
 export type { PlateauCesiumPickerReactProps } from "./PlateauCesiumPickerReact";
 
+export { renderReactDialog } from "./renderReactDialog";
+
 // Re-export atoms for external use if needed
 export {
     currentCityAtom,

@@ -24,6 +24,8 @@ export interface PlateauCesiumPickerResult {
  *
  * Interactive dialog for picking PLATEAU buildings from Cesium 3D Tiles.
  * Implements an "Immersive Map & Sidebar" layout.
+ *
+ * Automatically uses React-based picker if USE_REACT_CESIUM_PICKER feature flag is enabled.
  */
 export class PlateauCesiumPickerDialog {
     private constructor() {}
@@ -32,6 +34,12 @@ export class PlateauCesiumPickerDialog {
         app: IApplication,
         callback?: (result: DialogResult, data?: PlateauCesiumPickerResult) => void,
     ) {
+        // Check feature flag for React-based picker
+        if (__APP_CONFIG__.useReactCesiumPicker) {
+            return PlateauCesiumPickerDialog.showReact(callback);
+        }
+
+        // Legacy Web Components implementation
         const dialog = document.createElement("dialog");
         dialog.className = style.dialog;
         document.body.appendChild(dialog);
@@ -360,5 +368,22 @@ export class PlateauCesiumPickerDialog {
                 );
             }
         }, 100);
+    }
+
+    /**
+     * Show React-based Cesium picker (when feature flag enabled)
+     */
+    private static showReact(callback?: (result: DialogResult, data?: PlateauCesiumPickerResult) => void) {
+        // Lazy load React components to avoid bundling when not used
+        import("./react").then(({ PlateauCesiumPickerReact, renderReactDialog }) => {
+            const cleanup = renderReactDialog(PlateauCesiumPickerReact, {
+                onClose: (result, data) => {
+                    cleanup();
+                    if (callback) {
+                        callback(result, data);
+                    }
+                },
+            });
+        });
     }
 }

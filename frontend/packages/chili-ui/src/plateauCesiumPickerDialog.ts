@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { button, div, select } from "chili-controls";
+import { button, div, label, select } from "chili-controls";
 import { DialogResult, I18n, IApplication, PubSub } from "chili-core";
 import {
     CesiumBuildingPicker,
@@ -13,7 +13,7 @@ import {
     type CityConfig,
 } from "chili-cesium";
 import * as Cesium from "cesium";
-import style from "./plateauCesiumPickerDialog.module.css";
+import style from "./dialog.module.css";
 
 export interface PlateauCesiumPickerResult {
     selectedBuildings: PickedBuilding[];
@@ -23,9 +23,14 @@ export interface PlateauCesiumPickerResult {
  * PlateauCesiumPickerDialog
  *
  * Interactive dialog for picking PLATEAU buildings from Cesium 3D Tiles.
- * Implements an "Immersive Map & Sidebar" layout.
  *
- * Automatically uses React-based picker if USE_REACT_CESIUM_PICKER feature flag is enabled.
+ * Features:
+ * - Cesium 3D Tiles viewer (75% width)
+ * - Selected buildings panel (25% width)
+ * - City dropdown selector
+ * - Multi-select with Ctrl+Click
+ * - Building metadata display
+ * - Batch import
  */
 export class PlateauCesiumPickerDialog {
     private constructor() {}
@@ -34,14 +39,7 @@ export class PlateauCesiumPickerDialog {
         app: IApplication,
         callback?: (result: DialogResult, data?: PlateauCesiumPickerResult) => void,
     ) {
-        // Check feature flag for React-based picker
-        if (__APP_CONFIG__.useReactCesiumPicker) {
-            return PlateauCesiumPickerDialog.showReact(callback);
-        }
-
-        // Legacy Web Components implementation
         const dialog = document.createElement("dialog");
-        dialog.className = style.dialog;
         document.body.appendChild(dialog);
 
         // State
@@ -50,78 +48,32 @@ export class PlateauCesiumPickerDialog {
         let buildingPicker: CesiumBuildingPicker | null = null;
         let clickHandler: Cesium.ScreenSpaceEventHandler | null = null;
 
-        // --- Components ---
-
-        // 1. Map Container (Left/Main)
-        const viewerContainer = div({ className: style.mapContainer });
-
-        // Instructions Overlay
-        const instructionsOverlay = div(
-            { className: style.instructions },
-            div(
-                { className: style.instructionsTitle },
-                div({
-                    style: {
-                        display: "inline-block",
-                        width: "8px",
-                        height: "8px",
-                        backgroundColor: "#4CAF50",
-                        borderRadius: "50%",
-                    },
-                }), // Status dot
-                I18n.translate("plateau.cesium.clickToSelect"),
-            ),
-            div(I18n.translate("plateau.cesium.instructions.click")),
-            div(I18n.translate("plateau.cesium.instructions.ctrlClick")),
-            div(I18n.translate("plateau.cesium.instructions.clearArea")),
-        );
-        viewerContainer.appendChild(instructionsOverlay);
-
-        // Loading Indicator
-        const loadingIndicator = div(
-            { className: style.loading, style: { display: "none" } },
-            I18n.translate("plateau.cesium.loading"),
-        );
-        viewerContainer.appendChild(loadingIndicator);
-
-        // 2. Sidebar (Right)
-        const sidebarList = div({ className: style.sidebarList });
-        const sidebarHeader = div({ className: style.sidebarHeader }); // Will hold count
-
-        // Import Button (Sidebar Footer)
-        const importButton = button({
-            className: style.importButton,
-            textContent: I18n.translate("plateau.cesium.importSelected"),
-            disabled: true,
-            onclick: () => {
-                if (!buildingPicker) return;
-                const selected = buildingPicker.getSelectedBuildings();
-                if (selected.length === 0) {
-                    PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
-                    return;
-                }
-                closeDialog(DialogResult.ok, { selectedBuildings: selected });
+        // Cesium viewer container (left panel, 75%)
+        const viewerContainer = div({
+            style: {
+                width: "75%",
+                height: "600px",
+                position: "relative",
+                backgroundColor: "#000",
             },
         });
 
-        // Clear Button (Sidebar Footer)
-        const clearButton = button({
-            className: style.clearButton,
-            textContent: I18n.translate("plateau.cesium.clearSelection"),
-            style: { display: "none" }, // Hidden initially
-            onclick: () => {
-                if (buildingPicker) {
-                    buildingPicker.clearSelection();
-                    updateSelectedPanel();
-                }
+        // Selected buildings panel (right panel, 25%)
+        const selectedPanelContainer = div({
+            style: {
+                width: "25%",
+                height: "600px",
+                overflowY: "auto",
+                borderLeft: "1px solid var(--border-color)",
+                padding: "12px",
+                backgroundColor: "var(--neutral-50)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
             },
         });
 
-        const sidebarFooter = div({ className: style.sidebarFooter }, importButton, clearButton);
-
-        const sidebar = div({ className: style.sidebar }, sidebarHeader, sidebarList, sidebarFooter);
-
-        // 3. Header Controls (City Selector + Close)
+        // City selector dropdown
         const cities = getAllCities();
         const cityOptions = cities.map((city: CityConfig) => ({
             value: city.key,
@@ -130,7 +82,14 @@ export class PlateauCesiumPickerDialog {
 
         const citySelectElement = select(
             {
-                className: style.citySelect,
+                style: {
+                    width: "100%",
+                    padding: "8px",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "var(--font-size-sm)",
+                    marginBottom: "12px",
+                },
                 onchange: async (e) => {
                     const cityKey = (e.target as HTMLSelectElement).value;
                     await loadCity(cityKey);
@@ -144,19 +103,54 @@ export class PlateauCesiumPickerDialog {
             ),
         );
 
-        const closeButton = button({
-            className: style.closeButton,
-            innerHTML: `<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M14 1.41L12.59 0L7 5.59L1.41 0L0 1.41L5.59 7L0 12.59L1.41 14L7 8.41L12.59 14L14 12.59L8.41 7L14 1.41Z"/></svg>`,
-            onclick: () => closeDialog(DialogResult.cancel),
-        });
-
-        const header = div(
-            { className: style.header },
-            div({ className: style.title }, "Building Picker"),
-            div({ className: style.headerControls }, citySelectElement, closeButton),
+        // Instructions overlay
+        const instructionsOverlay = div(
+            {
+                style: {
+                    position: "absolute",
+                    top: "12px",
+                    left: "12px",
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    color: "white",
+                    padding: "12px",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "var(--font-size-sm)",
+                    zIndex: "1000",
+                    maxWidth: "300px",
+                },
+            },
+            div(
+                { style: { fontWeight: "bold", marginBottom: "4px" } },
+                I18n.translate("plateau.cesium.clickToSelect"),
+            ),
+            div("• Click: Select single building"),
+            div("• Ctrl+Click: Toggle multi-select"),
+            div("• Click empty area: Clear selection"),
         );
 
-        // --- Logic Functions ---
+        viewerContainer.appendChild(instructionsOverlay);
+
+        // Loading indicator
+        const loadingIndicator = div(
+            {
+                style: {
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.8)",
+                    color: "white",
+                    padding: "20px 40px",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: "var(--font-size-md)",
+                    zIndex: "1001",
+                    display: "none",
+                },
+            },
+            "Loading 3D Tiles...",
+        );
+
+        viewerContainer.appendChild(loadingIndicator);
 
         /**
          * Load city tileset
@@ -169,15 +163,23 @@ export class PlateauCesiumPickerDialog {
             }
 
             try {
-                loadingIndicator.style.display = "flex";
+                // Show loading
+                loadingIndicator.style.display = "block";
 
-                if (buildingPicker) buildingPicker.clearSelection();
+                // Clear previous selection
+                if (buildingPicker) {
+                    buildingPicker.clearSelection();
+                }
 
+                // Load tileset
                 if (tilesetLoader && cesiumView) {
                     await tilesetLoader.loadTileset(cityConfig.tilesetUrl);
+
+                    // Fly to city
                     cesiumView.flyToCity(cityConfig);
                 }
 
+                // Update panel
                 updateSelectedPanel();
             } catch (error) {
                 console.error("[PlateauCesiumPickerDialog] Failed to load city:", error);
@@ -193,7 +195,7 @@ export class PlateauCesiumPickerDialog {
         };
 
         /**
-         * Create building card
+         * Create building card for selected panel
          */
         const createBuildingCard = (building: PickedBuilding, index: number): HTMLElement => {
             const height = building.properties.measuredHeight || 0;
@@ -212,10 +214,18 @@ export class PlateauCesiumPickerDialog {
                 ? usageCodeMap[building.properties.usage] || building.properties.usage
                 : "N/A";
 
+            // Remove button
             const removeBtn = button({
-                className: style.removeButton,
-                textContent: "×",
-                title: I18n.translate("items.tool.delete"),
+                textContent: "✕",
+                style: {
+                    backgroundColor: "var(--error-color)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    fontSize: "var(--font-size-xs)",
+                },
                 onclick: (e) => {
                     e.stopPropagation();
                     if (buildingPicker) {
@@ -226,120 +236,256 @@ export class PlateauCesiumPickerDialog {
             });
 
             return div(
-                { className: style.buildingCard },
+                {
+                    style: {
+                        padding: "10px",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "var(--neutral-100)",
+                        fontSize: "var(--font-size-xs)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "4px",
+                    },
+                },
                 div(
-                    { className: style.cardHeader },
-                    div(
-                        { className: style.buildingName },
-                        `#${index + 1} ${building.properties.name || "Unnamed Building"}`,
-                    ),
+                    {
+                        style: {
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            fontWeight: "bold",
+                            fontSize: "var(--font-size-sm)",
+                            marginBottom: "4px",
+                        },
+                    },
+                    div(`#${index + 1}: ${building.properties.name || "Unnamed Building"}`),
                     removeBtn,
                 ),
-                div({ className: style.cardDetail }, div(`${height.toFixed(1)}m`), div(usageLabel)),
-                div({ className: style.cardId }, `ID: ${building.gmlId}`),
+                div(`高さ: ${height.toFixed(1)}m`),
+                div(`用途: ${usageLabel}`),
+                div(`都市: ${building.properties.cityName || "N/A"}`),
+                div({
+                    style: {
+                        fontSize: "10px",
+                        color: "var(--neutral-500)",
+                        fontFamily: "monospace",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                    },
+                    textContent: `GML ID: ${building.gmlId.substring(0, 30)}...`,
+                }),
+                div({
+                    style: {
+                        fontSize: "10px",
+                        color: "var(--neutral-500)",
+                        fontFamily: "monospace",
+                    },
+                    textContent: `Mesh: ${building.meshCode}`,
+                }),
             );
         };
 
         /**
-         * Update sidebar
+         * Update selected buildings panel
          */
         const updateSelectedPanel = () => {
             if (!buildingPicker) return;
 
-            sidebarList.innerHTML = "";
+            selectedPanelContainer.innerHTML = "";
+
             const selected = buildingPicker.getSelectedBuildings();
             const count = selected.length;
 
-            // Update Header
-            sidebarHeader.innerHTML = "";
-            if (count > 0) {
-                sidebarHeader.appendChild(
+            // Header
+            selectedPanelContainer.appendChild(
+                div(
+                    {
+                        style: {
+                            fontWeight: "bold",
+                            fontSize: "var(--font-size-md)",
+                            marginBottom: "8px",
+                            padding: "8px",
+                            backgroundColor: "var(--primary-color)",
+                            color: "white",
+                            borderRadius: "var(--radius-sm)",
+                            textAlign: "center",
+                        },
+                    },
+                    `${I18n.translate("plateau.cesium.selectedCount").replace("{0}", count.toString())}`,
+                ),
+            );
+
+            // Building cards
+            if (count === 0) {
+                selectedPanelContainer.appendChild(
                     div(
                         {
                             style: {
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
+                                textAlign: "center",
+                                color: "var(--neutral-500)",
+                                fontSize: "var(--font-size-sm)",
+                                padding: "20px",
                             },
                         },
-                        div("Selected Buildings"),
-                        div({ className: style.selectionCount }, `${count}`),
+                        "No buildings selected",
                     ),
                 );
             } else {
-                sidebarHeader.textContent = "Selection";
-            }
-
-            // Update List
-            if (count === 0) {
-                sidebarList.appendChild(
-                    div(
-                        { className: style.emptyState },
-                        div({
-                            innerHTML: `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.3;"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
-                        }),
-                        div(I18n.translate("plateau.cesium.noBuildingsSelected")),
-                    ),
-                );
-            } else {
-                selected.forEach((b, i) => {
-                    sidebarList.appendChild(createBuildingCard(b, i));
+                selected.forEach((building: PickedBuilding, index: number) => {
+                    selectedPanelContainer.appendChild(createBuildingCard(building, index));
                 });
             }
 
-            // Update Footer Buttons
-            importButton.disabled = count === 0;
-            importButton.textContent =
-                count > 0
-                    ? `${I18n.translate("plateau.cesium.importSelected")} (${count})`
-                    : I18n.translate("plateau.cesium.importSelected");
+            // Clear all button
+            if (count > 0) {
+                selectedPanelContainer.appendChild(
+                    button({
+                        textContent: I18n.translate("plateau.cesium.clearSelection"),
+                        style: {
+                            width: "100%",
+                            padding: "8px",
+                            marginTop: "8px",
+                            backgroundColor: "var(--neutral-300)",
+                            border: "none",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                        },
+                        onclick: () => {
+                            if (buildingPicker) {
+                                buildingPicker.clearSelection();
+                                updateSelectedPanel();
+                            }
+                        },
+                    }),
+                );
+            }
 
-            clearButton.style.display = count > 0 ? "block" : "none";
+            // Update import button state
+            importButton.disabled = count === 0;
         };
 
-        // --- Assembly ---
+        // Import button
+        const importButton = button({
+            textContent: I18n.translate("plateau.cesium.importSelected"),
+            disabled: true,
+            style: {
+                backgroundColor: "var(--primary-color)",
+                color: "white",
+                padding: "10px 20px",
+                border: "none",
+                borderRadius: "var(--radius-sm)",
+                cursor: "pointer",
+                fontSize: "var(--font-size-md)",
+            },
+            onclick: () => {
+                if (!buildingPicker) return;
 
-        const body = div({ className: style.body }, viewerContainer, sidebar);
+                const selected = buildingPicker.getSelectedBuildings();
+                if (selected.length === 0) {
+                    alert("Please select at least one building");
+                    return;
+                }
 
-        dialog.appendChild(header);
-        dialog.appendChild(body);
+                closeDialog(DialogResult.ok, { selectedBuildings: selected });
+            },
+        });
 
-        // --- Dialog Lifecycle ---
+        // Main content layout
+        const content = div(
+            {
+                style: {
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    width: "1200px",
+                    maxWidth: "90vw",
+                },
+            },
+            // City selector
+            div(
+                { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+                label(
+                    { style: { fontSize: "var(--font-size-sm)", fontWeight: "500" } },
+                    I18n.translate("plateau.cesium.selectCity"),
+                ),
+                citySelectElement,
+            ),
+            // Viewer + Selected panel
+            div(
+                {
+                    style: {
+                        display: "flex",
+                        height: "600px",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "var(--radius-sm)",
+                        overflow: "hidden",
+                    },
+                },
+                viewerContainer,
+                selectedPanelContainer,
+            ),
+        );
 
         const closeDialog = (result: DialogResult, data?: PlateauCesiumPickerResult) => {
-            if (clickHandler) clickHandler.destroy();
-            if (buildingPicker) buildingPicker.dispose();
-            if (cesiumView) cesiumView.dispose();
+            // Cleanup
+            if (clickHandler) {
+                clickHandler.destroy();
+            }
+            if (cesiumView) {
+                cesiumView.dispose();
+            }
+
             dialog.remove();
             callback?.(result, data);
         };
 
+        // Dialog structure
+        dialog.appendChild(
+            div(
+                { className: style.root },
+                div({ className: style.title }, "PLATEAU Cesium 3D Tiles - Building Picker"),
+                div({ className: style.content }, content),
+                div(
+                    { className: style.buttons },
+                    importButton,
+                    button({
+                        textContent: I18n.translate("common.cancel"),
+                        onclick: () => closeDialog(DialogResult.cancel),
+                    }),
+                ),
+            ),
+        );
+
+        // Initialize Cesium after dialog is shown
         dialog.addEventListener("close", () => closeDialog(DialogResult.cancel));
-        dialog.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-                e.preventDefault();
-                closeDialog(DialogResult.cancel);
-            }
-        });
 
         dialog.showModal();
 
-        // Initialize Cesium
+        // Initialize Cesium viewer
         setTimeout(async () => {
             try {
+                // Initialize Cesium view
                 cesiumView = new CesiumView(viewerContainer);
                 cesiumView.initialize();
 
                 const viewer = cesiumView.getViewer();
-                if (!viewer) throw new Error("Failed to initialize Cesium viewer");
+                if (!viewer) {
+                    throw new Error("Failed to initialize Cesium viewer");
+                }
 
+                // Initialize loader and picker
                 tilesetLoader = new CesiumTilesetLoader(viewer);
                 buildingPicker = new CesiumBuildingPicker(viewer);
 
+                // Setup click handler
                 clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
                 clickHandler.setInputAction((click: any) => {
                     if (!buildingPicker) return;
+
                     const multiSelect = click.modifier === Cesium.KeyboardEventModifier.CTRL;
+
                     try {
                         buildingPicker.pickBuilding(click.position, multiSelect);
                         updateSelectedPanel();
@@ -354,11 +500,10 @@ export class PlateauCesiumPickerDialog {
                     }
                 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-                // Initial Load
+                // Load first city
                 if (cities.length > 0) {
                     await loadCity(cities[0].key);
                 }
-                updateSelectedPanel(); // Init empty state
             } catch (error) {
                 console.error("[PlateauCesiumPickerDialog] Initialization error:", error);
                 PubSub.default.pub(
@@ -367,23 +512,20 @@ export class PlateauCesiumPickerDialog {
                     error instanceof Error ? error.message : String(error),
                 );
             }
-        }, 100);
-    }
+        }, 100); // Delay to ensure container is rendered
 
-    /**
-     * Show React-based Cesium picker (when feature flag enabled)
-     */
-    private static showReact(callback?: (result: DialogResult, data?: PlateauCesiumPickerResult) => void) {
-        // Lazy load React components to avoid bundling when not used
-        import("./react").then(({ PlateauCesiumPickerReact, renderReactDialog }) => {
-            const cleanup = renderReactDialog(PlateauCesiumPickerReact, {
-                onClose: (result, data) => {
-                    cleanup();
-                    if (callback) {
-                        callback(result, data);
-                    }
-                },
-            });
+        // Handle keyboard
+        const handleKeydown = (e: KeyboardEvent) => {
+            e.stopPropagation();
+            if (e.key === "Escape") {
+                e.preventDefault();
+                closeDialog(DialogResult.cancel);
+            }
+        };
+
+        dialog.addEventListener("keydown", handleKeydown);
+        dialog.addEventListener("click", (e) => {
+            e.stopPropagation();
         });
     }
 }

@@ -230,13 +230,4 @@ export class CesiumBuildingPicker {
     getBuilding(gmlId: string): PickedBuilding | undefined {
         return this.selectedBuildings.get(gmlId);
     }
-
-    /**
-     * Dispose of all resources and clear all selections
-     * Call this when the picker is no longer needed (e.g., dialog close)
-     */
-    dispose(): void {
-        this.clearSelection();
-        // All Maps are already cleared by clearSelection()
-    }
 }

@@ -166,7 +166,6 @@ const config = defineConfig({
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
                 cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
                 cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",
-                useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),
         new rspack.HtmlRspackPlugin({

@@ -58,7 +58,7 @@ export class ImportCityGMLByCesium implements ICommand {
                                 buildings.length.toString(),
                             );
 
-                            const conversions: Array<{ blob: Blob; building: (typeof buildings)[0] }> = [];
+                            const stepBlobs: Blob[] = [];
                             const failedBuildings: string[] = [];
 
                             // Convert each building to STEP
@@ -88,8 +88,7 @@ export class ImportCityGMLByCesium implements ICommand {
                                         continue;
                                     }
 
-                                    // Store blob WITH its corresponding building metadata
-                                    conversions.push({ blob: result.value, building });
+                                    stepBlobs.push(result.value);
                                 } catch (error) {
                                     console.error(
                                         `[ImportCityGMLByCesium] Exception converting ${building.gmlId}:`,
@@ -99,7 +98,7 @@ export class ImportCityGMLByCesium implements ICommand {
                                 }
                             }
 
-                            if (conversions.length === 0) {
+                            if (stepBlobs.length === 0) {
                                 PubSub.default.pub(
                                     "showToast",
                                     "toast.plateau.allConversionsFailed:{0}",
@@ -113,10 +112,10 @@ export class ImportCityGMLByCesium implements ICommand {
                                 document,
                                 "import PLATEAU Cesium models",
                                 async () => {
-                                    for (let i = 0; i < conversions.length; i++) {
-                                        const { blob, building } = conversions[i]; // Correct mapping!
+                                    for (let i = 0; i < stepBlobs.length; i++) {
+                                        const building = buildings[i];
                                         const filename = `cesium_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
-                                        const stepFile = new File([blob], filename, {
+                                        const stepFile = new File([stepBlobs[i]], filename, {
                                             type: "application/step",
                                         });
 
@@ -133,7 +132,7 @@ export class ImportCityGMLByCesium implements ICommand {
                                 PubSub.default.pub(
                                     "showToast",
                                     "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}",
-                                    conversions.length.toString(),
+                                    stepBlobs.length.toString(),
                                     failedBuildings.length.toString(),
                                     failedBuildings.join(", "),
                                 );
@@ -141,12 +140,12 @@ export class ImportCityGMLByCesium implements ICommand {
                                 PubSub.default.pub(
                                     "showToast",
                                     "toast.plateau.cesiumImportSuccess:{0}",
-                                    conversions.length.toString(),
+                                    stepBlobs.length.toString(),
                                 );
                             }
 
                             console.log("[ImportCityGMLByCesium] Import successful:", {
-                                succeeded: conversions.length,
+                                succeeded: stepBlobs.length,
                                 failed: failedBuildings.length,
                             });
                         } catch (error) {

@@ -72,18 +72,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [tilesetUrl, setTilesetUrl] = useState<string>("");
     const [cameraDestination, setCameraDestination] = useState<Cesium.Cartesian3 | undefined>();
     const [viewerReady, setViewerReady] = useState(false);
-    const baseLayer = useMemo(() => {
-        if (typeof window === "undefined") {
-            return undefined;
-        }
-
-        // GSI tiles (Japan) - return ImageryProvider directly for resium
-        return new Cesium.UrlTemplateImageryProvider({
-            url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-            credit: "GSI Tiles",
-            maximumLevel: 18,
-        });
-    }, []);
 
     // Initialize with first city
     useEffect(() => {
@@ -364,7 +352,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         ref={handleViewerReady}
                         timeline={false}
                         animation={false}
-                        baseLayer={baseLayer}
+                        baseLayer={false}
                         baseLayerPicker={false}
                         geocoder={false}
                         homeButton={false}

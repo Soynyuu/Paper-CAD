@@ -95,7 +95,11 @@ export class CesiumTilesetLoader {
      */
     unloadTileset(): void {
         if (this.currentTileset) {
-            this.viewer.scene.primitives.remove(this.currentTileset);
+            const tileset = this.currentTileset;
+            this.viewer.scene.primitives.remove(tileset);
+            // CRITICAL: Destroy tileset to release WebGL resources (textures, vertex buffers, index buffers)
+            // Without this, switching cities repeatedly causes progressive memory leak
+            tileset.destroy();
             this.currentTileset = null;
         }
     }

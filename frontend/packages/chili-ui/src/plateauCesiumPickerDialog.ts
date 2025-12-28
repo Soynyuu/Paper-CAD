@@ -123,9 +123,9 @@ export class PlateauCesiumPickerDialog {
                 { style: { fontWeight: "bold", marginBottom: "4px" } },
                 I18n.translate("plateau.cesium.clickToSelect"),
             ),
-            div("• Click: Select single building"),
-            div("• Ctrl+Click: Toggle multi-select"),
-            div("• Click empty area: Clear selection"),
+            div(I18n.translate("plateau.cesium.instructions.click")),
+            div(I18n.translate("plateau.cesium.instructions.ctrlClick")),
+            div(I18n.translate("plateau.cesium.instructions.clearArea")),
         );
 
         viewerContainer.appendChild(instructionsOverlay);
@@ -147,7 +147,7 @@ export class PlateauCesiumPickerDialog {
                     display: "none",
                 },
             },
-            "Loading 3D Tiles...",
+            I18n.translate("plateau.cesium.loading"),
         );
 
         viewerContainer.appendChild(loadingIndicator);
@@ -329,7 +329,7 @@ export class PlateauCesiumPickerDialog {
                                 padding: "20px",
                             },
                         },
-                        "No buildings selected",
+                        I18n.translate("plateau.cesium.noBuildingsSelected"),
                     ),
                 );
             } else {
@@ -384,7 +384,7 @@ export class PlateauCesiumPickerDialog {
 
                 const selected = buildingPicker.getSelectedBuildings();
                 if (selected.length === 0) {
-                    alert("Please select at least one building");
+                    PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
                     return;
                 }
 
@@ -433,6 +433,9 @@ export class PlateauCesiumPickerDialog {
             if (clickHandler) {
                 clickHandler.destroy();
             }
+            if (buildingPicker) {
+                buildingPicker.dispose();
+            }
             if (cesiumView) {
                 cesiumView.dispose();
             }
@@ -464,6 +467,9 @@ export class PlateauCesiumPickerDialog {
         dialog.showModal();
 
         // Initialize Cesium viewer
+        // NOTE: setTimeout ensures the dialog container is fully rendered before Cesium initialization.
+        // For PoC stage, 100ms is acceptable. In production, consider using requestAnimationFrame()
+        // or IntersectionObserver for better reliability across devices.
         setTimeout(async () => {
             try {
                 // Initialize Cesium view

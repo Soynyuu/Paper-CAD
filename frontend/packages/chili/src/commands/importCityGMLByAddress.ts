@@ -254,7 +254,11 @@ export class ImportCityGMLByAddress implements ICommand {
                             "showPermanent",
                             async () => {
                                 try {
-                                    PubSub.default.pub("showToast", "toast.plateau.converting");
+                                    PubSub.default.pub(
+                                        "showToast",
+                                        "toast.plateau.converting:{0}",
+                                        selectedIds.length.toString(),
+                                    );
 
                                     console.log("[PLATEAU] Converting selected buildings:", {
                                         query,

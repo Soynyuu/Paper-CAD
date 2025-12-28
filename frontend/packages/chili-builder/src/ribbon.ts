@@ -25,6 +25,7 @@ export const DefaultRibbon: RibbonTab[] = [
                     "file.import",
                     "file.importCityGML",
                     "file.importCityGMLByAddress",
+                    "file.importCityGMLByCesium",
                     "file.export",
                     "file.stepUnfold",
                     "file.assemblyMode",

@@ -11,6 +11,7 @@ export * from "./delete";
 export * from "./folder";
 export * from "./importCityGML";
 export * from "./importCityGMLByAddress";
+export * from "./importCityGMLByCesium";
 export * from "./importExport";
 export * from "./stepUnfold";
 export * from "./measure";

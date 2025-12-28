@@ -37,7 +37,7 @@ export const cameraPositionAtom = atom<{
 /**
  * Highlighted building IDs (visual feedback on hover)
  */
-export const highlightedBuildingIdsAtom = atom<Set<string>>(new Set());
+export const highlightedBuildingIdsAtom = atom<Set<string>>(new Set<string>());
 
 /**
  * Derived atom: Number of selected buildings

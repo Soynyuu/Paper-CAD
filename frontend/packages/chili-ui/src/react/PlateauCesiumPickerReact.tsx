@@ -68,7 +68,7 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
                 selectedFeatureIdsRef.current.clear();
 
                 // Remove old tileset if exists
-                if (currentTilesetIdRef.current) {
+                if (currentTilesetIdRef.current && visualizer.current) {
                     visualizer.current.layers.deleteLayer(currentTilesetIdRef.current);
                 }
 
@@ -90,6 +90,10 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
                         shadows: "enabled",
                     },
                 };
+
+                if (!visualizer.current) {
+                    throw new Error("Visualizer not initialized");
+                }
 
                 const addedLayer = visualizer.current.layers.add(newLayer);
                 currentTilesetIdRef.current = tilesetId;
@@ -174,13 +178,23 @@ function PlateauCesiumPickerReactContent({ onClose }: PlateauCesiumPickerReactPr
                 }
 
                 // Extract building data
+                // Note: feature.geometry.coordinates type is complex (Position | Position[] | ...)
+                // For Point geometry, it's [lng, lat, height] as Position type
+                const coords = feature.geometry?.coordinates;
+                const getCoordinate = (index: number): number => {
+                    if (Array.isArray(coords) && typeof coords[index] === "number") {
+                        return coords[index] as number;
+                    }
+                    return 0;
+                };
+
                 const pickedBuilding: PickedBuilding = {
                     gmlId,
                     meshCode: properties.meshcode || "",
                     position: {
-                        latitude: feature.geometry?.coordinates?.[1] || 0,
-                        longitude: feature.geometry?.coordinates?.[0] || 0,
-                        height: feature.geometry?.coordinates?.[2] || 0,
+                        latitude: getCoordinate(1),
+                        longitude: getCoordinate(0),
+                        height: getCoordinate(2),
                     },
                     properties: {
                         name: properties["gml:name"] || undefined,

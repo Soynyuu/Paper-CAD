@@ -30,7 +30,7 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onClear }: Side
             <div className={styles.sidebarHeader}>
                 {count > 0 ? (
                     <div className={styles.selectionCount}>
-                        {I18n.translate("plateau.cesium.selectedCount:{0}", count)}
+                        {`Selected: ${count}`}
                     </div>
                 ) : (
                     <div className={styles.emptyHeader}>{I18n.translate("plateau.cesium.noSelection")}</div>

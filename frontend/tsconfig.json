@@ -4,6 +4,7 @@
         "allowJs": true,
         "module": "ESNext",
         "moduleResolution": "Node",
+        "jsx": "react-jsx",
         "noImplicitOverride": true,
         "noPropertyAccessFromIndexSignature": true,
         "experimentalDecorators": true,

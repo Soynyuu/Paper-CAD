@@ -21,7 +21,7 @@ export interface HeaderProps {
 export function Header({ currentCity, onCityChange, onClose, loading = false }: HeaderProps) {
     return (
         <div className={styles.header}>
-            <h2 className={styles.title}>{I18n.translate("plateau.cesium.selectBuildings")}</h2>
+            <h2 className={styles.title}>Building Picker</h2>
             <div className={styles.headerControls}>
                 <CitySelector currentCity={currentCity} onChange={onCityChange} disabled={loading} />
                 <button
@@ -29,7 +29,6 @@ export function Header({ currentCity, onCityChange, onClose, loading = false }: 
                     onClick={onClose}
                     type="button"
                     aria-label="Close dialog"
-                    title={I18n.translate("items.tool.close")}
                 >
                     ×
                 </button>

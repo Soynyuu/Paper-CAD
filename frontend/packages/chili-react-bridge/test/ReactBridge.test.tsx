@@ -8,36 +8,28 @@ import { ReactBridge } from "../src/ReactBridge";
 
 describe("ReactBridge", () => {
     it("renders a Web Component with the specified tag name", () => {
-        const { container } = render(
-            <ReactBridge tagName="test-element" data-testid="test" />,
-        );
+        const { container } = render(<ReactBridge tagName="test-element" data-testid="test" />);
 
         const element = container.querySelector("test-element");
         expect(element).toBeInTheDocument();
     });
 
     it("sets string attributes correctly", () => {
-        const { container } = render(
-            <ReactBridge tagName="test-element" customAttr="test-value" />,
-        );
+        const { container } = render(<ReactBridge tagName="test-element" customAttr="test-value" />);
 
         const element = container.querySelector("test-element");
         expect(element).toHaveAttribute("customAttr", "test-value");
     });
 
     it("sets number attributes correctly", () => {
-        const { container } = render(
-            <ReactBridge tagName="test-element" count={42} />,
-        );
+        const { container } = render(<ReactBridge tagName="test-element" count={42} />);
 
         const element = container.querySelector("test-element");
         expect(element).toHaveAttribute("count", "42");
     });
 
     it("sets boolean attributes correctly", () => {
-        const { container } = render(
-            <ReactBridge tagName="test-element" enabled={true} />,
-        );
+        const { container } = render(<ReactBridge tagName="test-element" enabled={true} />);
 
         const element = container.querySelector("test-element");
         expect(element).toHaveAttribute("enabled", "true");
@@ -75,9 +67,7 @@ describe("ReactBridge", () => {
 
     it("sets complex property values (not as attributes)", () => {
         const complexValue = { foo: "bar", nested: { value: 123 } };
-        const { container } = render(
-            <ReactBridge tagName="test-element" data={complexValue} />,
-        );
+        const { container } = render(<ReactBridge tagName="test-element" data={complexValue} />);
 
         const element = container.querySelector("test-element") as any;
         expect(element?.data).toEqual(complexValue);

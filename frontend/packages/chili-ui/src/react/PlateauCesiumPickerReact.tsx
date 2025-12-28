@@ -1,13 +1,12 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useAtom } from "jotai";
 import { Viewer, Cesium3DTileset, CameraFlyTo } from "resium";
 import * as Cesium from "cesium";
 import { DialogResult, I18n, PubSub } from "chili-core";
-import type { PickedBuilding } from "chili-cesium";
-import { getAllCities, getCityConfig } from "chili-cesium";
+import { CesiumBuildingPicker, getAllCities, getCityConfig, type PickedBuilding } from "chili-cesium";
 import {
     currentCityAtom,
     selectedBuildingsAtom,
@@ -19,6 +18,35 @@ import { Sidebar } from "./components/Sidebar";
 import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
 import styles from "./PlateauCesiumPickerReact.module.css";
+
+const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
+
+const ensureCesiumRuntime = () => {
+    if (typeof document === "undefined") {
+        return;
+    }
+
+    const runtime = globalThis as any;
+    const rawBaseUrl = runtime.__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
+    const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
+
+    runtime.CESIUM_BASE_URL = baseUrl;
+
+    const ionToken = runtime.__APP_CONFIG__?.cesiumIonToken;
+    if (ionToken) {
+        Cesium.Ion.defaultAccessToken = ionToken;
+    }
+
+    if (!document.getElementById(CESIUM_WIDGET_CSS_ID)) {
+        const link = document.createElement("link");
+        link.id = CESIUM_WIDGET_CSS_ID;
+        link.rel = "stylesheet";
+        link.href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+        document.head.appendChild(link);
+    }
+};
+
+ensureCesiumRuntime();
 
 export interface PlateauCesiumPickerReactProps {
     onClose: (result: DialogResult, data?: { selectedBuildings: PickedBuilding[] }) => void;
@@ -33,8 +61,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const viewerRef = useRef<Cesium.Viewer | null>(null);
     const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
     const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
-    const selectedFeatureIdsRef = useRef<Set<string>>(new Set());
-    const selectedFeaturesRef = useRef<Map<string, any>>(new Map());
+    const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
+    const basemapInitializedRef = useRef(false);
+    const basemapFallbackRef = useRef(false);
 
     const [currentCity, setCurrentCity] = useAtom(currentCityAtom);
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
@@ -42,6 +71,23 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
     const [tilesetUrl, setTilesetUrl] = useState<string>("");
     const [cameraDestination, setCameraDestination] = useState<Cesium.Cartesian3 | undefined>();
+    const [viewerReady, setViewerReady] = useState(false);
+    const baseLayer = useMemo(() => {
+        if (typeof window === "undefined") {
+            return undefined;
+        }
+
+        // GSI tiles (Japan) - synchronous initialization
+        const gsiProvider = new Cesium.UrlTemplateImageryProvider({
+            url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
+            credit: "GSI Tiles",
+            maximumLevel: 18,
+        });
+
+        return new Cesium.ImageryLayer(gsiProvider, {
+            show: true,
+        });
+    }, []);
 
     // Initialize with first city
     useEffect(() => {
@@ -65,8 +111,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         setLoadingMessage(I18n.translate("plateau.cesium.loading"));
 
         // Clear previous selections
+        if (buildingPickerRef.current) {
+            buildingPickerRef.current.clearSelection();
+        }
         setSelectedBuildings([]);
-        selectedFeatureIdsRef.current.clear();
 
         // Update tileset URL
         setTilesetUrl(cityConfig.tilesetUrl);
@@ -79,13 +127,27 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         );
         setCameraDestination(destination);
 
+        // Set camera position directly if viewer is ready (avoids race condition)
+        if (viewerRef.current) {
+            console.log("[PlateauCesiumPickerReact] Setting camera position for city:", currentCity);
+            viewerRef.current.camera.setView({
+                destination,
+                orientation: {
+                    heading: 0,
+                    pitch: Cesium.Math.toRadians(-45),
+                    roll: 0,
+                },
+            });
+        }
+
         // Loading will be cleared when tileset loads
     }, [currentCity, setSelectedBuildings, setLoading, setLoadingMessage]);
 
     // Setup click handler when viewer is ready
     useEffect(() => {
         const viewer = viewerRef.current;
-        if (!viewer) return;
+        const picker = buildingPickerRef.current;
+        if (!viewer || !picker) return;
 
         // Clean up old handler
         if (handlerRef.current) {
@@ -97,78 +159,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         handlerRef.current = handler;
 
         handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-            const pickedObject = viewer.scene.pick(click.position);
-            if (!pickedObject || !pickedObject.content) return;
+            if (!click.position) return;
 
-            const feature = pickedObject.content.getFeature(pickedObject.featureId);
-            if (!feature) return;
+            const isMultiSelect = (click as any).modifier === Cesium.KeyboardEventModifier.CTRL;
 
-            // Get feature properties
-            const properties: Record<string, any> = {};
-            const propertyIds = feature.getPropertyIds();
-            propertyIds.forEach((id: string) => {
-                properties[id] = feature.getProperty(id);
-            });
-
-            const featureType = properties["feature_type"];
-            const gmlId = properties["gml:id"] || properties["gmlid"];
-
-            // Only process building features
-            if (featureType !== "bldg:Building" || !gmlId) return;
-
-            // Check if Ctrl key was pressed (multi-select)
-            const isMultiSelect =
-                viewer.scene.screenSpaceCameraController.enableInputs &&
-                (click as any).modifier === Cesium.KeyboardEventModifier.CTRL;
-
-            // Toggle selection
-            const isSelected = selectedFeatureIdsRef.current.has(gmlId);
-
-            if (isSelected) {
-                // Remove from selection
-                selectedFeatureIdsRef.current.delete(gmlId);
-                selectedFeaturesRef.current.delete(gmlId);
-                setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
-                feature.color = Cesium.Color.WHITE;
-            } else {
-                // Add to selection
-                if (!isMultiSelect) {
-                    // Single select: clear previous
-                    selectedFeaturesRef.current.forEach((prevFeature) => {
-                        prevFeature.color = Cesium.Color.WHITE;
-                    });
-                    selectedFeatureIdsRef.current.clear();
-                    selectedFeaturesRef.current.clear();
-                    setSelectedBuildings([]);
+            try {
+                picker.pickBuilding({ x: click.position.x, y: click.position.y }, isMultiSelect);
+                setSelectedBuildings(picker.getSelectedBuildings());
+            } catch (error) {
+                if (error instanceof Error) {
+                    PubSub.default.pub("showToast", "error.plateau.selectionFailed:{0}", error.message);
                 }
-
-                // Get building position from cartographic
-                const cartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(
-                    pickedObject.content.tile.boundingSphere.center,
-                );
-
-                const pickedBuilding: PickedBuilding = {
-                    gmlId,
-                    meshCode: properties["meshcode"] || "",
-                    position: {
-                        latitude: Cesium.Math.toDegrees(cartographic.latitude),
-                        longitude: Cesium.Math.toDegrees(cartographic.longitude),
-                        height: cartographic.height,
-                    },
-                    properties: {
-                        name: properties["gml:name"] || undefined,
-                        usage: properties["bldg:usage"] || undefined,
-                        measuredHeight: properties["bldg:measuredHeight"] || 0,
-                        cityName: getCityConfig(currentCity)?.name || "",
-                        meshcode: properties["meshcode"] || "",
-                        featureType: "bldg:Building",
-                    },
-                };
-
-                selectedFeatureIdsRef.current.add(gmlId);
-                selectedFeaturesRef.current.set(gmlId, feature);
-                setSelectedBuildings((prev) => [...prev, pickedBuilding]);
-                feature.color = Cesium.Color.YELLOW;
             }
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
@@ -178,7 +179,82 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 handlerRef.current = null;
             }
         };
-    }, [currentCity, setSelectedBuildings]);
+    }, [setSelectedBuildings, viewerReady]);
+
+    // Setup base map once the viewer is ready (FALLBACK ONLY)
+    useEffect(() => {
+        if (!viewerReady || basemapInitializedRef.current) return;
+
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+
+        basemapInitializedRef.current = true;
+
+        // Check if base layer already exists (from baseLayer prop)
+        if (viewer.imageryLayers.length > 0) {
+            console.log("[PlateauCesiumPickerReact] Base layer already initialized via prop");
+            return;
+        }
+
+        // Fallback: Add basemap manually if baseLayer prop failed
+        console.warn("[PlateauCesiumPickerReact] Base layer missing; adding manually");
+
+        const gsiProvider = new Cesium.UrlTemplateImageryProvider({
+            url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
+            credit: "GSI Tiles",
+            maximumLevel: 18,
+        });
+
+        viewer.imageryLayers.add(new Cesium.ImageryLayer(gsiProvider));
+
+        // OSM fallback on error
+        const fallbackToOsm = () => {
+            if (basemapFallbackRef.current) return;
+            basemapFallbackRef.current = true;
+            viewer.imageryLayers.removeAll();
+            const osmProvider = new Cesium.OpenStreetMapImageryProvider({
+                url: "https://tile.openstreetmap.org/",
+            });
+            viewer.imageryLayers.add(new Cesium.ImageryLayer(osmProvider));
+            console.warn("[PlateauCesiumPickerReact] GSI tiles failed; falling back to OSM.");
+        };
+
+        const onError = () => fallbackToOsm();
+        gsiProvider.errorEvent.addEventListener(onError);
+
+        return () => {
+            gsiProvider.errorEvent.removeEventListener(onError);
+        };
+    }, [viewerReady]);
+
+    // Configure scene for optimal 3D Tiles rendering (mirror CesiumView.initialize)
+    useEffect(() => {
+        if (!viewerReady) return;
+
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+
+        console.log("[PlateauCesiumPickerReact] Configuring scene for 3D Tiles");
+
+        // Scene configuration (from cesiumView.ts lines 83-96)
+        if (viewer.scene) {
+            viewer.scene.globe.depthTestAgainstTerrain = false;
+            viewer.scene.globe.enableLighting = false;
+            viewer.scene.highDynamicRange = false;
+            viewer.scene.requestRenderMode = true;
+            viewer.scene.maximumRenderTimeChange = 0.5;
+        }
+
+        // Camera configuration
+        if (viewer.camera) {
+            viewer.camera.percentageChanged = 0.05;
+        }
+
+        // Disable default double-click zoom
+        if (viewer.screenSpaceEventHandler) {
+            viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+        }
+    }, [viewerReady]);
 
     // Handle city change
     const handleCityChange = useCallback(
@@ -191,15 +267,14 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // Handle remove building
     const handleRemoveBuilding = useCallback(
         (gmlId: string) => {
-            selectedFeatureIdsRef.current.delete(gmlId);
-            setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
-
-            // Reset color using stored feature reference
-            const feature = selectedFeaturesRef.current.get(gmlId);
-            if (feature) {
-                feature.color = Cesium.Color.WHITE;
+            const picker = buildingPickerRef.current;
+            if (!picker) {
+                setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
+                return;
             }
-            selectedFeaturesRef.current.delete(gmlId);
+
+            picker.removeBuilding(gmlId);
+            setSelectedBuildings(picker.getSelectedBuildings());
         },
         [setSelectedBuildings],
     );
@@ -215,13 +290,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // Handle clear
     const handleClear = useCallback(() => {
-        // Reset all colors using stored feature references
-        selectedFeaturesRef.current.forEach((feature) => {
-            feature.color = Cesium.Color.WHITE;
-        });
-
-        selectedFeatureIdsRef.current.clear();
-        selectedFeaturesRef.current.clear();
+        const picker = buildingPickerRef.current;
+        if (picker) {
+            picker.clearSelection();
+        }
         setSelectedBuildings([]);
     }, [setSelectedBuildings]);
 
@@ -234,6 +306,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const handleTilesetReady = useCallback(
         (tileset: Cesium.Cesium3DTileset) => {
             tilesetRef.current = tileset;
+            tileset.style = new Cesium.Cesium3DTileStyle({
+                color: {
+                    conditions: [
+                        ["${feature_type} === 'bldg:Building'", "color('white', 0.9)"],
+                        ["true", "color('lightgray', 0.8)"],
+                    ],
+                },
+                show: "${feature_type} === 'bldg:Building'",
+            });
             setLoading(false);
             setLoadingMessage("");
         },
@@ -243,8 +324,24 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // Handle viewer ready
     const handleViewerReady = useCallback((ref: any) => {
         // resium refs contain the Cesium element in cesiumElement property
-        if (ref && ref.cesiumElement) {
+        if (ref && ref.cesiumElement && viewerRef.current !== ref.cesiumElement) {
+            console.log("[PlateauCesiumPickerReact] Viewer ready callback fired");
             viewerRef.current = ref.cesiumElement;
+            buildingPickerRef.current = new CesiumBuildingPicker(ref.cesiumElement);
+
+            // Validate canvas dimensions
+            if (!ref.cesiumElement.canvas) {
+                console.error("[PlateauCesiumPickerReact] Viewer canvas is missing!");
+                return;
+            }
+
+            if (ref.cesiumElement.canvas.width === 0 || ref.cesiumElement.canvas.height === 0) {
+                console.warn("[PlateauCesiumPickerReact] Canvas has zero dimensions, forcing resize");
+                ref.cesiumElement.resize();
+            }
+
+            setViewerReady(true);
+            console.log("[PlateauCesiumPickerReact] Viewer ready");
         }
     }, []);
 
@@ -263,6 +360,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         ref={handleViewerReady}
                         timeline={false}
                         animation={false}
+                        baseLayer={baseLayer}
                         baseLayerPicker={false}
                         geocoder={false}
                         homeButton={false}
@@ -270,7 +368,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         sceneModePicker={false}
                         selectionIndicator={false}
                         infoBox={false}
-                        style={{ width: "100%", height: "100%" }}
                     >
                         {tilesetUrl && (
                             <>

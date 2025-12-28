@@ -29,9 +29,7 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onClear }: Side
             {/* Header */}
             <div className={styles.sidebarHeader}>
                 {count > 0 ? (
-                    <div className={styles.selectionCount}>
-                        {`Selected: ${count}`}
-                    </div>
+                    <div className={styles.selectionCount}>{`Selected: ${count}`}</div>
                 ) : (
                     <div className={styles.emptyHeader}>{I18n.translate("plateau.cesium.noSelection")}</div>
                 )}
@@ -68,12 +66,7 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onClear }: Side
                 >
                     {I18n.translate("plateau.cesium.importSelected")}
                 </button>
-                <button
-                    className={styles.clearButton}
-                    onClick={onClear}
-                    disabled={!canImport}
-                    type="button"
-                >
+                <button className={styles.clearButton} onClick={onClear} disabled={!canImport} type="button">
                     {I18n.translate("plateau.cesium.clearSelection")}
                 </button>
             </div>

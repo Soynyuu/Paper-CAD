@@ -82,11 +82,7 @@ export function ReactBridge<T extends HTMLElement = HTMLElement>({
             }
 
             // Primitive values -> attributes
-            if (
-                typeof value === "string" ||
-                typeof value === "number" ||
-                typeof value === "boolean"
-            ) {
+            if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
                 attributes[key] = String(value);
                 continue;
             }

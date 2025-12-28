@@ -26,16 +26,13 @@ interface ApplicationCommand {
 const applicationCommands = new ObservableCollection<ApplicationCommand>(
     {
         display: "command.doc.new",
+        icon: "icon-file-plus",
         onclick: () => PubSub.default.pub("executeCommand", "doc.new"),
     },
     {
         display: "command.doc.open",
+        icon: "icon-folder-open",
         onclick: () => PubSub.default.pub("executeCommand", "doc.open"),
-    },
-    {
-        display: "home.createFromAddress",
-        icon: "icon-search-location",
-        onclick: () => PubSub.default.pub("executeCommand", "file.importCityGMLByAddress"),
     },
 );
 
@@ -91,11 +88,22 @@ export class Home extends HTMLElement {
             className: style.buttons,
             sources: applicationCommands,
             template: (item) =>
-                button({
-                    className: style.button,
-                    textContent: new Localize(item.display),
-                    onclick: item.onclick,
-                }),
+                button(
+                    {
+                        className: style.button,
+                        onclick: item.onclick,
+                    },
+                    div(
+                        { style: { display: "flex", alignItems: "center", gap: "12px" } },
+                        item.icon
+                            ? svg({
+                                  icon: item.icon,
+                                  style: { width: "18px", height: "18px", opacity: "0.7" },
+                              })
+                            : "",
+                        span({ textContent: new Localize(item.display) }),
+                    ),
+                ),
         });
     }
 
@@ -137,8 +145,51 @@ export class Home extends HTMLElement {
         return div(
             { className: style.right },
             label({ className: style.welcome, textContent: new Localize("home.welcome") }),
+            this.heroSection(),
             div({ className: style.recent, textContent: new Localize("home.recent") }),
             this.documentCollection(documents),
+        );
+    }
+
+    private heroSection() {
+        return div(
+            { className: style.heroSection },
+            // Card 1: New
+            div(
+                {
+                    className: style.heroCard,
+                    onclick: () => PubSub.default.pub("executeCommand", "doc.new"),
+                },
+                svg({ icon: "icon-file-plus", className: style.heroIcon }),
+                div({ className: style.heroTitle, textContent: new Localize("command.doc.new") }),
+                div({
+                    className: style.heroDescription,
+                    textContent:
+                        I18n.translate("common.language") === "日本語"
+                            ? "何もない空間から自由に作成"
+                            : "Start from scratch",
+                }),
+            ),
+            // Card 2: Map (Primary)
+            div(
+                {
+                    className: `${style.heroCard} ${style.primary}`, // .primary style added in CSS
+                    style: { borderColor: "var(--primary-color)", backgroundColor: "var(--neutral-0)" }, // Inline override just in case
+                    onclick: () => PubSub.default.pub("executeCommand", "file.importCityGMLByCesium"),
+                },
+                svg({ icon: "icon-position", className: style.heroIcon }),
+                div({
+                    className: style.heroTitle,
+                    textContent: new Localize("command.file.importCityGMLByCesium"),
+                }),
+                div({
+                    className: style.heroDescription,
+                    textContent:
+                        I18n.translate("common.language") === "日本語"
+                            ? "3D地図から建物を選んで作成"
+                            : "Pick building from 3D Map",
+                }),
+            ),
         );
     }
 

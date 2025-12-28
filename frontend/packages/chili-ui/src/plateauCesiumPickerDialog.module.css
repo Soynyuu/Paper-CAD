@@ -1,0 +1,310 @@
+.dialog {
+    width: 90vw;
+    height: 85vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    background-color: var(--panel-background-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+}
+
+/* Header: Title and Controls */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-lg);
+    height: 60px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--neutral-0);
+    flex-shrink: 0;
+}
+
+.title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground-color);
+    margin: 0;
+}
+
+.headerControls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.citySelect {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    min-width: 240px;
+    background-color: var(--neutral-50);
+}
+
+.closeButton {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--neutral-500);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+}
+
+.closeButton:hover {
+    background-color: var(--neutral-100);
+    color: var(--error-color);
+}
+
+/* Main Body: Map + Sidebar */
+.body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.mapContainer {
+    flex: 1;
+    position: relative;
+    background-color: #1a1a1a;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 320px;
+    background-color: var(--neutral-50);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+/* Instructions Overlay */
+.instructions {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 260px;
+    background-color: rgba(20, 20, 20, 0.9);
+    color: #e0e0e0;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    line-height: 1.5;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.instructionsTitle {
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+    font-size: var(--font-size-sm);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Sidebar Content */
+.sidebarHeader {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--neutral-0);
+}
+
+.selectionCount {
+    font-weight: var(--font-weight-bold);
+    color: var(--primary-color);
+    font-size: var(--font-size-md);
+}
+
+.sidebarList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--neutral-500);
+    font-size: var(--font-size-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+/* Building Card */
+.buildingCard {
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition:
+        box-shadow 0.2s,
+        transform 0.1s;
+    position: relative;
+}
+
+.buildingCard:hover {
+    box-shadow: var(--shadow-sm);
+    border-color: var(--primary-color);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+
+.buildingName {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+    color: var(--foreground-color);
+    line-height: 1.3;
+}
+
+.removeButton {
+    background: none;
+    border: none;
+    color: var(--neutral-400);
+    cursor: pointer;
+    padding: 4px;
+    margin: -4px -4px 0 0;
+    border-radius: 4px;
+}
+
+.removeButton:hover {
+    color: var(--error-color);
+    background-color: var(--neutral-100);
+}
+
+.cardDetail {
+    font-size: var(--font-size-xs);
+    color: var(--neutral-600);
+    display: flex;
+    justify-content: space-between;
+}
+
+.cardId {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--neutral-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 4px;
+}
+
+/* Sidebar Footer */
+.sidebarFooter {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--neutral-0);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.importButton {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    transition: background-color 0.2s;
+}
+
+.importButton:hover:not(:disabled) {
+    background-color: var(--primary-dark);
+}
+
+.importButton:disabled {
+    background-color: var(--neutral-300);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.clearButton {
+    width: 100%;
+    padding: 8px;
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--neutral-600);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clearButton:hover {
+    background-color: var(--neutral-100);
+    color: var(--foreground-color);
+}
+
+/* Loading Indicator */
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 16px 32px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.loading::before {
+    content: "";
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

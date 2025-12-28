@@ -28,6 +28,27 @@ function loadEnv() {
 
 loadEnv();
 
+const isDev = process.env.NODE_ENV === "development";
+let ReactRefreshPlugin = null;
+if (isDev) {
+    try {
+        const reactRefreshModule = require("@rspack/plugin-react-refresh");
+        ReactRefreshPlugin =
+            reactRefreshModule?.default || reactRefreshModule?.ReactRefreshPlugin || reactRefreshModule;
+    } catch (error) {
+        ReactRefreshPlugin = null;
+    }
+}
+
+const enableReactRefresh = isDev && typeof ReactRefreshPlugin === "function";
+if (isDev && !enableReactRefresh) {
+    console.warn(
+        "[rspack] React refresh disabled. Install @rspack/plugin-react-refresh and react-refresh to enable it.",
+    );
+}
+
+const resiumEntry = path.resolve(__dirname, "node_modules/resium/src/index.ts");
+
 const config = defineConfig({
     entry: {
         main: "./packages/chili-web/src/index.ts",
@@ -61,13 +82,21 @@ const config = defineConfig({
                 type: "asset",
             },
             {
-                test: /\.(j|t)s$/,
+                test: /\.(j|t)sx?$/,
                 loader: "builtin:swc-loader",
                 options: {
                     jsc: {
                         parser: {
                             syntax: "typescript",
+                            tsx: true,
                             decorators: true,
+                        },
+                        transform: {
+                            react: {
+                                runtime: "automatic",
+                                development: isDev,
+                                refresh: enableReactRefresh,
+                            },
                         },
                         target: "esnext",
                     },
@@ -76,7 +105,14 @@ const config = defineConfig({
         ],
     },
     resolve: {
-        extensions: [".ts", ".js"],
+        extensions: [".ts", ".tsx", ".js", ".jsx"],
+        alias: {
+            // Use resium source to avoid bundling a React 19 JSX runtime.
+            resium: resiumEntry,
+            resium$: resiumEntry,
+            "resium/dist/resium.js": resiumEntry,
+            "resium/dist/resium.umd.cjs": resiumEntry,
+        },
         fallback: {
             fs: false,
             perf_hooks: false,
@@ -136,6 +172,7 @@ const config = defineConfig({
             template: "./public/index.html",
             inject: "body",
         }),
+        ...(enableReactRefresh ? [new ReactRefreshPlugin()] : []),
     ],
     optimization: {
         minimizer: [

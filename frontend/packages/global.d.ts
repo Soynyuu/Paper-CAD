@@ -31,4 +31,5 @@ declare var __DOCUMENT_VERSION__: string;
 declare var __APP_CONFIG__: {
     stepUnfoldApiUrl: string;
     stepUnfoldWsUrl: string | null;
+    useReactCesiumPicker: boolean;
 };

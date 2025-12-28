@@ -1,0 +1,26 @@
+.instructions {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 260px;
+    background-color: rgba(20, 20, 20, 0.9);
+    color: #e0e0e0;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    line-height: 1.5;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.instructionsTitle {
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+    font-size: var(--font-size-sm);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}

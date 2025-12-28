@@ -3,14 +3,15 @@
 @tailwind utilities;
 
 body {
-  font-family: 'Zen Kaku Gothic New', sans-serif;
-  @apply bg-white text-slate-900;
-  /* Proportional metrics for Japanese fonts */
+  font-family: 'Noto Sans JP', sans-serif;
+  @apply bg-white text-[#111111];
   font-feature-settings: "palt";
+  -webkit-font-smoothing: antialiased;
 }
 
-.font-serif {
-  font-family: 'Shippori Mincho', serif;
+/* Custom Selection Color */
+::selection {
+  @apply bg-brand-orange text-white;
 }
 
 /* Smooth scrolling */

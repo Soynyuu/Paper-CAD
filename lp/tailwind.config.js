@@ -8,24 +8,20 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          900: '#0c4a6e',
+          orange: '#FF6A00',
+          black: '#111111',
+          gray: '#F4F5F7',
         }
       },
       fontFamily: {
-        sans: ['"Zen Kaku Gothic New"', 'Inter', 'sans-serif'],
-        serif: ['"Shippori Mincho"', 'serif'],
+        sans: ['"Noto Sans JP"', 'sans-serif'],
+        mono: ['"Roboto Mono"', 'monospace'],
       },
       letterSpacing: {
-        tighter: '-0.05em',
-        tight: '-0.025em',
-        normal: '0',
-        wide: '0.025em',
-        wider: '0.05em',
-        widest: '0.1em',
+        tight: '-0.02em',
+        normal: '0.05em', // Increased from 0.02em
+        wide: '0.1em',   // Increased from 0.05em
+        widest: '0.2em',
       }
     },
   },

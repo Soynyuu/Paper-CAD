@@ -1,434 +1,267 @@
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
-  Box, 
-  Layers, 
-  Cpu, 
-  Download, 
-  Github, 
   ArrowRight,
-  Globe,
-  Hammer,
-  Quote,
+  Github,
+  ChevronRight,
+  Box,
+  Layers,
+  Cpu,
   Trophy,
   Gamepad2,
-  Sparkles,
-  ChevronRight
+  Sparkles
 } from 'lucide-react';
 
-// Smart, smooth easing - Apple style
 const easeOutExpo = [0.16, 1, 0.3, 1];
 
 const fadeInUp = {
-  initial: { opacity: 0, y: 30 },
+  initial: { opacity: 0, y: 40 },
   animate: { 
     opacity: 1, 
     y: 0,
-    transition: { duration: 1.0, ease: easeOutExpo }
+    transition: { duration: 1.2, ease: easeOutExpo }
   }
 };
 
 const staggerContainer = {
   animate: {
     transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1
-    }
-  }
-};
-
-const floatAnimation = {
-  animate: {
-    y: [0, -15, 0],
-    rotate: [0, 2, -2, 0],
-    transition: {
-      duration: 8,
-      repeat: Infinity,
-      ease: "easeInOut"
+      staggerChildren: 0.15
     }
   }
 };
 
 export default function App() {
-  const { scrollYProgress } = useScroll();
-  const y = useTransform(scrollYProgress, [0, 1], [0, -80]);
-
   return (
-    <div className="min-h-screen bg-white text-slate-900 selection:bg-brand-500 selection:text-white overflow-x-hidden antialiased">
+    <div className="min-h-screen bg-white text-[#111] font-sans overflow-x-hidden selection:bg-[#111] selection:text-white">
       
-      {/* Navbar - Glassmorphism */}
-      <nav className="fixed w-full z-50 top-0 left-0 border-b border-white/10 bg-white/70 backdrop-blur-xl transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 font-bold text-xl tracking-tight">
-            <motion.div 
-              whileHover={{ rotate: 180 }}
-              transition={{ duration: 0.6, ease: easeOutExpo }}
-              className="p-2 bg-slate-900 rounded-lg text-white"
-            >
+      {/* Structural Grid Decor */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]">
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '100px 100px' }}></div>
+      </div>
+
+      {/* Navbar */}
+      <nav className="fixed w-full z-50 top-0 left-0 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-[1440px] mx-auto px-8 h-24 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-[#111] rounded-full flex items-center justify-center text-white">
               <Box className="w-5 h-5" />
-            </motion.div>
-            <span className="font-sans font-bold tracking-tight">Paper-CAD</span>
+            </div>
+            <div className="font-black text-2xl tracking-tighter uppercase">Paper—CAD</div>
           </div>
-          <div className="flex items-center gap-6">
-            <a href="https://github.com/kodaimiyazaki/Paper-CAD" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-900 transition-colors hidden sm:block">
-              <Github className="w-5 h-5" />
-            </a>
-            <a href="/app" className="group px-6 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-full hover:bg-brand-600 transition-all hover:shadow-lg hover:shadow-brand-500/30 flex items-center gap-2">
-              アプリを起動
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          <div className="flex items-center gap-12 text-[13px] font-black tracking-[0.2em] uppercase">
+            <a href="https://github.com/kodaimiyazaki/Paper-CAD" target="_blank" rel="noreferrer" className="hidden lg:block hover:text-brand-orange transition-colors">GitHub</a>
+            <a href="/app" className="group flex items-center gap-3 bg-[#111] text-white px-8 py-4 rounded-full hover:bg-brand-orange transition-all duration-500">
+              Launch App
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </a>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-40 pb-24 lg:pt-60 lg:pb-40 px-6 overflow-hidden">
-        <div className="max-w-7xl mx-auto relative z-10">
+      <section className="relative pt-64 pb-48 px-8 lg:px-16 z-10">
+        <div className="max-w-[1200px] mx-auto">
           <motion.div 
             initial="initial"
             animate="animate"
             variants={staggerContainer}
-            className="flex flex-col items-center text-center"
           >
-             <motion.div variants={fadeInUp} className="mb-8 inline-flex items-center gap-3 px-5 py-2 rounded-full bg-slate-50 text-slate-600 text-xs font-bold border border-slate-200 tracking-wider uppercase">
-              <Sparkles className="w-3.5 h-3.5 text-brand-500" />
-              <span>Open Source Public Beta</span>
-            </motion.div>
-
-            <motion.div variants={fadeInUp} className="max-w-5xl mx-auto mb-12">
-              <h1 className="text-5xl lg:text-8xl font-serif font-medium text-slate-900 leading-[1.2] tracking-wide">
-                画面の中の建築を、<br/>
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900">
-                  掌の上へ。
-                </span>
-              </h1>
+            <motion.div variants={fadeInUp} className="mb-16 relative">
+               <div className="absolute -left-12 top-0 h-full w-px bg-gray-200 hidden lg:block" />
+               <span className="font-mono text-brand-orange text-[11px] font-bold tracking-[0.4em] block mb-10 uppercase">Computational Craft</span>
+               <h1 className="text-7xl lg:text-[11rem] font-black tracking-[-0.04em] leading-[0.85] mb-12">
+                 Unfold<br/>
+                 the<br/>
+                 <span className="text-brand-orange italic">World.</span>
+               </h1>
             </motion.div>
             
-            <motion.div variants={fadeInUp} className="max-w-2xl mx-auto mb-12">
-               <div className="flex items-start justify-center gap-4 text-slate-500 mb-8">
-                  <Quote className="w-8 h-8 opacity-20 -mt-2" />
-                  <div className="text-left">
-                    <p className="text-lg font-serif italic leading-relaxed text-slate-700">
-                      「まず我々が建物を形作り、<br/>その後、建物が我々を形作る。」
-                    </p>
-                    <p className="text-xs font-bold tracking-widest mt-3 uppercase opacity-60">— Winston Churchill</p>
-                  </div>
-               </div>
-
-               <p className="text-lg lg:text-xl text-slate-600 leading-loose font-light tracking-wide">
-                 Paper-CADは、CityGMLやSTEPデータを<br className="hidden sm:block"/>
-                 物理的な<strong className="text-slate-900 font-medium border-b border-brand-300">ペーパーモデル</strong>へと昇華させる、<br className="hidden sm:block"/>
-                 建築家とメイカーのための空間変換エンジンです。
+            <motion.div variants={fadeInUp} className="max-w-3xl ml-auto lg:mr-24">
+               <p className="text-xl lg:text-3xl leading-[1.6] font-bold tracking-[-0.02em] text-[#333]">
+                 都市データを、展開図に。<br/>
+                 3Dを、紙の模型へ。
                </p>
-            </motion.div>
-            
-            <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row items-center justify-center gap-5">
-              <motion.a 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                href="#magic" 
-                className="px-10 py-5 bg-slate-900 text-white rounded-full font-bold hover:bg-brand-600 transition-all flex items-center gap-3 shadow-2xl shadow-slate-900/10 tracking-wide text-sm"
-              >
-                テクノロジーの深淵を見る <ArrowRight className="w-4 h-4" />
-              </motion.a>
-              <motion.a 
-                whileHover={{ scale: 1.02, backgroundColor: '#f8fafc' }}
-                whileTap={{ scale: 0.98 }}
-                href="https://github.com/kodaimiyazaki/Paper-CAD" 
-                target="_blank" 
-                rel="noreferrer" 
-                className="px-10 py-5 bg-white text-slate-700 border border-slate-200 rounded-full font-bold transition-all hover:border-slate-300 tracking-wide text-sm"
-              >
-                GitHub
-              </motion.a>
-            </motion.div>
-
-            {/* Awards Section - Minimal & Clean */}
-            <motion.div variants={fadeInUp} className="pt-24 w-full max-w-6xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                
-                {/* App Koshien - Major Feature */}
-                <div className="lg:col-span-7 bg-gradient-to-br from-slate-50 to-white border border-slate-100 rounded-[2rem] p-10 relative overflow-hidden group hover:shadow-lg transition-shadow duration-500">
-                  <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Trophy className="w-32 h-32" />
-                  </div>
-                  <div className="relative z-10 flex flex-col h-full justify-between items-start text-left">
-                    <div className="space-y-4">
-                      <span className="inline-block px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black tracking-widest uppercase rounded">Triple Crown</span>
-                      <div>
-                        <h4 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">アプリ甲子園 2024</h4>
-                        <p className="text-slate-500 font-medium">日本最大級のU-22開発者コンテスト</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-3 mt-8">
-                       <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-full text-xs font-bold shadow-lg shadow-slate-900/20">
-                         <Trophy className="w-3 h-3 text-amber-400" /> 優勝 (Grand Prize)
-                       </div>
-                       <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-full text-xs font-bold">
-                         <Cpu className="w-3 h-3 text-brand-500" /> 技術賞
-                       </div>
-                       <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-full text-xs font-bold">
-                         <Gamepad2 className="w-3 h-3 text-slate-900" /> Cygames賞
-                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mitou Junior - Secondary Feature */}
-                <div className="lg:col-span-5 bg-slate-900 text-white rounded-[2rem] p-10 relative overflow-hidden group hover:shadow-xl hover:shadow-slate-900/20 transition-all duration-500">
-                   <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-brand-500 rounded-full blur-[80px] opacity-20 group-hover:opacity-40 transition-opacity"></div>
-                   <div className="relative z-10 flex flex-col h-full justify-between items-start text-left">
-                     <div className="space-y-4">
-                        <span className="inline-block px-3 py-1 bg-white/10 text-brand-200 text-[10px] font-black tracking-widest uppercase rounded">Innovation</span>
-                        <div>
-                          <h4 className="text-2xl font-bold tracking-tight mb-2">未踏ジュニア</h4>
-                          <p className="text-slate-400 text-sm leading-relaxed">IPA（情報処理推進機構）<br/>2025年度 採択プロジェクト</p>
-                        </div>
-                     </div>
-                     <div className="mt-8 flex items-center gap-3">
-                        <div className="w-2 h-2 bg-brand-400 rounded-full animate-pulse"></div>
-                        <span className="text-xs font-bold tracking-wider text-brand-100">FUNDED & SUPPORTED</span>
-                     </div>
-                   </div>
-                </div>
-
-              </div>
+               <p className="text-lg lg:text-xl leading-relaxed text-gray-500 mt-8 tracking-normal font-medium">
+                 Paper-CADは、建築・都市の3Dデータを、組み立てられるペーパーモデルへ変換する幾何エンジンです。PLATEAUの都市空間からSTEPの精密モデルまで、ブラウザ上で解析し、展開図を生成します。
+               </p>
             </motion.div>
           </motion.div>
         </div>
-        
-        {/* Background Gradients */}
-        <motion.div style={{ y }} className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-b from-brand-50/50 to-transparent rounded-full blur-3xl -z-10 opacity-60" />
       </section>
 
-      {/* The "Magic" Section - Dark Mode */}
-      <section id="magic" className="py-40 bg-[#0B0F19] text-white relative overflow-hidden">
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-        
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-24 items-center">
-            <motion.div 
-               initial={{ opacity: 0, x: -40 }}
-               whileInView={{ opacity: 1, x: 0 }}
-               viewport={{ once: true, margin: "-100px" }}
-               transition={{ duration: 1, ease: easeOutExpo }}
-               className="space-y-12"
-            >
-              <div>
-                <span className="text-brand-400 font-mono text-xs tracking-[0.3em] uppercase mb-4 block">Core Technology</span>
-                <h2 className="text-4xl lg:text-5xl font-serif font-medium leading-tight mb-8">
-                  <span className="text-slate-500 opacity-50 block text-2xl mb-2 font-sans font-light">Arthur C. Clarke said,</span>
-                  「十分に発達した科学技術は、<br/>魔法と見分けがつかない。」
-                </h2>
-                <p className="text-lg text-slate-400 leading-loose font-light tracking-wide">
-                  一見すると、それは単なる「折り紙」です。<br/>
-                  しかしその背後には、産業グレードの演算処理が存在します。<br/>
-                  独自のアルゴリズムが<strong className="text-white font-medium mx-1">CityGML</strong>の複雑な位相幾何を解析し、
-                  展開図という「解」を瞬時に導き出します。
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                 <div className="group flex items-start gap-6 p-6 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-colors cursor-default">
-                    <div className="p-3 bg-brand-500/10 rounded-xl text-brand-400 group-hover:text-brand-300 transition-colors">
-                      <Cpu className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-bold mb-2">OpenCASCADE Core</h4>
-                      <p className="text-slate-400 text-sm leading-relaxed">
-                        ブラウザ上で動作する、産業用CADカーネル(WASM)。<br/>
-                        数万ポリゴンの都市データも、ローカル環境で高速に処理します。
-                      </p>
-                    </div>
-                 </div>
-                 
-                 <div className="group flex items-start gap-6 p-6 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-colors cursor-default">
-                    <div className="p-3 bg-brand-500/10 rounded-xl text-brand-400 group-hover:text-brand-300 transition-colors">
-                      <Layers className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-bold mb-2">Graph Theory Unfolding</h4>
-                      <p className="text-slate-400 text-sm leading-relaxed">
-                        形状をグラフ構造として捉え、最小全域木（MST）アルゴリズムを用いて
-                        「最も美しく、組み立てやすい」展開経路を探索します。
-                      </p>
-                    </div>
-                 </div>
-              </div>
-            </motion.div>
-
-            <div className="relative">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 1.2, ease: easeOutExpo }}
-                className="relative z-10 bg-gradient-to-b from-slate-800 to-slate-900 rounded-[2.5rem] p-2 border border-white/10 shadow-2xl"
-              >
-                 <div className="aspect-square rounded-[2rem] overflow-hidden bg-[#0F131F] relative flex items-center justify-center">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light"></div>
-                    
-                    {/* Visual Animation */}
-                    <motion.div variants={floatAnimation} animate="animate" className="relative w-64 h-64 perspective-1000">
-                       <motion.div 
-                         animate={{ rotateY: [0, 360] }}
-                         transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                         className="w-full h-full transform-style-3d"
-                       >
-                         <div className="absolute inset-0 border border-brand-500/30 bg-brand-500/5 rounded-xl backdrop-blur-sm"></div>
-                         <div className="absolute inset-4 border border-white/10 rounded-xl transform translate-z-10"></div>
-                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-brand-500 rounded-full blur-[80px] opacity-40"></div>
-                       </motion.div>
-                    </motion.div>
-                    
-                    <div className="absolute bottom-10 left-10 right-10 flex justify-between items-end">
-                      <div className="font-mono text-[10px] text-brand-500/70 tracking-widest">
-                        GEOMETRY_PROCESSING<br/>STATUS: ACTIVE
-                      </div>
-                      <div className="text-right">
-                         <div className="text-4xl font-bold tracking-tighter text-white">3D<span className="text-slate-600 mx-2">→</span>2D</div>
-                      </div>
-                    </div>
-                 </div>
-              </motion.div>
-              
-              {/* Glow effects */}
-              <div className="absolute -inset-10 bg-brand-500/20 blur-[100px] -z-10 rounded-full opacity-50"></div>
+      {/* Section 01: Manifesto */}
+      <section className="py-48 px-8 lg:px-16 border-t border-gray-100 bg-[#F9FAFB]">
+        <div className="max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-24 items-start">
+          <div className="w-full lg:w-1/3 sticky top-48">
+            <div className="flex flex-col gap-4">
+              <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">01 PHILOSOPHY</span>
+              <h2 className="text-5xl font-black tracking-tighter leading-tight">
+                世界を、<br/>
+                手のひらに。
+              </h2>
+            </div>
+          </div>
+          <div className="w-full lg:w-2/3 space-y-16">
+            <div className="space-y-8">
+              <div className="w-12 h-1 bg-brand-orange"></div>
+              <blockquote className="text-3xl lg:text-4xl font-black tracking-tight leading-tight text-gray-800">
+                「我々が建物をつくり、<br/>やがて建物が我々をつくる。」
+              </blockquote>
+              <p className="font-mono text-sm text-gray-400 tracking-widest uppercase">— Winston Churchill</p>
+            </div>
+            <div className="space-y-8 text-lg lg:text-xl leading-loose text-gray-600 tracking-normal font-medium">
+              <p>
+                都市データや精密な3Dモデルは、画面の中では自在でも、触れられなければ実感になりません。紙の模型は、構造とスケールを「手触りのある理解」に変えてくれます。
+              </p>
+              <p>
+                これまで複雑な形を紙に落とすには、展開図づくりと試作が必要でした。Paper-CADは幾何演算で切断線とのりしろを設計し、組み立てやすい展開図を自動生成します。
+              </p>
+              <p>
+                データを「眺める」から「手元に置く」へ。創造の距離を縮めることが、私たちのミッションです。
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features / Use Cases */}
-      <section className="py-40 px-6 bg-slate-50 relative">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-24 space-y-6">
-            <h2 className="text-4xl lg:text-5xl font-serif font-bold text-slate-900 tracking-wide">
-              都市を、<br/>デスクトップサイズへ。
-            </h2>
-            <p className="text-lg text-slate-600 font-light leading-loose tracking-wide">
-              都市開発のシミュレーションから、個人のホビーユースまで。<br/>
-              Paper-CADは、データの規模を問わず、直感的な実体化をサポートします。
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-             {[
-               {
-                 icon: <Globe className="w-8 h-8" />,
-                 title: "CityGML & PLATEAU",
-                 desc: "国土交通省PLATEAUなどのオープンデータを直接インポート。巨大な都市モデルも、A4サイズに分割して出力可能です。"
-               },
-               {
-                 icon: <Hammer className="w-8 h-8" />,
-                 title: "Precision Crafting",
-                 desc: "「山折り」「谷折り」の自動判別はもちろん、のりしろの角度や干渉回避まで計算。組み立てやすさを第一に設計されています。"
-               },
-               {
-                 icon: <Download className="w-8 h-8" />,
-                 title: "Universal Export",
-                 desc: "SVG、DXF、PDFに対応。レーザーカッターでの加工や、プロッターでの出力に最適化されたパスデータを生成します。"
-               }
-             ].map((item, i) => (
-               <motion.div 
-                 key={i}
-                 initial={{ opacity: 0, y: 40 }}
-                 whileInView={{ opacity: 1, y: 0 }}
-                 viewport={{ once: true, margin: "-50px" }}
-                 transition={{ delay: i * 0.15, duration: 0.8, ease: easeOutExpo }}
-                 className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 hover:shadow-xl hover:shadow-slate-200/50 transition-all group cursor-default"
-               >
-                 <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center text-brand-600 mb-8 group-hover:rotate-6 transition-transform duration-500">
-                   {item.icon}
-                 </div>
-                 <h3 className="text-xl font-bold text-slate-900 mb-4 tracking-tight">{item.title}</h3>
-                 <p className="text-slate-600 leading-loose text-sm font-light">
-                   {item.desc}
+      {/* Section 02: Logic */}
+      <section className="py-48 px-8 lg:px-16">
+        <div className="max-w-[1200px] mx-auto">
+	           <div className="flex justify-between items-end mb-24">
+	               <div className="space-y-4 text-left">
+	                <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">02 TECHNOLOGY</span>
+	                <h2 className="text-5xl font-black tracking-tighter">Unfoldを、設計する。</h2>
+	              </div>
+              <div className="hidden lg:block text-right">
+                 <p className="font-mono text-[10px] text-gray-400 tracking-[0.2em] leading-relaxed">
+                   ARCHITECTURE: OPEN CASCADE WASM<br/>
+                   ALGORITHM: MINIMUM SPANNING TREE<br/>
+                   RUNTIME: BROWSER NATIVE
                  </p>
-               </motion.div>
+              </div>
+           </div>
+           
+	           <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-gray-100 border border-gray-100 rounded-2xl overflow-hidden shadow-2xl">
+	              <div className="bg-white p-16 space-y-10 group">
+	                 <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center group-hover:bg-brand-orange group-hover:text-white transition-all duration-500">
+	                    <Cpu className="w-8 h-8" />
+	                 </div>
+                 <h3 className="text-3xl font-black tracking-tighter">Indistinguishable from Magic.</h3>
+                 <p className="text-lg text-gray-500 leading-relaxed font-medium">
+                   「十分に発達した科学技術は、魔法と見分けがつかない。」<br/>
+                   OpenCASCADEをWASM化し、ブラウザ上で産業グレードの幾何演算を実行。数万ポリゴンの都市データもローカルで解析し、展開図まで一気に生成します。
+                 </p>
+              </div>
+
+	              <div className="bg-[#111] p-16 space-y-10 text-white relative overflow-hidden group">
+	                 <div className="absolute inset-0 bg-brand-orange opacity-0 group-hover:opacity-10 transition-opacity duration-700"></div>
+	                 <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+	                    <Layers className="w-8 h-8" />
+	                 </div>
+                 <h3 className="text-3xl font-black tracking-tighter">Graph Theory Optimization</h3>
+                 <p className="text-lg text-gray-400 leading-relaxed font-medium">
+                   3D形状の接続関係をグラフとして扱い、最小全域木（MST）で切断線とのりしろを最適化。組み立てやすさと造形の美しさを両立します。
+                 </p>
+              </div>
+           </div>
+        </div>
+      </section>
+
+      {/* Section 03: Recognition */}
+      <section className="py-32 px-8 lg:px-16 bg-gray-50/50">
+        <div className="max-w-[1200px] mx-auto">
+          <div className="mb-10 flex flex-wrap items-center gap-6 text-left">
+            <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">03 RECORD</span>
+            <h2 className="inline-flex items-center rounded-full border border-brand-orange/20 bg-brand-orange/10 px-5 py-2 text-sm font-black tracking-wide text-brand-orange md:text-base">
+              受賞・採択実績
+            </h2>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+             {[
+               { year: '2025', title: '未踏ジュニア 採択', desc: 'IPA（情報処理推進機構）独創的アイデア支援事業', highlight: true },
+               { year: '2024', title: 'アプリ甲子園 優勝', desc: 'National Championship - Grand Prize', icon: <Trophy className="w-3 h-3" /> },
+               { year: '2024', title: 'アプリ甲子園 技術賞', desc: 'Technical Award Excellence', icon: <Cpu className="w-3 h-3" /> },
+               { year: '2024', title: 'アプリ甲子園 Cygames賞', desc: 'Corporate Special Recognition', icon: <Gamepad2 className="w-3 h-3" /> },
+             ].map((award, i) => (
+               <div
+                 key={i}
+                 title={`${award.title} — ${award.desc}`}
+                 className={`group inline-flex items-center gap-3 rounded-full px-5 py-3 text-sm font-black tracking-tight transition-colors ${award.highlight ? 'bg-[#111] text-white shadow-lg border border-white/5' : 'bg-white text-[#111] border border-gray-200 hover:border-brand-orange/40 hover:bg-gray-50'}`}
+               >
+                 <span className={`font-mono text-[10px] font-bold tracking-[0.25em] uppercase ${award.highlight ? 'text-white/50' : 'text-gray-500'}`}>{award.year}</span>
+                 {award.icon && <span className={`${award.highlight ? 'text-brand-orange' : 'text-gray-400'}`}>{award.icon}</span>}
+                 <span>{award.title}</span>
+                 {award.highlight && (
+                   <span className="inline-flex items-center gap-2 rounded-full bg-brand-orange/15 px-3 py-1 text-[10px] font-bold tracking-[0.2em] uppercase text-brand-orange">
+                     <Sparkles className="w-3 h-3 animate-pulse" /> Selected
+                   </span>
+                 )}
+               </div>
              ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-40 px-6 text-center relative overflow-hidden bg-white">
-        <div className="max-w-4xl mx-auto space-y-12 relative z-10">
-          <motion.div
-             initial={{ opacity: 0, scale: 0.95 }}
-             whileInView={{ opacity: 1, scale: 1 }}
-             viewport={{ once: true }}
-             transition={{ duration: 0.8, ease: easeOutExpo }}
-          >
-            <h2 className="text-5xl lg:text-7xl font-serif font-bold tracking-tight text-slate-900 mb-8">
-              想像力を、実体化せよ。
-            </h2>
-            <p className="text-slate-500 text-lg font-light tracking-widest uppercase">
-              Start folding your world today.
-            </p>
-          </motion.div>
-          
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2, duration: 0.8, ease: easeOutExpo }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-6"
-          >
-            <a href="/app" className="group relative px-12 py-6 bg-slate-900 text-white text-lg rounded-full font-bold overflow-hidden shadow-2xl hover:shadow-brand-500/50 transition-all duration-300">
-              <span className="relative z-10 flex items-center gap-2">
-                Paper-CADを起動 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </span>
-              <div className="absolute inset-0 bg-brand-600 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300 ease-out"></div>
-            </a>
-          </motion.div>
-        </div>
-      </section>
+      {/* Footer / Final CTA */}
+      <footer className="bg-[#111] text-white pt-48 pb-0 px-8 lg:px-16 relative overflow-hidden">
+         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-32 relative z-10">
+            <div className="space-y-12">
+               <h2 className="text-7xl lg:text-[9rem] font-black tracking-[-0.06em] leading-[0.8] uppercase opacity-20">
+                 Unfold<br/>the<br/>World.
+               </h2>
+               <div className="space-y-8">
+                 <a href="/app" className="inline-flex items-center gap-4 text-3xl font-black tracking-tighter hover:text-brand-orange transition-colors border-b-4 border-white hover:border-brand-orange pb-2 group">
+                   Paper-CADを開く
+                   <ChevronRight className="w-8 h-8 group-hover:translate-x-2 transition-transform" />
+                 </a>
+               </div>
+            </div>
 
-      {/* Footer */}
-      <footer className="bg-[#050505] text-white pt-32 pb-12 px-6 overflow-hidden relative">
-        <div className="max-w-7xl mx-auto relative z-10 flex flex-col md:flex-row justify-between items-start gap-16 mb-32">
-          <div className="space-y-6 max-w-sm">
-            <div className="flex items-center gap-3 font-bold text-2xl tracking-tight">
-              <Box className="w-8 h-8 text-white" />
-              <span>Paper-CAD</span>
-            </div>
-            <p className="text-slate-500 text-sm leading-loose">
-              デジタルとフィジカルの境界を溶かす。<br/>
-              未踏ジュニア2025採択プロジェクトとして開発中の、<br/>
-              次世代ペーパーエンジニアリングツール。
-            </p>
-          </div>
-          
-          <div className="flex gap-20 text-sm text-slate-500">
-            <div className="space-y-6 flex flex-col">
-              <span className="font-bold text-white tracking-widest text-xs uppercase">Project</span>
-              <a href="https://github.com/kodaimiyazaki/Paper-CAD" className="hover:text-white transition-colors">GitHub</a>
-              <a href="#" className="hover:text-white transition-colors">Documentation</a>
-              <a href="#" className="hover:text-white transition-colors">Mitou Junior</a>
-            </div>
-            <div className="space-y-6 flex flex-col">
-              <span className="font-bold text-white tracking-widest text-xs uppercase">Legal</span>
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-            </div>
-          </div>
-        </div>
+            <div className="flex flex-col justify-between">
+               <div className="grid grid-cols-2 gap-24">
+                  <div className="space-y-8 text-left">
+                     <span className="block text-gray-600 font-mono text-[11px] font-bold tracking-[0.4em] uppercase">Connect</span>
+                     <div className="flex flex-col gap-4 text-[15px] font-bold tracking-wide">
+                        <a href="https://github.com/kodaimiyazaki/Paper-CAD" className="hover:text-brand-orange transition-colors inline-flex items-center gap-2">GitHub <Github className="w-3 h-3" /></a>
+                        <a href="#" className="hover:text-brand-orange transition-colors">X / Twitter</a>
+                        <a href="#" className="hover:text-brand-orange transition-colors">Documentation</a>
+                     </div>
+                  </div>
+                  <div className="space-y-8 text-left">
+                     <span className="block text-gray-600 font-mono text-[11px] font-bold tracking-[0.4em] uppercase">Project</span>
+                     <div className="flex flex-col gap-4 text-[15px] font-bold tracking-wide">
+                        <a href="#" className="hover:text-brand-orange transition-colors">About</a>
+                        <a href="#" className="hover:text-brand-orange transition-colors">Contact</a>
+                        <a href="#" className="hover:text-brand-orange transition-colors">Mitou Junior</a>
+                     </div>
+                  </div>
+               </div>
 
-        {/* MASSIVE BACKGROUND IMAGE */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[1920px] pointer-events-none select-none opacity-20 mix-blend-screen">
-           <img 
-             src="/images/footer-brand.png" 
-             alt="PaperCAD Brand" 
-             className="w-full h-auto object-cover mask-image-gradient"
-           />
-        </div>
-        
-        <div className="max-w-7xl mx-auto border-t border-white/5 pt-8 text-slate-600 text-xs flex justify-between items-center relative z-10">
-          <div>© 2025 Paper-CAD Project. All rights reserved.</div>
-          <div className="font-mono">TOKYO, JAPAN</div>
-        </div>
+               <div className="pt-32 border-t border-white/5 flex flex-col md:flex-row justify-between items-end md:items-center gap-8">
+                  <div className="flex items-baseline gap-4">
+                    <span className="font-black text-xl tracking-tighter uppercase">Paper—CAD</span>
+                    <span className="font-mono text-[10px] text-gray-600 tracking-widest uppercase">© 2025 ALL RIGHTS RESERVED.</span>
+                  </div>
+                  <div className="text-right space-y-1">
+                     <p className="font-mono text-[10px] text-gray-600 tracking-widest uppercase">Built by</p>
+                     <p className="text-sm font-black tracking-tight">KODAI MIYAZAKI</p>
+                  </div>
+               </div>
+            </div>
+         </div>
+
+         <div className="relative left-1/2 -translate-x-1/2 w-screen overflow-hidden pt-24">
+            <p className="select-none whitespace-nowrap text-center font-black tracking-[-0.08em] leading-none text-brand-orange/10 text-[clamp(72px,18vw,260px)]">
+              PaperCAD
+            </p>
+         </div>
+         
+         {/* Footer Brand Image - Strategic Placement */}
+         <div className="absolute bottom-[-10%] right-[-5%] w-2/3 opacity-10 pointer-events-none mix-blend-lighten rotate-[-5deg]">
+            <img src="/images/footer-brand.png" alt="" className="w-full h-auto" />
+         </div>
       </footer>
     </div>
   );
 }
-

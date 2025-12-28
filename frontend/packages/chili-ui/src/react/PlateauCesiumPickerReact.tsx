@@ -3,10 +3,16 @@
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useAtom } from "jotai";
-import { Viewer, Cesium3DTileset, CameraFlyTo } from "resium";
 import * as Cesium from "cesium";
 import { DialogResult, I18n, PubSub } from "chili-core";
-import { CesiumBuildingPicker, getAllCities, getCityConfig, type PickedBuilding } from "chili-cesium";
+import {
+    CesiumView,
+    CesiumBuildingPicker,
+    getAllCities,
+    getCityConfig,
+    type PickedBuilding,
+    type CityConfig,
+} from "chili-cesium";
 import {
     currentCityAtom,
     selectedBuildingsAtom,
@@ -53,24 +59,24 @@ export interface PlateauCesiumPickerReactProps {
 }
 
 /**
- * PlateauCesiumPickerReact - React-based PLATEAU building picker using resium
+ * PlateauCesiumPickerReact - React-based PLATEAU building picker
  *
- * Uses resium (React bindings for Cesium) instead of @reearth/core for better compatibility.
+ * Uses CesiumView (Web Components) wrapped in React for reliable Cesium integration.
+ * This approach avoids the architectural mismatch between Cesium's imperative API
+ * and React's declarative patterns that caused issues with resium.
  */
 export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactProps) {
-    const viewerRef = useRef<Cesium.Viewer | null>(null);
+    const cesiumViewRef = useRef<CesiumView | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
     const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
     const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
-    const basemapInitializedRef = useRef(false);
-    const basemapFallbackRef = useRef(false);
 
     const [currentCity, setCurrentCity] = useAtom(currentCityAtom);
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
     const [loading, setLoading] = useAtom(loadingAtom);
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
     const [tilesetUrl, setTilesetUrl] = useState<string>("");
-    const [cameraDestination, setCameraDestination] = useState<Cesium.Cartesian3 | undefined>();
     const [viewerReady, setViewerReady] = useState(false);
 
     // Initialize with first city
@@ -103,25 +109,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         // Update tileset URL
         setTilesetUrl(cityConfig.tilesetUrl);
 
-        // Set camera destination
-        const destination = Cesium.Cartesian3.fromDegrees(
-            cityConfig.initialView.longitude,
-            cityConfig.initialView.latitude,
-            cityConfig.initialView.height,
-        );
-        setCameraDestination(destination);
-
-        // Set camera position directly if viewer is ready (avoids race condition)
-        if (viewerRef.current) {
-            console.log("[PlateauCesiumPickerReact] Setting camera position for city:", currentCity);
-            viewerRef.current.camera.setView({
-                destination,
-                orientation: {
-                    heading: 0,
-                    pitch: Cesium.Math.toRadians(-45),
-                    roll: 0,
-                },
-            });
+        // Use CesiumView.flyToCity instead of manual camera control
+        if (cesiumViewRef.current) {
+            console.log("[PlateauCesiumPickerReact] Flying to city:", currentCity);
+            cesiumViewRef.current.flyToCity(cityConfig, 2.0);
         }
 
         // Loading will be cleared when tileset loads
@@ -129,9 +120,12 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // Setup click handler when viewer is ready
     useEffect(() => {
-        const viewer = viewerRef.current;
+        if (!viewerReady || !buildingPickerRef.current) return;
+
+        const viewer = cesiumViewRef.current?.getViewer();
+        if (!viewer) return;
+
         const picker = buildingPickerRef.current;
-        if (!viewer || !picker) return;
 
         // Clean up old handler
         if (handlerRef.current) {
@@ -165,80 +159,95 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         };
     }, [setSelectedBuildings, viewerReady]);
 
-    // Setup base map once the viewer is ready (FALLBACK ONLY)
+    // Initialize CesiumView when container is ready
     useEffect(() => {
-        if (!viewerReady || basemapInitializedRef.current) return;
+        if (!containerRef.current) return;
 
-        const viewer = viewerRef.current;
-        if (!viewer) return;
+        console.log("[PlateauCesiumPickerReact] Initializing CesiumView");
 
-        basemapInitializedRef.current = true;
+        // Create and initialize CesiumView
+        const cesiumView = new CesiumView(containerRef.current);
+        cesiumView.initialize();
+        cesiumViewRef.current = cesiumView;
 
-        // Check if base layer already exists (from baseLayer prop)
-        if (viewer.imageryLayers.length > 0) {
-            console.log("[PlateauCesiumPickerReact] Base layer already initialized via prop");
+        // Get viewer instance for building picker
+        const viewer = cesiumView.getViewer();
+        if (!viewer) {
+            console.error("[PlateauCesiumPickerReact] Failed to get viewer from CesiumView");
             return;
         }
 
-        // Fallback: Add basemap manually if baseLayer prop failed
-        console.warn("[PlateauCesiumPickerReact] Base layer missing; adding manually");
+        // Initialize building picker
+        buildingPickerRef.current = new CesiumBuildingPicker(viewer);
+        setViewerReady(true);
 
-        const gsiProvider = new Cesium.UrlTemplateImageryProvider({
-            url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-            credit: "GSI Tiles",
-            maximumLevel: 18,
-        });
+        console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
 
-        viewer.imageryLayers.add(new Cesium.ImageryLayer(gsiProvider));
-
-        // OSM fallback on error
-        const fallbackToOsm = () => {
-            if (basemapFallbackRef.current) return;
-            basemapFallbackRef.current = true;
-            viewer.imageryLayers.removeAll();
-            const osmProvider = new Cesium.OpenStreetMapImageryProvider({
-                url: "https://tile.openstreetmap.org/",
-            });
-            viewer.imageryLayers.add(new Cesium.ImageryLayer(osmProvider));
-            console.warn("[PlateauCesiumPickerReact] GSI tiles failed; falling back to OSM.");
-        };
-
-        const onError = () => fallbackToOsm();
-        gsiProvider.errorEvent.addEventListener(onError);
-
+        // Cleanup on unmount
         return () => {
-            gsiProvider.errorEvent.removeEventListener(onError);
+            console.log("[PlateauCesiumPickerReact] Disposing CesiumView");
+            buildingPickerRef.current = null;
+            cesiumViewRef.current?.dispose();
+            cesiumViewRef.current = null;
+            setViewerReady(false);
         };
-    }, [viewerReady]);
+    }, []); // Run once on mount
 
-    // Configure scene for optimal 3D Tiles rendering (mirror CesiumView.initialize)
+    // Load 3D Tiles tileset when URL changes
     useEffect(() => {
-        if (!viewerReady) return;
+        if (!viewerReady || !tilesetUrl) return;
 
-        const viewer = viewerRef.current;
+        const viewer = cesiumViewRef.current?.getViewer();
         if (!viewer) return;
 
-        console.log("[PlateauCesiumPickerReact] Configuring scene for 3D Tiles");
+        console.log("[PlateauCesiumPickerReact] Loading tileset:", tilesetUrl);
 
-        // Scene configuration (from cesiumView.ts lines 83-96)
-        if (viewer.scene) {
-            viewer.scene.globe.depthTestAgainstTerrain = false;
-            viewer.scene.globe.enableLighting = false;
-            viewer.scene.highDynamicRange = false;
-            viewer.scene.requestRenderMode = true;
-            viewer.scene.maximumRenderTimeChange = 0.5;
+        // Remove existing tileset if any
+        if (viewer.scene.primitives.length > 0) {
+            viewer.scene.primitives.removeAll();
         }
 
-        // Camera configuration
-        if (viewer.camera) {
-            viewer.camera.percentageChanged = 0.05;
-        }
+        // Add new tileset using fromUrl (async)
+        Cesium.Cesium3DTileset.fromUrl(tilesetUrl, {
+            skipLevelOfDetail: false,
+            maximumScreenSpaceError: 16,
+        })
+            .then((tileset) => {
+                // Add to scene
+                viewer.scene.primitives.add(tileset);
+                tilesetRef.current = tileset;
 
-        // Disable default double-click zoom
-        if (viewer.screenSpaceEventHandler) {
-            viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
-        }
-    }, [viewerReady]);
+                // Apply style
+                tileset.style = new Cesium.Cesium3DTileStyle({
+                    color: {
+                        conditions: [
+                            ["${feature_type} === 'bldg:Building'", "color('white', 0.9)"],
+                            ["true", "color('lightgray', 0.8)"],
+                        ],
+                    },
+                    show: "${feature_type} === 'bldg:Building'",
+                });
+
+                console.log("[PlateauCesiumPickerReact] Tileset loaded successfully");
+                setLoading(false);
+                setLoadingMessage("");
+            })
+            .catch((error: Error) => {
+                console.error("[PlateauCesiumPickerReact] Failed to load tileset:", error);
+                // Note: Toast notification removed due to missing i18n key
+                setLoading(false);
+                setLoadingMessage("");
+            });
+
+        // Cleanup on tileset change
+        return () => {
+            const currentTileset = tilesetRef.current;
+            if (currentTileset && viewer.scene.primitives.contains(currentTileset)) {
+                viewer.scene.primitives.remove(currentTileset);
+                tilesetRef.current = null;
+            }
+        };
+    }, [viewerReady, tilesetUrl, setLoading, setLoadingMessage]);
 
     // Handle city change
     const handleCityChange = useCallback(
@@ -286,57 +295,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         onClose(DialogResult.cancel);
     }, [onClose]);
 
-    // Handle tileset ready
-    const handleTilesetReady = useCallback(
-        (tileset: Cesium.Cesium3DTileset) => {
-            tilesetRef.current = tileset;
-            tileset.style = new Cesium.Cesium3DTileStyle({
-                color: {
-                    conditions: [
-                        ["${feature_type} === 'bldg:Building'", "color('white', 0.9)"],
-                        ["true", "color('lightgray', 0.8)"],
-                    ],
-                },
-                show: "${feature_type} === 'bldg:Building'",
-            });
-            setLoading(false);
-            setLoadingMessage("");
-        },
-        [setLoading, setLoadingMessage],
-    );
-
-    // Handle viewer ready
-    const handleViewerReady = useCallback((ref: any) => {
-        // resium refs contain the Cesium element in cesiumElement property
-        if (!ref || !ref.cesiumElement) {
-            return;
-        }
-
-        // Only initialize once - prevent multiple initializations
-        if (viewerRef.current) {
-            console.log("[PlateauCesiumPickerReact] Viewer already initialized, skipping");
-            return;
-        }
-
-        console.log("[PlateauCesiumPickerReact] Viewer ready callback fired");
-        viewerRef.current = ref.cesiumElement;
-        buildingPickerRef.current = new CesiumBuildingPicker(ref.cesiumElement);
-
-        // Validate canvas dimensions
-        if (!ref.cesiumElement.canvas) {
-            console.error("[PlateauCesiumPickerReact] Viewer canvas is missing!");
-            return;
-        }
-
-        if (ref.cesiumElement.canvas.width === 0 || ref.cesiumElement.canvas.height === 0) {
-            console.warn("[PlateauCesiumPickerReact] Canvas has zero dimensions, forcing resize");
-            ref.cesiumElement.resize();
-        }
-
-        setViewerReady(true);
-        console.log("[PlateauCesiumPickerReact] Viewer ready");
-    }, []);
-
     return (
         <div className={styles.dialog}>
             <Header
@@ -347,37 +305,18 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             />
             <div className={styles.body}>
                 <div className={styles.mapContainer}>
-                    <Viewer
-                        full
-                        ref={handleViewerReady}
-                        timeline={false}
-                        animation={false}
-                        baseLayer={false}
-                        baseLayerPicker={false}
-                        geocoder={false}
-                        homeButton={false}
-                        navigationHelpButton={false}
-                        sceneModePicker={false}
-                        selectionIndicator={false}
-                        infoBox={false}
-                    >
-                        {tilesetUrl && (
-                            <>
-                                <Cesium3DTileset url={tilesetUrl} onReady={handleTilesetReady} />
-                                {cameraDestination && (
-                                    <CameraFlyTo
-                                        destination={cameraDestination}
-                                        duration={2}
-                                        orientation={{
-                                            heading: 0,
-                                            pitch: Cesium.Math.toRadians(-45),
-                                            roll: 0,
-                                        }}
-                                    />
-                                )}
-                            </>
-                        )}
-                    </Viewer>
+                    {/* Map container for CesiumView (Web Components) */}
+                    <div
+                        ref={containerRef}
+                        style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            overflow: "hidden",
+                        }}
+                    />
                     <Instructions />
                     {loading && <Loading message={loadingMessage} />}
                 </div>

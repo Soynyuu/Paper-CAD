@@ -7,6 +7,7 @@ export * from "./dialog";
 export * from "./keymapSettings";
 export * from "./mainWindow";
 export * from "./plateauBuildingSelectionDialog";
+export * from "./plateauCesiumPickerDialog";
 export * from "./plateauSearchDialog";
 export * from "./property";
 export * from "./stepUnfold";

@@ -77,15 +77,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             return undefined;
         }
 
-        // GSI tiles (Japan) - synchronous initialization
-        const gsiProvider = new Cesium.UrlTemplateImageryProvider({
+        // GSI tiles (Japan) - return ImageryProvider directly for resium
+        return new Cesium.UrlTemplateImageryProvider({
             url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
             credit: "GSI Tiles",
             maximumLevel: 18,
-        });
-
-        return new Cesium.ImageryLayer(gsiProvider, {
-            show: true,
         });
     }, []);
 
@@ -324,25 +320,33 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // Handle viewer ready
     const handleViewerReady = useCallback((ref: any) => {
         // resium refs contain the Cesium element in cesiumElement property
-        if (ref && ref.cesiumElement && viewerRef.current !== ref.cesiumElement) {
-            console.log("[PlateauCesiumPickerReact] Viewer ready callback fired");
-            viewerRef.current = ref.cesiumElement;
-            buildingPickerRef.current = new CesiumBuildingPicker(ref.cesiumElement);
-
-            // Validate canvas dimensions
-            if (!ref.cesiumElement.canvas) {
-                console.error("[PlateauCesiumPickerReact] Viewer canvas is missing!");
-                return;
-            }
-
-            if (ref.cesiumElement.canvas.width === 0 || ref.cesiumElement.canvas.height === 0) {
-                console.warn("[PlateauCesiumPickerReact] Canvas has zero dimensions, forcing resize");
-                ref.cesiumElement.resize();
-            }
-
-            setViewerReady(true);
-            console.log("[PlateauCesiumPickerReact] Viewer ready");
+        if (!ref || !ref.cesiumElement) {
+            return;
         }
+
+        // Only initialize once - prevent multiple initializations
+        if (viewerRef.current) {
+            console.log("[PlateauCesiumPickerReact] Viewer already initialized, skipping");
+            return;
+        }
+
+        console.log("[PlateauCesiumPickerReact] Viewer ready callback fired");
+        viewerRef.current = ref.cesiumElement;
+        buildingPickerRef.current = new CesiumBuildingPicker(ref.cesiumElement);
+
+        // Validate canvas dimensions
+        if (!ref.cesiumElement.canvas) {
+            console.error("[PlateauCesiumPickerReact] Viewer canvas is missing!");
+            return;
+        }
+
+        if (ref.cesiumElement.canvas.width === 0 || ref.cesiumElement.canvas.height === 0) {
+            console.warn("[PlateauCesiumPickerReact] Canvas has zero dimensions, forcing resize");
+            ref.cesiumElement.resize();
+        }
+
+        setViewerReady(true);
+        console.log("[PlateauCesiumPickerReact] Viewer ready");
     }, []);
 
     return (

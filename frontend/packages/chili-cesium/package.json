@@ -4,7 +4,7 @@
     "description": "Cesium 3D Tiles integration for PLATEAU building picker",
     "main": "src/index.ts",
     "devDependencies": {
-        "cesium": "^1.121.0",
+        "cesium": "1.121.0",
         "chili-core": "*",
         "chili-controls": "*"
     }

@@ -1,0 +1,12 @@
+{
+    "name": "chili-react-bridge",
+    "version": "0.1.0",
+    "description": "Bridge between Web Components and React for gradual React migration",
+    "main": "src/index.ts",
+    "devDependencies": {
+        "react": "*",
+        "react-dom": "*",
+        "@types/react": "*",
+        "@types/react-dom": "*"
+    }
+}

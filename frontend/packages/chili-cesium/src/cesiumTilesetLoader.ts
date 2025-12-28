@@ -49,7 +49,6 @@ export class CesiumTilesetLoader {
 
                 // Performance settings
                 maximumScreenSpaceError: 16,
-                // maximumMemoryUsage removed - not a valid Cesium property
 
                 // Skip LOD levels for faster loading
                 skipLevelOfDetail: true,

@@ -1,0 +1,27 @@
+.citySelect {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    min-width: 240px;
+    background-color: var(--neutral-50);
+    color: var(--foreground-color);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.citySelect:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    background-color: var(--neutral-0);
+}
+
+.citySelect:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.citySelect:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

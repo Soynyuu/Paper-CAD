@@ -53,6 +53,8 @@ const config = defineConfig({
     entry: {
         main: "./packages/chili-web/src/index.ts",
     },
+    mode: process.env.NODE_ENV === "production" ? "production" : "development",
+    bail: false, // Continue building despite errors
     devServer: {
         hot: true,
         devMiddleware: {
@@ -112,6 +114,8 @@ const config = defineConfig({
             resium$: resiumEntry,
             "resium/dist/resium.js": resiumEntry,
             "resium/dist/resium.umd.cjs": resiumEntry,
+            // Fix @zip.js/zip.js compatibility with Cesium KML modules
+            "@zip.js/zip.js/lib/zip-no-worker.js": "@zip.js/zip.js/lib/zip.js",
         },
         fallback: {
             fs: false,

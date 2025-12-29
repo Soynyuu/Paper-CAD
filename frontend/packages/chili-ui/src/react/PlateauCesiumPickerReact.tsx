@@ -58,6 +58,14 @@ export interface PlateauCesiumPickerReactProps {
     onClose: (result: DialogResult, data?: { selectedBuildings: PickedBuilding[] }) => void;
 }
 
+interface SearchResult {
+    displayName: string;
+    latitude: number;
+    longitude: number;
+    osmType?: string;
+    osmId?: number;
+}
+
 /**
  * PlateauCesiumPickerReact - React-based PLATEAU building picker
  *
@@ -78,6 +86,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
     const [tilesetUrl, setTilesetUrl] = useState<string>("");
     const [viewerReady, setViewerReady] = useState(false);
+
+    // Search state
+    const [searchQuery, setSearchQuery] = useState<string>("");
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+    const [isSearching, setIsSearching] = useState<boolean>(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const [showResults, setShowResults] = useState<boolean>(false);
+    const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
     // Initialize with first city
     useEffect(() => {
@@ -249,6 +267,20 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         };
     }, [viewerReady, tilesetUrl, setLoading, setLoadingMessage]);
 
+    // Close search results when clicking outside
+    useEffect(() => {
+        if (!showResults) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+                setShowResults(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showResults]);
+
     // Handle city change
     const handleCityChange = useCallback(
         (cityKey: string) => {
@@ -295,6 +327,162 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         onClose(DialogResult.cancel);
     }, [onClose]);
 
+    // Search handlers
+    const performSearch = useCallback(async () => {
+        const query = searchQuery.trim();
+        if (!query) return;
+
+        setIsSearching(true);
+        setSearchError(null);
+        setShowResults(false);
+
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
+        try {
+            const apiBaseUrl = (window as any).__APP_CONFIG__?.stepUnfoldApiUrl ||
+                              "http://localhost:8001/api";
+
+            const response = await fetch(`${apiBaseUrl}/plateau/search-by-address`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query,
+                    radius: 0.001,
+                    limit: 7,
+                    search_mode: "hybrid"
+                }),
+                signal: abortControllerRef.current.signal
+            });
+
+            const data = await response.json();
+
+            if (!data.success || !data.geocoding) {
+                setSearchError("該当する場所が見つかりません");
+                setSearchResults([]);
+                setShowResults(true);
+                return;
+            }
+
+            const result: SearchResult = {
+                displayName: data.geocoding.display_name,
+                latitude: data.geocoding.latitude,
+                longitude: data.geocoding.longitude,
+                osmType: data.geocoding.osm_type,
+                osmId: data.geocoding.osm_id
+            };
+
+            setSearchResults([result]);
+            setShowResults(true);
+            setSelectedResultIndex(0);
+
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
+            console.error("[PlateauCesiumPickerReact] Search failed:", error);
+            setSearchError("検索中にエラーが発生しました");
+            setShowResults(true);
+        } finally {
+            setIsSearching(false);
+        }
+    }, [searchQuery]);
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.nativeEvent.isComposing) return;
+
+        if (e.key === "Enter") {
+            e.preventDefault();
+            performSearch();
+        } else if (e.key === "Escape") {
+            setShowResults(false);
+            setSearchError(null);
+        } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
+            e.preventDefault();
+            setSelectedResultIndex((prev) =>
+                prev < searchResults.length - 1 ? prev + 1 : prev
+            );
+        } else if (e.key === "ArrowUp" && showResults && searchResults.length > 0) {
+            e.preventDefault();
+            setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        }
+    };
+
+    const handleSearchClear = () => {
+        setSearchQuery("");
+        setSearchResults([]);
+        setShowResults(false);
+        setSearchError(null);
+        setSelectedResultIndex(-1);
+    };
+
+    // Camera control for search results
+    const findNearestCity = useCallback((latitude: number, longitude: number) => {
+        const toRadians = (deg: number) => deg * (Math.PI / 180);
+        const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+            const R = 6371;
+            const dLat = toRadians(lat2 - lat1);
+            const dLon = toRadians(lon2 - lon1);
+            const a = Math.sin(dLat / 2) ** 2 +
+                      Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                      Math.sin(dLon / 2) ** 2;
+            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        };
+
+        const cities = [
+            { key: "chiyoda", name: "千代田区", lat: 35.6938, lon: 139.7536 },
+            { key: "shibuya", name: "渋谷区", lat: 35.6617, lon: 139.6980 },
+            { key: "shinjuku", name: "新宿区", lat: 35.6938, lon: 139.7036 },
+            { key: "minato", name: "港区", lat: 35.6585, lon: 139.7514 },
+            { key: "chuo", name: "中央区", lat: 35.6704, lon: 139.7703 },
+            { key: "osaka", name: "大阪市", lat: 34.6937, lon: 135.5023 },
+            { key: "nagoya", name: "名古屋市", lat: 35.1815, lon: 136.9066 },
+            { key: "yokohama", name: "横浜市", lat: 35.4437, lon: 139.6380 },
+            { key: "fukuoka", name: "福岡市", lat: 33.5904, lon: 130.4017 },
+            { key: "sapporo", name: "札幌市", lat: 43.0642, lon: 141.3469 }
+        ];
+
+        let nearestCity = cities[0];
+        let minDistance = haversine(latitude, longitude, cities[0].lat, cities[0].lon);
+
+        for (const city of cities.slice(1)) {
+            const distance = haversine(latitude, longitude, city.lat, city.lon);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestCity = city;
+            }
+        }
+
+        return nearestCity;
+    }, []);
+
+    const handleResultClick = useCallback((result: SearchResult) => {
+        const viewer = cesiumViewRef.current?.getViewer();
+        if (!viewer) return;
+
+        setShowResults(false);
+        setSearchQuery(result.displayName);
+
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+                result.longitude,
+                result.latitude,
+                1000
+            ),
+            duration: 2.0,
+            orientation: {
+                heading: Cesium.Math.toRadians(0),
+                pitch: Cesium.Math.toRadians(-45),
+                roll: 0
+            }
+        });
+
+        const nearestCity = findNearestCity(result.latitude, result.longitude);
+        if (nearestCity && nearestCity.key !== currentCity) {
+            setCurrentCity(nearestCity.key);
+        }
+    }, [currentCity, setCurrentCity, findNearestCity]);
+
     return (
         <div className={styles.dialog}>
             <Header
@@ -317,6 +505,50 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             overflow: "hidden",
                         }}
                     />
+                    {/* Google Earth-style search box (top-left overlay) */}
+                    <div ref={searchContainerRef} className={styles.searchContainer}>
+                        <div className={styles.searchInputWrapper}>
+                            <span className={styles.searchIcon} aria-hidden="true">🔍</span>
+                            <input
+                                type="text"
+                                className={styles.searchInput}
+                                placeholder="施設名や住所を検索（例: 東京駅）"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleSearchKeyDown}
+                                disabled={isSearching}
+                                aria-label="施設名または住所を検索"
+                                role="combobox"
+                                aria-expanded={showResults}
+                            />
+                            {isSearching && <div className={styles.searchSpinner} />}
+                            {!isSearching && searchQuery && (
+                                <button className={styles.searchClearButton} onClick={handleSearchClear}>
+                                    ×
+                                </button>
+                            )}
+                        </div>
+
+                        {showResults && (
+                            <div className={styles.searchResults} role="listbox">
+                                {searchError ? (
+                                    <div className={styles.searchError}>⚠️ {searchError}</div>
+                                ) : searchResults.map((result, index) => (
+                                    <div
+                                        key={`${result.osmType}-${result.osmId}-${index}`}
+                                        className={`${styles.searchResultItem} ${
+                                            index === selectedResultIndex ? styles.selected : ""
+                                        }`}
+                                        onClick={() => handleResultClick(result)}
+                                        role="option"
+                                        aria-selected={index === selectedResultIndex}
+                                    >
+                                        📍 {result.displayName}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     <Instructions />
                     {loading && <Loading message={loadingMessage} />}
                 </div>

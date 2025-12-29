@@ -4,9 +4,11 @@
     "description": "",
     "main": "src/index.ts",
     "devDependencies": {
+        "cesium": "1.136.0",
         "chili-core": "*",
         "chili-controls": "*",
         "chili-geo": "*",
-        "chili-vis": "*"
+        "chili-vis": "*",
+        "chili-cesium": "*"
     }
 }

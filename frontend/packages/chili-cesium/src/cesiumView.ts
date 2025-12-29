@@ -76,6 +76,7 @@ export class CesiumView {
                 Cesium.TileMapServiceImageryProvider.fromUrl(
                     Cesium.buildModuleUrl("Assets/Textures/NaturalEarthII"),
                 ),
+                {}, // Required second parameter
             ),
         });
 

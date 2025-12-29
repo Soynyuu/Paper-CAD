@@ -4,7 +4,7 @@
     "description": "",
     "main": "src/index.ts",
     "devDependencies": {
-        "cesium": "1.121.0",
+        "cesium": "1.136.0",
         "chili-core": "*",
         "chili-controls": "*",
         "chili-geo": "*",

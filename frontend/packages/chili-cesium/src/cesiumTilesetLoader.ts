@@ -4,34 +4,166 @@
 import * as Cesium from "cesium";
 
 /**
+ * LOD (Level of Detail) level type
+ */
+export type LodLevel = "LOD1" | "LOD2" | "LOD3";
+
+/**
  * CesiumTilesetLoader
  *
  * Manages loading and unloading of PLATEAU 3D Tiles tilesets.
  *
  * Features:
- * - Load tileset from URL
+ * - Load tileset from URL with automatic LOD3 → LOD2 → LOD1 fallback
  * - Unload tileset and cleanup
  * - Custom styling for highlighting
  * - Error handling for failed tile requests
+ * - Performance optimization per LOD level
+ * - Texture preservation for textured tilesets
  *
  * Usage:
  * ```typescript
  * const loader = new CesiumTilesetLoader(viewer);
  * const tileset = await loader.loadTileset(cityConfig.tilesetUrl);
+ * const lodLevel = loader.getCurrentLodLevel(); // "LOD3", "LOD2", or "LOD1"
  * ```
  */
 export class CesiumTilesetLoader {
     private viewer: Cesium.Viewer;
     private currentTileset: Cesium.Cesium3DTileset | null = null;
+    private currentLodLevel: LodLevel | null = null;
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
     }
 
     /**
-     * Load 3D Tiles tileset from URL
+     * Get the LOD level of the currently loaded tileset
      *
-     * @param url - Tileset JSON URL
+     * @returns Current LOD level or null if no tileset loaded
+     */
+    getCurrentLodLevel(): LodLevel | null {
+        return this.currentLodLevel;
+    }
+
+    /**
+     * Generate LOD variant URLs from a base URL
+     *
+     * @param baseUrl - Base tileset URL (usually LOD1)
+     * @returns Object with lod1, lod2, and lod3 URLs
+     */
+    private generateLodUrls(baseUrl: string): { lod1: string; lod2: string; lod3: string } {
+        // Replace _lod1, _lod2, or _lod3 in the URL
+        const lod1 = baseUrl.replace(/_lod[123]/, "_lod1");
+        const lod2 = baseUrl.replace(/_lod[123]/, "_lod2");
+        const lod3 = baseUrl.replace(/_lod[123]/, "_lod3");
+
+        return { lod1, lod2, lod3 };
+    }
+
+    /**
+     * Get Cesium tileset options optimized for specific LOD level
+     *
+     * @param lodLevel - LOD level
+     * @returns Cesium tileset constructor options
+     */
+    private getCesiumOptionsForLod(lodLevel: LodLevel): Cesium.Cesium3DTileset.ConstructorOptions {
+        const baseOptions = {
+            // Debugging (disabled for production)
+            debugShowBoundingVolume: false,
+            debugShowContentBoundingVolume: false,
+            debugShowGeometricError: false,
+
+            // Common settings
+            baseScreenSpaceError: 1024,
+            skipScreenSpaceErrorFactor: 16,
+            preloadWhenHidden: true,
+            preferLeaves: true,
+
+            // Dynamic screen space error for LOD
+            dynamicScreenSpaceError: true,
+            dynamicScreenSpaceErrorDensity: 0.00278,
+            dynamicScreenSpaceErrorFactor: 4.0,
+            dynamicScreenSpaceErrorHeightFalloff: 0.25,
+        };
+
+        // LOD-specific optimizations
+        switch (lodLevel) {
+            case "LOD3":
+                // Highest quality - load all detail
+                return {
+                    ...baseOptions,
+                    maximumScreenSpaceError: 2,
+                    skipLevelOfDetail: false,
+                    skipLevels: 0,
+                    preloadFlightDestinations: true,
+                };
+
+            case "LOD2":
+                // Balanced quality and performance
+                return {
+                    ...baseOptions,
+                    maximumScreenSpaceError: 8,
+                    skipLevelOfDetail: false,
+                    skipLevels: 0,
+                    preloadFlightDestinations: false,
+                };
+
+            case "LOD1":
+                // Performance optimized - skip intermediate levels
+                return {
+                    ...baseOptions,
+                    maximumScreenSpaceError: 16,
+                    skipLevelOfDetail: true,
+                    skipLevels: 1,
+                    preloadFlightDestinations: false,
+                };
+        }
+    }
+
+    /**
+     * Try to load tileset from a specific LOD level
+     *
+     * @param url - Tileset URL
+     * @param lodLevel - LOD level being attempted
+     * @returns Result with success flag and tileset or error
+     */
+    private async tryLoadTileset(
+        url: string,
+        lodLevel: LodLevel,
+    ): Promise<{ success: boolean; tileset?: Cesium.Cesium3DTileset; error?: Error }> {
+        try {
+            console.log(`[CesiumTilesetLoader] Attempting ${lodLevel}: ${url}`);
+
+            const options = this.getCesiumOptionsForLod(lodLevel);
+            const tileset = await Cesium.Cesium3DTileset.fromUrl(url, options);
+
+            // Add to scene
+            this.viewer.scene.primitives.add(tileset);
+            this.currentTileset = tileset;
+            this.currentLodLevel = lodLevel;
+
+            // Apply default styling
+            this.setDefaultStyle(tileset);
+
+            // Fly to tileset bounds
+            await this.viewer.zoomTo(tileset);
+
+            console.log(`[CesiumTilesetLoader] ✓ ${lodLevel} loaded successfully`);
+            return { success: true, tileset };
+        } catch (error) {
+            console.log(
+                `[CesiumTilesetLoader] ✗ ${lodLevel} failed:`,
+                error instanceof Error ? error.message : String(error),
+            );
+            return { success: false, error: error as Error };
+        }
+    }
+
+    /**
+     * Load 3D Tiles tileset from URL with automatic LOD3 → LOD2 → LOD1 fallback
+     *
+     * @param url - Tileset JSON URL (can be any LOD level)
      * @returns Promise that resolves to the loaded tileset
      */
     async loadTileset(url: string): Promise<Cesium.Cesium3DTileset> {
@@ -40,53 +172,32 @@ export class CesiumTilesetLoader {
             this.unloadTileset();
         }
 
-        try {
-            const tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
-                // Enable debugging for development
-                debugShowBoundingVolume: false,
-                debugShowContentBoundingVolume: false,
-                debugShowGeometricError: false,
+        // Generate LOD variant URLs
+        const urls = this.generateLodUrls(url);
 
-                // Performance settings
-                maximumScreenSpaceError: 16,
-
-                // Skip LOD levels for faster loading
-                skipLevelOfDetail: true,
-                baseScreenSpaceError: 1024,
-                skipScreenSpaceErrorFactor: 16,
-                skipLevels: 1,
-
-                // Preload ancestors for better picking
-                preloadWhenHidden: true,
-                preloadFlightDestinations: false,
-                preferLeaves: true,
-
-                // Enable dynamic screen space error for LOD
-                dynamicScreenSpaceError: true,
-                dynamicScreenSpaceErrorDensity: 0.00278,
-                dynamicScreenSpaceErrorFactor: 4.0,
-                dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            });
-
-            // Add to scene
-            this.viewer.scene.primitives.add(tileset);
-            this.currentTileset = tileset;
-
-            // Tileset is already ready from fromUrl() - no need to await readyPromise
-
-            // Apply default styling
-            this.setDefaultStyle(tileset);
-
-            // Fly to tileset bounds
-            await this.viewer.zoomTo(tileset);
-
-            return tileset;
-        } catch (error) {
-            console.error("[CesiumTilesetLoader] Failed to load tileset:", error);
-            throw new Error(
-                `Failed to load 3D Tiles: ${error instanceof Error ? error.message : String(error)}`,
-            );
+        // Try LOD3 first (highest detail)
+        const lod3Result = await this.tryLoadTileset(urls.lod3, "LOD3");
+        if (lod3Result.success) {
+            return lod3Result.tileset!;
         }
+
+        // Fallback to LOD2 (medium detail)
+        const lod2Result = await this.tryLoadTileset(urls.lod2, "LOD2");
+        if (lod2Result.success) {
+            return lod2Result.tileset!;
+        }
+
+        // Fallback to LOD1 (basic detail)
+        const lod1Result = await this.tryLoadTileset(urls.lod1, "LOD1");
+        if (lod1Result.success) {
+            return lod1Result.tileset!;
+        }
+
+        // All LOD levels failed
+        console.error("[CesiumTilesetLoader] Failed to load tileset at all LOD levels");
+        throw new Error(
+            `Failed to load 3D Tiles at all LOD levels (LOD3, LOD2, LOD1). Last error: ${lod1Result.error?.message || "Unknown error"}`,
+        );
     }
 
     /**
@@ -96,6 +207,7 @@ export class CesiumTilesetLoader {
         if (this.currentTileset) {
             this.viewer.scene.primitives.remove(this.currentTileset);
             this.currentTileset = null;
+            this.currentLodLevel = null;
         }
     }
 
@@ -111,16 +223,14 @@ export class CesiumTilesetLoader {
     /**
      * Set default style for PLATEAU buildings
      *
+     * Preserves textures if present in tileset while filtering for buildings only.
+     *
      * @param tileset - Tileset to style
      */
     private setDefaultStyle(tileset: Cesium.Cesium3DTileset): void {
         tileset.style = new Cesium.Cesium3DTileStyle({
-            color: {
-                conditions: [
-                    ["${feature_type} === 'bldg:Building'", "color('white', 0.9)"],
-                    ["true", "color('lightgray', 0.8)"],
-                ],
-            },
+            // Only filter visibility - let textures show through
+            // Color conditions removed to preserve textures from LOD2/LOD3 tilesets
             show: "${feature_type} === 'bldg:Building'", // Only show buildings
         });
     }

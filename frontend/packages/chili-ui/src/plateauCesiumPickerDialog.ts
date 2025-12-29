@@ -177,6 +177,28 @@ export class PlateauCesiumPickerDialog {
 
                     // Fly to city
                     cesiumView.flyToCity(cityConfig);
+
+                    // Show success notification with LOD level
+                    const lodLevel = tilesetLoader.getCurrentLodLevel();
+                    if (lodLevel === "LOD3") {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.cesium.loadedLod3:{0}",
+                            cityConfig.name,
+                        );
+                    } else if (lodLevel === "LOD2") {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.cesium.loadedLod2:{0}",
+                            cityConfig.name,
+                        );
+                    } else if (lodLevel === "LOD1") {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.cesium.loadedLod1:{0}",
+                            cityConfig.name,
+                        );
+                    }
                 }
 
                 // Update panel

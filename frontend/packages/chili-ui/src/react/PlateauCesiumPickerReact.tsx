@@ -342,8 +342,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         abortControllerRef.current = new AbortController();
 
         try {
-            const apiBaseUrl = (window as any).__APP_CONFIG__?.stepUnfoldApiUrl ||
-                              "http://localhost:8001/api";
+            const apiBaseUrl =
+                (window as any).__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
             const response = await fetch(`${apiBaseUrl}/plateau/search-by-address`, {
                 method: "POST",
@@ -352,9 +352,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     query,
                     radius: 0.001,
                     limit: 7,
-                    search_mode: "hybrid"
+                    search_mode: "hybrid",
                 }),
-                signal: abortControllerRef.current.signal
+                signal: abortControllerRef.current.signal,
             });
 
             const data = await response.json();
@@ -371,15 +371,14 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 latitude: data.geocoding.latitude,
                 longitude: data.geocoding.longitude,
                 osmType: data.geocoding.osm_type,
-                osmId: data.geocoding.osm_id
+                osmId: data.geocoding.osm_id,
             };
 
             setSearchResults([result]);
             setShowResults(true);
             setSelectedResultIndex(0);
-
         } catch (error: any) {
-            if (error.name === 'AbortError') return;
+            if (error.name === "AbortError") return;
             console.error("[PlateauCesiumPickerReact] Search failed:", error);
             setSearchError("検索中にエラーが発生しました");
             setShowResults(true);
@@ -399,9 +398,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             setSearchError(null);
         } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
             e.preventDefault();
-            setSelectedResultIndex((prev) =>
-                prev < searchResults.length - 1 ? prev + 1 : prev
-            );
+            setSelectedResultIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
         } else if (e.key === "ArrowUp" && showResults && searchResults.length > 0) {
             e.preventDefault();
             setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
@@ -423,23 +420,23 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const R = 6371;
             const dLat = toRadians(lat2 - lat1);
             const dLon = toRadians(lon2 - lon1);
-            const a = Math.sin(dLat / 2) ** 2 +
-                      Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
-                      Math.sin(dLon / 2) ** 2;
+            const a =
+                Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
             return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         };
 
         const cities = [
             { key: "chiyoda", name: "千代田区", lat: 35.6938, lon: 139.7536 },
-            { key: "shibuya", name: "渋谷区", lat: 35.6617, lon: 139.6980 },
+            { key: "shibuya", name: "渋谷区", lat: 35.6617, lon: 139.698 },
             { key: "shinjuku", name: "新宿区", lat: 35.6938, lon: 139.7036 },
             { key: "minato", name: "港区", lat: 35.6585, lon: 139.7514 },
             { key: "chuo", name: "中央区", lat: 35.6704, lon: 139.7703 },
             { key: "osaka", name: "大阪市", lat: 34.6937, lon: 135.5023 },
             { key: "nagoya", name: "名古屋市", lat: 35.1815, lon: 136.9066 },
-            { key: "yokohama", name: "横浜市", lat: 35.4437, lon: 139.6380 },
+            { key: "yokohama", name: "横浜市", lat: 35.4437, lon: 139.638 },
             { key: "fukuoka", name: "福岡市", lat: 33.5904, lon: 130.4017 },
-            { key: "sapporo", name: "札幌市", lat: 43.0642, lon: 141.3469 }
+            { key: "sapporo", name: "札幌市", lat: 43.0642, lon: 141.3469 },
         ];
 
         let nearestCity = cities[0];
@@ -456,32 +453,31 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         return nearestCity;
     }, []);
 
-    const handleResultClick = useCallback((result: SearchResult) => {
-        const viewer = cesiumViewRef.current?.getViewer();
-        if (!viewer) return;
+    const handleResultClick = useCallback(
+        (result: SearchResult) => {
+            const viewer = cesiumViewRef.current?.getViewer();
+            if (!viewer) return;
 
-        setShowResults(false);
-        setSearchQuery(result.displayName);
+            setShowResults(false);
+            setSearchQuery(result.displayName);
 
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-                result.longitude,
-                result.latitude,
-                1000
-            ),
-            duration: 2.0,
-            orientation: {
-                heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-45),
-                roll: 0
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, 1000),
+                duration: 2.0,
+                orientation: {
+                    heading: Cesium.Math.toRadians(0),
+                    pitch: Cesium.Math.toRadians(-45),
+                    roll: 0,
+                },
+            });
+
+            const nearestCity = findNearestCity(result.latitude, result.longitude);
+            if (nearestCity && nearestCity.key !== currentCity) {
+                setCurrentCity(nearestCity.key);
             }
-        });
-
-        const nearestCity = findNearestCity(result.latitude, result.longitude);
-        if (nearestCity && nearestCity.key !== currentCity) {
-            setCurrentCity(nearestCity.key);
-        }
-    }, [currentCity, setCurrentCity, findNearestCity]);
+        },
+        [currentCity, setCurrentCity, findNearestCity],
+    );
 
     return (
         <div className={styles.dialog}>
@@ -508,7 +504,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     {/* Google Earth-style search box (top-left overlay) */}
                     <div ref={searchContainerRef} className={styles.searchContainer}>
                         <div className={styles.searchInputWrapper}>
-                            <span className={styles.searchIcon} aria-hidden="true">🔍</span>
+                            <span className={styles.searchIcon} aria-hidden="true">
+                                🔍
+                            </span>
                             <input
                                 type="text"
                                 className={styles.searchInput}
@@ -533,19 +531,21 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             <div className={styles.searchResults} role="listbox">
                                 {searchError ? (
                                     <div className={styles.searchError}>⚠️ {searchError}</div>
-                                ) : searchResults.map((result, index) => (
-                                    <div
-                                        key={`${result.osmType}-${result.osmId}-${index}`}
-                                        className={`${styles.searchResultItem} ${
-                                            index === selectedResultIndex ? styles.selected : ""
-                                        }`}
-                                        onClick={() => handleResultClick(result)}
-                                        role="option"
-                                        aria-selected={index === selectedResultIndex}
-                                    >
-                                        📍 {result.displayName}
-                                    </div>
-                                ))}
+                                ) : (
+                                    searchResults.map((result, index) => (
+                                        <div
+                                            key={`${result.osmType}-${result.osmId}-${index}`}
+                                            className={`${styles.searchResultItem} ${
+                                                index === selectedResultIndex ? styles.selected : ""
+                                            }`}
+                                            onClick={() => handleResultClick(result)}
+                                            role="option"
+                                            aria-selected={index === selectedResultIndex}
+                                        >
+                                            📍 {result.displayName}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
                     </div>

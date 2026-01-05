@@ -64,8 +64,9 @@ Expose LOD choice during building selection and import.
   - `frontend/packages/chili/src/commands/importCityGMLByAddress.ts`
   - `frontend/packages/chili/src/commands/importCityGMLByCesium.ts`
 - Cesium flow:
-  - On selection, call `searchByBuildingIdAndMesh` to fetch `has_lod2/has_lod3`.
-  - Disable Expert option when LOD3 is unavailable.
+  - On selection update, fetch LOD availability via batch metadata endpoint.
+  - Disable Expert option if none of the selected buildings has LOD3.
+  - If some lack LOD3, allow Expert but show per-building fallback warning.
 - When building has no LOD3:
   - Disable Expert option or show fallback warning.
 - Persist user preference for future sessions (local storage).
@@ -78,6 +79,9 @@ Allow the backend to honor explicit LOD targets instead of always choosing highe
   - `/api/citygml/to-step`
   - `/api/plateau/fetch-by-id-and-mesh`
   - `/api/plateau/fetch-and-convert`
+- Add a batch metadata endpoint:
+  - `POST /api/plateau/metadata-by-id-and-mesh`
+  - Input: list of `{ gml_id, mesh_code }`, output `has_lod2/has_lod3` and name/height.
 - Update `backend/services/citygml/lod/extractor.py`:
   - Keep default order unchanged unless `lod_target` is provided.
   - If `lod_target=LOD2`, try LOD2 then LOD1 (skip LOD3).
@@ -91,6 +95,7 @@ Pass LOD target through API calls and surface the final LOD used.
 - Extend `CityGMLService` methods:
   - `fetchAndConvertByBuildingIdAndMesh` to accept `lodTarget`.
   - `fetchAndConvertByAddress` to accept `lodTarget`.
+- Add a `fetchLodMetadataBatch` helper to call the new batch endpoint.
 - For file responses, use headers:
   - `X-LOD-Used` and `X-LOD-Target` for UI feedback.
 - Update UI results to show:
@@ -145,6 +150,6 @@ Manual checks:
   - Hide advanced options behind “Expert” mode.
 
 ## Open Decisions
-- Whether to allow explicit LOD1/LOD0 fallback in Beginner mode.
-- How to surface `lod_used` in UI (toast vs panel).
-- Whether to support LOD profile switching after import.
+- Default to LOD2 with automatic LOD1 fallback if LOD2 is missing.
+- Surface `lod_used` in the import summary panel and a short toast.
+- Do not support profile switching after import in MVP.

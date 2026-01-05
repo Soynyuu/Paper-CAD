@@ -30,6 +30,10 @@ Introduce explicit LOD-based flows so beginners get simpler, more reliable LOD2 
 5. No LOD-specific unfold presets:
    - `StepUnfoldPanel` has options but no LOD templates or presets.
    - `frontend/packages/chili-ui/src/stepUnfold/stepUnfoldPanel.ts`
+6. Cesium flow lacks LOD availability data:
+   - Cesium pick returns `gmlId` + `meshCode` but no `has_lod2/has_lod3`.
+   - LOD profile UI cannot be accurate without a metadata fetch.
+   - `frontend/packages/chili-ui/src/react/PlateauCesiumPickerReact.tsx`
 
 ## Non-Goals
 - Full refactor of CityGML pipeline.
@@ -59,6 +63,9 @@ Expose LOD choice during building selection and import.
 - Add profile selection in:
   - `frontend/packages/chili/src/commands/importCityGMLByAddress.ts`
   - `frontend/packages/chili/src/commands/importCityGMLByCesium.ts`
+- Cesium flow:
+  - On selection, call `searchByBuildingIdAndMesh` to fetch `has_lod2/has_lod3`.
+  - Disable Expert option when LOD3 is unavailable.
 - When building has no LOD3:
   - Disable Expert option or show fallback warning.
 - Persist user preference for future sessions (local storage).
@@ -72,8 +79,9 @@ Allow the backend to honor explicit LOD targets instead of always choosing highe
   - `/api/plateau/fetch-by-id-and-mesh`
   - `/api/plateau/fetch-and-convert`
 - Update `backend/services/citygml/lod/extractor.py`:
-  - If `lod_target=LOD2`, skip LOD3 entirely.
-  - If `lod_target=LOD3`, try LOD3 first, fallback to LOD2 if missing.
+  - Keep default order unchanged unless `lod_target` is provided.
+  - If `lod_target=LOD2`, try LOD2 then LOD1 (skip LOD3).
+  - If `lod_target=LOD3`, try LOD3 then LOD2 then LOD1 (current default).
 - Include `lod_used` in response headers or JSON for UI feedback.
 
 ### Phase 3: Frontend Service Integration (What)
@@ -83,6 +91,8 @@ Pass LOD target through API calls and surface the final LOD used.
 - Extend `CityGMLService` methods:
   - `fetchAndConvertByBuildingIdAndMesh` to accept `lodTarget`.
   - `fetchAndConvertByAddress` to accept `lodTarget`.
+- For file responses, use headers:
+  - `X-LOD-Used` and `X-LOD-Target` for UI feedback.
 - Update UI results to show:
   - Selected profile, actual `lod_used`, and fallback if any.
 
@@ -95,6 +105,7 @@ Provide template presets to optimize unfold output for each LOD.
   - Expert: smaller scale, more pages, optional texture mappings.
 - Store presets in local storage and allow custom tweaks.
 - Apply template automatically based on selected LOD profile.
+- Persist selected profile in document metadata or app storage to reuse in unfold/assembly.
 
 ### Phase 5: Texture and Data Management UI (What)
 Enable texture sets and data management that scale with LOD complexity.

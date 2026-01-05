@@ -172,6 +172,66 @@ Manual checks:
 | `frontend/packages/chili-core/src/services/citygmlService.ts` | metadata cache, batch endpoint support |
 | `backend/api/routers/plateau.py` | batch metadata endpoint |
 
+## Issue 154 Split (Proposed Sub-Issues)
+### 154-1 Input Gating + Render Timing
+- Scope:
+  - Drag threshold, camera-motion gating, `requestRender()` after highlight.
+- Files:
+  - `frontend/packages/chili-ui/src/plateauCesiumPickerDialog.ts`
+  - `frontend/packages/chili-cesium/src/cesiumBuildingPicker.ts`
+- Acceptance:
+  - Dragging never selects.
+  - Highlight appears immediately after click.
+
+### 154-2 Picking Core: drillPick + Fallbacks
+- Scope:
+  - `drillPick`, property mapping, `pickPosition` fallback.
+- Files:
+  - `frontend/packages/chili-cesium/src/cesiumBuildingPicker.ts`
+- Acceptance:
+  - Overlaps return candidates.
+  - Pick still works if `pickPosition` is null.
+
+### 154-3 Visual Context Enhancements
+- Scope:
+  - Basemap switcher (GSI), selection outline, zoom-to-selection.
+- Files:
+  - `frontend/packages/chili-cesium/src/cesiumView.ts`
+  - `frontend/packages/chili-ui/src/plateauCesiumPickerDialog.ts`
+- Acceptance:
+  - Map labels visible in Japan.
+  - Selected building is visually distinct.
+
+### 154-4 React Picker Unification
+- Scope:
+  - Feature flag, dialog switching, tileset loader parity.
+- Files:
+  - `frontend/rspack.config.js`
+  - `frontend/packages/chili/src/commands/importCityGMLByCesium.ts`
+  - `frontend/packages/chili-ui/src/react/PlateauCesiumPickerReact.tsx`
+- Acceptance:
+  - React picker can be toggled via env flag.
+  - Tileset loading behavior matches legacy.
+
+### 154-5 Disambiguation UI
+- Scope:
+  - Candidate list and preview/confirm flow.
+- Files:
+  - `frontend/packages/chili-ui/src/plateauCesiumPickerDialog.ts`
+  - `frontend/packages/chili-ui/src/react/PlateauCesiumPickerReact.tsx`
+- Acceptance:
+  - Overlapping buildings present a list.
+  - Selection only commits after explicit confirmation.
+
+### 154-6 Metadata Batch Fetch
+- Scope:
+  - Batch metadata endpoint and client-side cache.
+- Files:
+  - `backend/api/routers/plateau.py`
+  - `frontend/packages/chili-core/src/services/citygmlService.ts`
+- Acceptance:
+  - Multi-select metadata load completes with a single request.
+
 ## Risks and Mitigations
 - Low LOD accuracy:
   - Add a "precision mode" toggle by lowering `maximumScreenSpaceError`.

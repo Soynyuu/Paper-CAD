@@ -149,6 +149,71 @@ Manual checks:
 - Increased UI complexity:
   - Hide advanced options behind “Expert” mode.
 
+## Issue 162 Split (Proposed Sub-Issues)
+### 162-1 Backend LOD Target + Metadata Endpoint
+- Scope:
+  - Add `lod_target` support and batch metadata endpoint.
+- Files:
+  - `backend/api/routers/citygml.py`
+  - `backend/services/citygml/lod/extractor.py`
+  - `backend/api/routers/plateau.py`
+- Acceptance:
+  - `lod_target` changes extraction order.
+  - Batch metadata endpoint returns LOD availability.
+
+### 162-2 Frontend Service Integration
+- Scope:
+  - Send `lodTarget`, fetch LOD availability batch, surface `lod_used`.
+- Files:
+  - `frontend/packages/chili-core/src/services/citygmlService.ts`
+- Acceptance:
+  - Requests include `lod_target`.
+  - UI can show `lod_used` and fallback.
+
+### 162-3 UI Profile Selection
+- Scope:
+  - Add Beginner/Expert selection and gating by LOD availability.
+- Files:
+  - `frontend/packages/chili/src/commands/importCityGMLByAddress.ts`
+  - `frontend/packages/chili/src/commands/importCityGMLByCesium.ts`
+  - `frontend/packages/chili-ui/src/plateauBuildingSelectionDialog.ts`
+- Acceptance:
+  - Expert is disabled when LOD3 is unavailable.
+  - Partial availability shows warning and per-building fallback.
+
+### 162-4 LOD Presets in Unfold
+- Scope:
+  - Apply different unfold presets based on profile.
+- Files:
+  - `frontend/packages/chili-ui/src/stepUnfold/stepUnfoldPanel.ts`
+- Acceptance:
+  - Preset switches automatically with profile.
+
+### 162-5 Texture Sets Per Profile
+- Scope:
+  - Separate texture mappings by LOD profile.
+- Files:
+  - `frontend/packages/chili-core/src/services/faceTextureService.ts`
+  - `frontend/packages/chili-ui/src/stepUnfold/stepUnfoldPanel.ts`
+- Acceptance:
+  - Texture mappings persist per profile.
+
+### 162-6 QA and Documentation
+- Scope:
+  - Validate LOD flow and document behavior.
+- Files:
+  - `docs/` (report)
+- Acceptance:
+  - LOD2 and LOD3 flows verified end-to-end.
+
+## Priority Order (Threaded)
+1) 162-1 Backend LOD Target + Metadata Endpoint  
+2) 162-2 Frontend Service Integration  
+3) 162-3 UI Profile Selection  
+4) 162-4 LOD Presets in Unfold  
+5) 162-5 Texture Sets Per Profile  
+6) 162-6 QA and Documentation  
+
 ## Open Decisions
 - Default to LOD2 with automatic LOD1 fallback if LOD2 is missing.
 - Surface `lod_used` in the import summary panel and a short toast.

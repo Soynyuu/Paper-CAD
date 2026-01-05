@@ -141,6 +141,70 @@ Validate the flow with a short usability test.
 - Performance:
   - Limit highlights to a single active face and reuse materials.
 
+## Issue 169 Split (Proposed Sub-Issues)
+### 169-1 Face Metadata + SVG Attributes
+- Scope:
+  - Add `face_metadata` to API responses and embed data attributes in SVG.
+- Files:
+  - `backend/core/geometry_analyzer.py`
+  - `backend/services/step_processor.py`
+  - `backend/api/routers/step.py`
+  - `backend/core/svg_exporter.py`
+- Acceptance:
+  - JSON includes `face_metadata` with class/normal/centroid.
+  - SVG elements carry `data-face-number`, `data-face-class`, `data-face-index`.
+
+### 169-2 2D ↔ 3D Cross Highlight
+- Scope:
+  - Highlight actual face mesh in 3D when 2D face is selected, and vice versa.
+- Files:
+  - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
+- Acceptance:
+  - Clicking a 2D face highlights the corresponding 3D face.
+  - Clicking a 3D face highlights the correct 2D face.
+
+### 169-3 Face Classification UX
+- Scope:
+  - Expose face class labels/icons in 2D and status bar.
+- Files:
+  - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
+  - `backend/core/svg_exporter.py` (if labels embedded server-side)
+- Acceptance:
+  - Face class is visible or readable on hover/selection.
+
+### 169-4 QR Embedding (Backend)
+- Scope:
+  - Generate QR as SVG paths in export and add index panel for small faces.
+- Files:
+  - `backend/core/svg_exporter.py`
+  - `backend/services/step_processor.py`
+- Acceptance:
+  - QR payload is embedded and scannable in exported SVG/PDF.
+
+### 169-5 QR Scan + Jump (Frontend)
+- Scope:
+  - Scan QR via camera and highlight corresponding face.
+- Files:
+  - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
+- Acceptance:
+  - Scanning a QR highlights the face in both 2D and 3D.
+
+### 169-6 UX Validation
+- Scope:
+  - Run and document a short usability test.
+- Files:
+  - `docs/` (report)
+- Acceptance:
+  - Tasks completed with measurable error/time metrics.
+
+## Priority Order (Threaded)
+1) 169-1 Face Metadata + SVG Attributes  
+2) 169-2 2D ↔ 3D Cross Highlight  
+3) 169-3 Face Classification UX  
+4) 169-4 QR Embedding (Backend)  
+5) 169-5 QR Scan + Jump (Frontend)  
+6) 169-6 UX Validation  
+
 ## Open Decisions
 - Decide default QR size threshold for per-face placement.
 - Decide whether to include optional face-class icons in QR index panel.

@@ -87,13 +87,13 @@ Embed QR codes in the SVG/PDF to allow scanning and cross-view highlighting.
 ### Phase 2: Implementation Details (How)
 - Define QR payload schema:
   - Example: `paper-cad://assembly?model=<id>&face=<faceNumber>`
-- Backend option A (server-side QR):
-  - Add a QR generator (e.g., `qrcode` library).
-  - Insert QR SVG groups next to each face or in a QR table panel.
-- Frontend option B (client-side QR):
-  - Generate QR in UI before print/export using a JS library.
-  - Inject QR into SVG as `<image>` or `<path>`.
-- Ensure QR position does not overlap face geometry or tabs.
+- Chosen: backend QR generation to keep SVG/PDF consistent.
+  - Add a QR generator (e.g., `segno` or `qrcode`) in backend.
+  - Generate QR as SVG paths to avoid raster blur in print.
+  - Inject QR near each face number when face area is above a threshold.
+  - For tiny faces, add QR to a per-page index panel instead of the face.
+- Add `data-qr-payload` attributes on face elements for tooling.
+- Ensure QR placement avoids tabs and fold lines (place in margin offset).
 
 ### Phase 3: QR Scan and Jump (What)
 Allow scanning a QR code to highlight the corresponding face in 2D and 3D.
@@ -128,7 +128,8 @@ Validate the flow with a short usability test.
 - `backend/core/geometry_analyzer.py`: use `_assign_face_number_by_normal`, add face metadata.
 - `backend/services/step_processor.py`: return face metadata.
 - `backend/api/routers/step.py`: include metadata in JSON.
-- `backend/core/svg_exporter.py`: embed face metadata in SVG.
+- `backend/core/svg_exporter.py`: embed face metadata + QR SVG paths + index panel.
+- `backend/services/step_processor.py`: pass QR config (size threshold, per-page panel).
 - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`: add metadata-driven highlight and QR scan.
 - `frontend/packages/chili-three/src/faceNumberDisplay.ts`: keep labels; mesh highlight handled in `AssemblyPanel`.
 
@@ -141,6 +142,5 @@ Validate the flow with a short usability test.
   - Limit highlights to a single active face and reuse materials.
 
 ## Open Decisions
-- Choose QR generation location (backend vs frontend).
-- Determine QR placement strategy (per-face vs per-page index).
-- Decide how far to expand face classification beyond normals.
+- Decide default QR size threshold for per-face placement.
+- Decide whether to include optional face-class icons in QR index panel.

@@ -141,10 +141,11 @@ Validate the flow with a short usability test.
 - Performance:
   - Limit highlights to a single active face and reuse materials.
 
-## Issue 169 Split (Proposed Sub-Issues)
+## Tickets (Issue 169)
 ### 169-1 Face Metadata + SVG Attributes
-- Scope:
-  - Add `face_metadata` to API responses and embed data attributes in SVG.
+- Title: Face Metadata Pipeline (API + SVG)
+- Summary: Add face-level metadata in API response and embed it into SVG data attributes.
+- Dependencies: None.
 - Files:
   - `backend/core/geometry_analyzer.py`
   - `backend/services/step_processor.py`
@@ -155,26 +156,29 @@ Validate the flow with a short usability test.
   - SVG elements carry `data-face-number`, `data-face-class`, `data-face-index`.
 
 ### 169-2 2D ↔ 3D Cross Highlight
-- Scope:
-  - Highlight actual face mesh in 3D when 2D face is selected, and vice versa.
+- Title: Cross-Highlight Between 2D and 3D Faces
+- Summary: Selecting in either view highlights the corresponding face in the other.
+- Dependencies: 169-1.
 - Files:
   - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
 - Acceptance:
-  - Clicking a 2D face highlights the corresponding 3D face.
+  - Clicking a 2D face highlights the correct 3D face.
   - Clicking a 3D face highlights the correct 2D face.
 
 ### 169-3 Face Classification UX
-- Scope:
-  - Expose face class labels/icons in 2D and status bar.
+- Title: Face Class Indicators
+- Summary: Show face class (front/back/left/right/top/bottom/other) in UI.
+- Dependencies: 169-1.
 - Files:
   - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
   - `backend/core/svg_exporter.py` (if labels embedded server-side)
 - Acceptance:
-  - Face class is visible or readable on hover/selection.
+  - Face class is visible on hover/selection or rendered in SVG.
 
 ### 169-4 QR Embedding (Backend)
-- Scope:
-  - Generate QR as SVG paths in export and add index panel for small faces.
+- Title: QR Embedding in Unfold Export
+- Summary: Embed QR codes into SVG/PDF with index panel fallback.
+- Dependencies: 169-1.
 - Files:
   - `backend/core/svg_exporter.py`
   - `backend/services/step_processor.py`
@@ -182,28 +186,30 @@ Validate the flow with a short usability test.
   - QR payload is embedded and scannable in exported SVG/PDF.
 
 ### 169-5 QR Scan + Jump (Frontend)
-- Scope:
-  - Scan QR via camera and highlight corresponding face.
+- Title: QR Scan to Face Highlight
+- Summary: Scan QR and highlight the corresponding face in 2D/3D.
+- Dependencies: 169-4.
 - Files:
   - `frontend/packages/chili-ui/src/assembly/assemblyPanel.ts`
 - Acceptance:
-  - Scanning a QR highlights the face in both 2D and 3D.
+  - Scanning a QR highlights the face in both views.
 
 ### 169-6 UX Validation
-- Scope:
-  - Run and document a short usability test.
+- Title: Assembly Interaction UX Test
+- Summary: Run and document a short usability test.
+- Dependencies: 169-2, 169-3, 169-5.
 - Files:
   - `docs/` (report)
 - Acceptance:
   - Tasks completed with measurable error/time metrics.
 
 ## Priority Order (Threaded)
-1) 169-1 Face Metadata + SVG Attributes  
-2) 169-2 2D ↔ 3D Cross Highlight  
-3) 169-3 Face Classification UX  
-4) 169-4 QR Embedding (Backend)  
-5) 169-5 QR Scan + Jump (Frontend)  
-6) 169-6 UX Validation  
+1) 169-1 Face Metadata Pipeline (foundation)  
+2) 169-2 Cross-Highlight (core interaction)  
+3) 169-3 Face Class Indicators (clarity)  
+4) 169-4 QR Embedding (print linkage)  
+5) 169-5 QR Scan (interactive loop)  
+6) 169-6 UX Validation (confirmation)  
 
 ## Open Decisions
 - Decide default QR size threshold for per-face placement.

@@ -149,10 +149,11 @@ Manual checks:
 - Increased UI complexity:
   - Hide advanced options behind “Expert” mode.
 
-## Issue 162 Split (Proposed Sub-Issues)
+## Tickets (Issue 162)
 ### 162-1 Backend LOD Target + Metadata Endpoint
-- Scope:
-  - Add `lod_target` support and batch metadata endpoint.
+- Title: LOD Target Controls + Batch Metadata API
+- Summary: Add `lod_target` support and a batch metadata endpoint.
+- Dependencies: None.
 - Files:
   - `backend/api/routers/citygml.py`
   - `backend/services/citygml/lod/extractor.py`
@@ -162,8 +163,9 @@ Manual checks:
   - Batch metadata endpoint returns LOD availability.
 
 ### 162-2 Frontend Service Integration
-- Scope:
-  - Send `lodTarget`, fetch LOD availability batch, surface `lod_used`.
+- Title: LOD Target Wiring in CityGMLService
+- Summary: Pass `lod_target` and consume batch LOD availability.
+- Dependencies: 162-1.
 - Files:
   - `frontend/packages/chili-core/src/services/citygmlService.ts`
 - Acceptance:
@@ -171,27 +173,30 @@ Manual checks:
   - UI can show `lod_used` and fallback.
 
 ### 162-3 UI Profile Selection
-- Scope:
-  - Add Beginner/Expert selection and gating by LOD availability.
+- Title: LOD Profile Choice in Import UI
+- Summary: Add Beginner/Expert choice with LOD gating and warnings.
+- Dependencies: 162-1, 162-2.
 - Files:
   - `frontend/packages/chili/src/commands/importCityGMLByAddress.ts`
   - `frontend/packages/chili/src/commands/importCityGMLByCesium.ts`
   - `frontend/packages/chili-ui/src/plateauBuildingSelectionDialog.ts`
 - Acceptance:
-  - Expert is disabled when LOD3 is unavailable.
+  - Expert disabled when LOD3 unavailable.
   - Partial availability shows warning and per-building fallback.
 
 ### 162-4 LOD Presets in Unfold
-- Scope:
-  - Apply different unfold presets based on profile.
+- Title: Unfold Presets by LOD Profile
+- Summary: Apply profile-based defaults in unfold output.
+- Dependencies: 162-3.
 - Files:
   - `frontend/packages/chili-ui/src/stepUnfold/stepUnfoldPanel.ts`
 - Acceptance:
   - Preset switches automatically with profile.
 
 ### 162-5 Texture Sets Per Profile
-- Scope:
-  - Separate texture mappings by LOD profile.
+- Title: Texture Mappings Scoped to Profile
+- Summary: Separate texture mappings for LOD2 vs LOD3.
+- Dependencies: 162-4.
 - Files:
   - `frontend/packages/chili-core/src/services/faceTextureService.ts`
   - `frontend/packages/chili-ui/src/stepUnfold/stepUnfoldPanel.ts`
@@ -199,20 +204,21 @@ Manual checks:
   - Texture mappings persist per profile.
 
 ### 162-6 QA and Documentation
-- Scope:
-  - Validate LOD flow and document behavior.
+- Title: LOD Flow QA + Report
+- Summary: Validate LOD flows and document behavior.
+- Dependencies: 162-3, 162-4, 162-5.
 - Files:
   - `docs/` (report)
 - Acceptance:
   - LOD2 and LOD3 flows verified end-to-end.
 
 ## Priority Order (Threaded)
-1) 162-1 Backend LOD Target + Metadata Endpoint  
-2) 162-2 Frontend Service Integration  
-3) 162-3 UI Profile Selection  
-4) 162-4 LOD Presets in Unfold  
-5) 162-5 Texture Sets Per Profile  
-6) 162-6 QA and Documentation  
+1) 162-1 LOD Target Controls + Batch Metadata API  
+2) 162-2 LOD Target Wiring in CityGMLService  
+3) 162-3 LOD Profile Choice in Import UI  
+4) 162-4 Unfold Presets by LOD Profile  
+5) 162-5 Texture Mappings Scoped to Profile  
+6) 162-6 LOD Flow QA + Report  
 
 ## Open Decisions
 - Default to LOD2 with automatic LOD1 fallback if LOD2 is missing.

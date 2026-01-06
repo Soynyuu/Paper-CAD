@@ -2,7 +2,14 @@
 // See LICENSE file in the project root for full license information.
 
 import { button, div, label, select } from "chili-controls";
-import { DialogResult, I18n, IApplication, PubSub } from "chili-core";
+import {
+    DialogResult,
+    I18n,
+    IApplication,
+    PubSub,
+    CityGMLService,
+    type BatchBuildingRequest,
+} from "chili-core";
 import {
     CesiumBuildingPicker,
     CesiumTilesetLoader,
@@ -47,6 +54,17 @@ export class PlateauCesiumPickerDialog {
         let tilesetLoader: CesiumTilesetLoader | null = null;
         let buildingPicker: CesiumBuildingPicker | null = null;
         let clickHandler: Cesium.ScreenSpaceEventHandler | null = null;
+
+        // Drag detection state (Phase 1.1)
+        let mouseDownPosition: { x: number; y: number } | null = null;
+        let isCameraMoving = false;
+        const DRAG_THRESHOLD_PX = 6;
+
+        // Disambiguation popup state (Phase 5.2)
+        let candidatePopup: HTMLElement | null = null;
+
+        // Metadata cache (Phase 6.3)
+        const metadataCache = new Map<string, PickedBuilding>();
 
         // Cesium viewer container (left panel, 75%)
         const viewerContainer = div({
@@ -288,6 +306,174 @@ export class PlateauCesiumPickerDialog {
         };
 
         /**
+         * Show candidate disambiguation popup (Phase 5.2)
+         */
+        const showCandidatePopup = (
+            candidates: PickedBuilding[],
+            screenCoords: { x: number; y: number },
+            multiSelect: boolean,
+        ) => {
+            // Remove existing popup
+            if (candidatePopup) {
+                candidatePopup.remove();
+                candidatePopup = null;
+            }
+
+            // Calculate popup position (avoid edges)
+            const popupWidth = 300;
+            const popupMaxHeight = 400;
+            let left = screenCoords.x + 10;
+            let top = screenCoords.y + 10;
+
+            // Adjust if too close to right edge
+            if (left + popupWidth > window.innerWidth - 20) {
+                left = screenCoords.x - popupWidth - 10;
+            }
+
+            // Adjust if too close to bottom edge
+            if (top + popupMaxHeight > window.innerHeight - 20) {
+                top = screenCoords.y - popupMaxHeight - 10;
+            }
+
+            // Usage code map
+            const usageCodeMap: Record<string, string> = {
+                "401": "業務施設",
+                "402": "商業施設",
+                "411": "宿泊施設",
+                "421": "文教厚生施設",
+                "431": "運動施設",
+                "441": "公共施設",
+                "451": "工場",
+                "461": "運輸倉庫施設",
+                "471": "供給処理施設",
+            };
+
+            // Create candidate cards
+            const candidateCards = candidates.map((candidate, index) => {
+                const height = candidate.properties.measuredHeight || 0;
+                const usageLabel = candidate.properties.usage
+                    ? usageCodeMap[candidate.properties.usage] || candidate.properties.usage
+                    : "N/A";
+
+                return div(
+                    {
+                        style: {
+                            padding: "10px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "var(--radius-sm)",
+                            backgroundColor: "var(--neutral-100)",
+                            marginBottom: "8px",
+                            cursor: "pointer",
+                        },
+                        onclick: () => {
+                            if (buildingPicker) {
+                                buildingPicker.selectCandidate(candidate.gmlId, multiSelect);
+                                updateSelectedPanel();
+                                closeCandidatePopup();
+                            }
+                        },
+                    },
+                    div(
+                        {
+                            style: {
+                                fontWeight: "bold",
+                                fontSize: "var(--font-size-sm)",
+                                marginBottom: "4px",
+                            },
+                        },
+                        `候補 ${index + 1}: ${candidate.properties.name || "Unnamed"}`,
+                    ),
+                    div({ style: { fontSize: "var(--font-size-xs)" } }, `高さ: ${height.toFixed(1)}m`),
+                    div({ style: { fontSize: "var(--font-size-xs)" } }, `用途: ${usageLabel}`),
+                    div(
+                        {
+                            style: {
+                                fontSize: "10px",
+                                color: "var(--neutral-500)",
+                                fontFamily: "monospace",
+                                marginTop: "4px",
+                            },
+                        },
+                        `ID: ${candidate.gmlId.substring(0, 20)}...`,
+                    ),
+                );
+            });
+
+            // Create popup
+            candidatePopup = div(
+                {
+                    style: {
+                        position: "fixed",
+                        left: `${left}px`,
+                        top: `${top}px`,
+                        width: `${popupWidth}px`,
+                        maxHeight: `${popupMaxHeight}px`,
+                        overflowY: "auto",
+                        backgroundColor: "white",
+                        border: "2px solid var(--primary-color)",
+                        borderRadius: "var(--radius-md)",
+                        padding: "12px",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                        zIndex: "10000",
+                    },
+                },
+                div(
+                    {
+                        style: {
+                            fontWeight: "bold",
+                            fontSize: "var(--font-size-md)",
+                            marginBottom: "8px",
+                            color: "var(--primary-color)",
+                        },
+                    },
+                    `${candidates.length}件の建物が重複しています`,
+                ),
+                div(
+                    { style: { fontSize: "var(--font-size-xs)", marginBottom: "12px" } },
+                    "選択する建物をクリック:",
+                ),
+                ...candidateCards,
+                button({
+                    textContent: "キャンセル",
+                    style: {
+                        width: "100%",
+                        marginTop: "8px",
+                        padding: "6px",
+                        backgroundColor: "var(--neutral-300)",
+                        border: "none",
+                        borderRadius: "var(--radius-sm)",
+                        cursor: "pointer",
+                    },
+                    onclick: closeCandidatePopup,
+                }),
+            );
+
+            // Add to viewer container
+            viewerContainer.appendChild(candidatePopup);
+
+            // Close on click outside
+            const handleClickOutside = (e: MouseEvent) => {
+                if (candidatePopup && !candidatePopup.contains(e.target as Node)) {
+                    closeCandidatePopup();
+                }
+            };
+
+            setTimeout(() => {
+                document.addEventListener("click", handleClickOutside, { once: true });
+            }, 100);
+        };
+
+        /**
+         * Close candidate popup
+         */
+        const closeCandidatePopup = () => {
+            if (candidatePopup) {
+                candidatePopup.remove();
+                candidatePopup = null;
+            }
+        };
+
+        /**
          * Update selected buildings panel
          */
         const updateSelectedPanel = () => {
@@ -338,6 +524,53 @@ export class PlateauCesiumPickerDialog {
                 });
             }
 
+            // Zoom to selection button
+            if (count > 0) {
+                selectedPanelContainer.appendChild(
+                    button({
+                        textContent: "🎯 " + I18n.translate("plateau.cesium.zoomToSelection"),
+                        style: {
+                            width: "100%",
+                            padding: "8px",
+                            marginTop: "8px",
+                            backgroundColor: "var(--primary-color)",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                        },
+                        onclick: () => {
+                            if (!cesiumView) return;
+                            const viewer = cesiumView.getViewer();
+                            if (!viewer || !buildingPicker) return;
+
+                            const selected = buildingPicker.getSelectedBuildings();
+                            if (selected.length === 0) return;
+
+                            // Calculate bounding sphere from all selected building positions
+                            const positions = selected.map((b) =>
+                                Cesium.Cartesian3.fromDegrees(
+                                    b.position.longitude,
+                                    b.position.latitude,
+                                    b.position.height,
+                                ),
+                            );
+                            const boundingSphere = Cesium.BoundingSphere.fromPoints(positions);
+
+                            // Fly to bounding sphere with appropriate offset
+                            viewer.camera.flyToBoundingSphere(boundingSphere, {
+                                duration: 1.5,
+                                offset: new Cesium.HeadingPitchRange(
+                                    0,
+                                    Cesium.Math.toRadians(-45),
+                                    boundingSphere.radius * 3,
+                                ),
+                            });
+                        },
+                    }),
+                );
+            }
+
             // Clear all button
             if (count > 0) {
                 selectedPanelContainer.appendChild(
@@ -379,7 +612,7 @@ export class PlateauCesiumPickerDialog {
                 cursor: "pointer",
                 fontSize: "var(--font-size-md)",
             },
-            onclick: () => {
+            onclick: async () => {
                 if (!buildingPicker) return;
 
                 const selected = buildingPicker.getSelectedBuildings();
@@ -388,7 +621,81 @@ export class PlateauCesiumPickerDialog {
                     return;
                 }
 
-                closeDialog(DialogResult.ok, { selectedBuildings: selected });
+                // Phase 6.3: Batch metadata fetching with cache
+                const needsMetadata = selected.filter((b) => !metadataCache.has(b.gmlId));
+
+                if (needsMetadata.length > 0) {
+                    try {
+                        // Show loading
+                        loadingIndicator.textContent = `Fetching metadata for ${needsMetadata.length} building(s)...`;
+                        loadingIndicator.style.display = "block";
+
+                        // Prepare batch request
+                        const requests: BatchBuildingRequest[] = needsMetadata.map((b) => ({
+                            buildingId: b.gmlId,
+                            meshCode: b.meshCode,
+                        }));
+
+                        // Get base URL from config
+                        const baseUrl =
+                            (window as any).__APP_CONFIG__?.stepUnfoldApiUrl ||
+                            "https://backend-paper-cad.soynyuu.com/api";
+
+                        // Fetch batch
+                        const citygmlService = new CityGMLService(baseUrl);
+                        const result = await citygmlService.batchSearchByBuildingIds(requests);
+
+                        if (result.isOk) {
+                            // Cache successful results
+                            result.value.results.forEach((res, index) => {
+                                if (res.success && res.building) {
+                                    const buildingFromRequest = needsMetadata[index];
+                                    // Merge metadata into building object
+                                    const enriched: PickedBuilding = {
+                                        ...buildingFromRequest,
+                                        properties: {
+                                            ...buildingFromRequest.properties,
+                                            name: res.building.name,
+                                            usage: res.building.usage,
+                                            measuredHeight: res.building.measured_height,
+                                        },
+                                    };
+                                    metadataCache.set(buildingFromRequest.gmlId, enriched);
+                                }
+                            });
+
+                            console.log(
+                                `[PlateauCesiumPickerDialog] Cached metadata for ${result.value.total_success}/${needsMetadata.length} buildings`,
+                            );
+                        } else {
+                            console.warn(
+                                "[PlateauCesiumPickerDialog] Batch metadata fetch failed:",
+                                result.error,
+                            );
+                        }
+                    } catch (error) {
+                        console.error("[PlateauCesiumPickerDialog] Metadata fetch error:", error);
+                    } finally {
+                        loadingIndicator.style.display = "none";
+                    }
+                }
+
+                // Merge cached metadata into selected buildings
+                const enrichedSelected = selected.map((b) => {
+                    const cached = metadataCache.get(b.gmlId);
+                    if (cached) {
+                        return {
+                            ...b,
+                            properties: {
+                                ...b.properties,
+                                ...cached.properties,
+                            },
+                        };
+                    }
+                    return b;
+                });
+
+                closeDialog(DialogResult.ok, { selectedBuildings: enrichedSelected });
             },
         });
 
@@ -479,16 +786,61 @@ export class PlateauCesiumPickerDialog {
                 tilesetLoader = new CesiumTilesetLoader(viewer);
                 buildingPicker = new CesiumBuildingPicker(viewer);
 
-                // Setup click handler
+                // Setup click handler with drag detection (Phase 1.1)
                 clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
-                clickHandler.setInputAction((click: any) => {
-                    if (!buildingPicker) return;
 
-                    const multiSelect = click.modifier === Cesium.KeyboardEventModifier.CTRL;
+                // Camera motion listener (Phase 1.2)
+                viewer.camera.moveStart.addEventListener(() => {
+                    if (mouseDownPosition !== null) {
+                        isCameraMoving = true;
+                    }
+                });
+
+                // LEFT_DOWN: Store mouse position
+                clickHandler.setInputAction((movement: any) => {
+                    mouseDownPosition = {
+                        x: movement.position.x,
+                        y: movement.position.y,
+                    };
+                    isCameraMoving = false;
+                }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+                // LEFT_UP: Check drag distance before picking
+                clickHandler.setInputAction((movement: any) => {
+                    if (!buildingPicker || !mouseDownPosition) return;
+
+                    const upPosition = movement.position;
+                    const dx = upPosition.x - mouseDownPosition.x;
+                    const dy = upPosition.y - mouseDownPosition.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    // Ignore if dragged beyond threshold
+                    if (distance > DRAG_THRESHOLD_PX) {
+                        mouseDownPosition = null;
+                        return;
+                    }
+
+                    // Ignore if camera was moving
+                    if (isCameraMoving) {
+                        mouseDownPosition = null;
+                        isCameraMoving = false;
+                        return;
+                    }
+
+                    const multiSelect = movement.modifier === Cesium.KeyboardEventModifier.CTRL;
 
                     try {
-                        buildingPicker.pickBuilding(click.position, multiSelect);
-                        updateSelectedPanel();
+                        buildingPicker.pickBuilding(upPosition, multiSelect);
+
+                        // Check if disambiguation is needed (Phase 5.2)
+                        const candidates = buildingPicker.getLastCandidates();
+                        if (candidates.length > 1) {
+                            // Show disambiguation popup
+                            showCandidatePopup(candidates, upPosition, multiSelect);
+                        } else {
+                            // Single or no candidate - update panel normally
+                            updateSelectedPanel();
+                        }
                     } catch (error) {
                         if (error instanceof Error) {
                             PubSub.default.pub(
@@ -498,7 +850,9 @@ export class PlateauCesiumPickerDialog {
                             );
                         }
                     }
-                }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+                    mouseDownPosition = null;
+                }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
                 // Load first city
                 if (cities.length > 0) {

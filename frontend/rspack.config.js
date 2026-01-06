@@ -28,6 +28,13 @@ function loadEnv() {
 
 loadEnv();
 
+// PLATEAU terrain asset ID for Cesium ion.
+const DEFAULT_TERRAIN_ASSET_ID = 770371;
+const parseNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 const isDev = process.env.NODE_ENV === "development";
 let ReactRefreshPlugin = null;
 if (isDev) {
@@ -170,6 +177,11 @@ const config = defineConfig({
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
                 cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
                 cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",
+                cesiumTerrainAssetId: parseNumber(
+                    process.env.CESIUM_TERRAIN_ASSET_ID,
+                    DEFAULT_TERRAIN_ASSET_ID,
+                ),
+                useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),
         new rspack.HtmlRspackPlugin({

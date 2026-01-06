@@ -105,6 +105,7 @@ export default {
         "plateau.cesium.selectedCount": "選択中: {0}件",
         "plateau.cesium.importSelected": "選択した建物を取り込む",
         "plateau.cesium.clearSelection": "選択をクリア",
+        "plateau.cesium.zoomToSelection": "選択範囲へズーム",
         "plateau.cesium.instructions.click": "建物をクリックして選択",
         "plateau.cesium.instructions.ctrlClick": "Ctrl+クリックで複数選択",
         "plateau.cesium.instructions.clearArea": "空白エリアをクリックでクリア",

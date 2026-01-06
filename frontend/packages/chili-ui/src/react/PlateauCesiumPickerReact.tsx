@@ -8,6 +8,7 @@ import { DialogResult, I18n, PubSub } from "chili-core";
 import {
     CesiumView,
     CesiumBuildingPicker,
+    CesiumTilesetLoader,
     getAllCities,
     getCityConfig,
     type PickedBuilding,
@@ -79,6 +80,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
     const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
     const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
+    const tilesetLoaderRef = useRef<CesiumTilesetLoader | null>(null);
 
     const [currentCity, setCurrentCity] = useAtom(currentCityAtom);
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
@@ -197,6 +199,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         // Initialize building picker
         buildingPickerRef.current = new CesiumBuildingPicker(viewer);
+
+        // Initialize tileset loader (Phase 4.4)
+        tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
+
         setViewerReady(true);
 
         console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
@@ -220,32 +226,19 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         console.log("[PlateauCesiumPickerReact] Loading tileset:", tilesetUrl);
 
-        // Remove existing tileset if any
-        if (viewer.scene.primitives.length > 0) {
-            viewer.scene.primitives.removeAll();
+        // Phase 4.4: Use CesiumTilesetLoader instead of direct fromUrl()
+        const loader = tilesetLoaderRef.current;
+        if (!loader) {
+            console.error("[PlateauCesiumPickerReact] TilesetLoader not initialized");
+            setLoading(false);
+            setLoadingMessage("");
+            return;
         }
 
-        // Add new tileset using fromUrl (async)
-        Cesium.Cesium3DTileset.fromUrl(tilesetUrl, {
-            skipLevelOfDetail: false,
-            maximumScreenSpaceError: 16,
-        })
+        loader
+            .loadTileset(tilesetUrl)
             .then((tileset) => {
-                // Add to scene
-                viewer.scene.primitives.add(tileset);
                 tilesetRef.current = tileset;
-
-                // Apply style
-                tileset.style = new Cesium.Cesium3DTileStyle({
-                    color: {
-                        conditions: [
-                            ["${feature_type} === 'bldg:Building'", "color('white', 0.9)"],
-                            ["true", "color('lightgray', 0.8)"],
-                        ],
-                    },
-                    show: "${feature_type} === 'bldg:Building'",
-                });
-
                 console.log("[PlateauCesiumPickerReact] Tileset loaded successfully");
                 setLoading(false);
                 setLoadingMessage("");

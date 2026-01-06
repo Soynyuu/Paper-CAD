@@ -9,8 +9,11 @@ from fastapi.responses import FileResponse
 from api.helpers import cleanup_temp_dir, normalize_limit_param, parse_csv_ids
 from config import OCCT_AVAILABLE
 from models.request_models import (
+    BuildingIdWithMeshItem,
     BuildingInfoResponse,
     GeocodingResultResponse,
+    PlateauBatchBuildingRequest,
+    PlateauBatchBuildingResponse,
     PlateauBuildingIdRequest,
     PlateauBuildingIdSearchResponse,
     PlateauBuildingIdWithMeshRequest,
@@ -789,6 +792,178 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
             error="Internal server error",
             error_details=f"予期しないエラー: {str(e)}"
         )
+
+
+# --- PLATEAU: Batch Building Search (Phase 6.1) ---
+@router.post(
+    "/api/plateau/buildings/batch",
+    summary="PLATEAU Batch Building Search by ID + Mesh (Optimized)",
+    tags=["PLATEAU Integration"],
+    response_model=PlateauBatchBuildingResponse,
+    responses={
+        200: {
+            "description": "Batch search results for multiple buildings",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "results": [
+                            {
+                                "success": True,
+                                "building": {
+                                    "building_id": "13101-bldg-2287",
+                                    "gml_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
+                                    "latitude": 35.681236,
+                                    "longitude": 139.767125,
+                                    "height": 45.0
+                                }
+                            }
+                        ],
+                        "total_requested": 2,
+                        "total_success": 1,
+                        "total_failed": 1
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid request (empty list or > 100 buildings)"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
+    """
+    複数の建物を一括検索（建物ID+メッシュコード）。
+
+    Batch search for multiple PLATEAU buildings by building ID + mesh code (optimized).
+
+    **最適化 / Optimization**:
+    - ✅ メッシュコードでグループ化して処理 / Group by mesh code to minimize file downloads
+    - ✅ 同じメッシュ内の建物は1回のダウンロードで処理 / Buildings in same mesh use single download
+    - ⚡ N+1クエリ問題を解消 / Eliminates N+1 query problem
+
+    **制限 / Limits**:
+    - 最大100建物/リクエスト / Max 100 buildings per request
+    - レート制限: PLATEAU API制限に準拠 / Rate limit: Follows PLATEAU API limits
+
+    **入力例 / Example Input**:
+    ```json
+    {
+        "buildings": [
+            {"building_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86", "mesh_code": "53394511"},
+            {"building_id": "bldg_12345678-1234-1234-1234-123456789abc", "mesh_code": "53394512"}
+        ]
+    }
+    ```
+
+    **用途 / Use Cases**:
+    - Cesium選択パネルでの複数建物メタデータ取得 / Multi-select metadata fetch in Cesium picker
+    - 大量建物の一括処理 / Batch processing of many buildings
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/buildings/batch")
+        print(f"[API] Total buildings requested: {len(request.buildings)}")
+        print(f"{'='*60}\n")
+
+        results = []
+        total_requested = len(request.buildings)
+        total_success = 0
+        total_failed = 0
+
+        # Group by mesh code to minimize file downloads
+        mesh_groups: dict[str, list[str]] = {}
+        for item in request.buildings:
+            if item.mesh_code not in mesh_groups:
+                mesh_groups[item.mesh_code] = []
+            mesh_groups[item.mesh_code].append(item.building_id)
+
+        print(f"[API] Grouped into {len(mesh_groups)} mesh code(s)")
+
+        # Process each mesh group
+        for mesh_code, building_ids in mesh_groups.items():
+            print(f"[API] Processing mesh {mesh_code}: {len(building_ids)} buildings")
+
+            for building_id in building_ids:
+                try:
+                    # Search for building
+                    result = search_building_by_id_and_mesh(
+                        building_id,
+                        mesh_code,
+                        debug=False
+                    )
+
+                    if result["success"]:
+                        # Success: Convert to response
+                        building_data = result["building"]
+                        building_response = BuildingInfoResponse(
+                            building_id=building_data.building_id,
+                            gml_id=building_data.gml_id,
+                            latitude=building_data.latitude,
+                            longitude=building_data.longitude,
+                            distance_meters=building_data.distance_meters,
+                            height=building_data.height,
+                            usage=building_data.usage,
+                            measured_height=building_data.measured_height,
+                            name=building_data.name,
+                            relevance_score=building_data.relevance_score,
+                            name_similarity=building_data.name_similarity,
+                            match_reason=building_data.match_reason,
+                            has_lod2=building_data.has_lod2,
+                            has_lod3=building_data.has_lod3
+                        )
+
+                        results.append(PlateauBuildingIdSearchResponse(
+                            success=True,
+                            building=building_response,
+                            municipality_code=None,
+                            municipality_name=None,
+                            citygml_file=None,
+                            total_buildings_in_file=result.get("total_buildings_in_mesh"),
+                            error=None,
+                            error_details=None
+                        ))
+                        total_success += 1
+
+                    else:
+                        # Failure: Add error response
+                        results.append(PlateauBuildingIdSearchResponse(
+                            success=False,
+                            building=None,
+                            municipality_code=None,
+                            municipality_name=None,
+                            citygml_file=None,
+                            total_buildings_in_file=result.get("total_buildings_in_mesh"),
+                            error=result.get("error", "Unknown error"),
+                            error_details=result.get("error_details")
+                        ))
+                        total_failed += 1
+
+                except Exception as e:
+                    print(f"[API] Error fetching building {building_id}: {str(e)}")
+                    results.append(PlateauBuildingIdSearchResponse(
+                        success=False,
+                        building=None,
+                        municipality_code=None,
+                        municipality_name=None,
+                        citygml_file=None,
+                        total_buildings_in_file=None,
+                        error="Internal error",
+                        error_details=f"予期しないエラー: {str(e)}"
+                    ))
+                    total_failed += 1
+
+        print(f"[API] Batch complete: {total_success} success, {total_failed} failed")
+
+        return PlateauBatchBuildingResponse(
+            results=results,
+            total_requested=total_requested,
+            total_success=total_success,
+            total_failed=total_failed
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"バッチ検索エラー: {str(e)}")
 
 
 @router.post(

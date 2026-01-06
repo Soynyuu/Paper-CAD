@@ -280,3 +280,46 @@ class PlateauBuildingIdSearchResponse(BaseModel):
     total_buildings_in_file: Optional[int] = None  # Total buildings found in CityGML
     error: Optional[str] = None
     error_details: Optional[str] = None  # Detailed error information
+
+
+class BuildingIdWithMeshItem(BaseModel):
+    """Single building ID + mesh code item for batch request (Phase 6.1)"""
+    building_id: str = Field(
+        description="建物ID / Building ID (例: '13101-bldg-2287')",
+        min_length=1,
+        example="13101-bldg-2287"
+    )
+    mesh_code: str = Field(
+        description="3次メッシュコード（8桁、1km区画） / 3rd mesh code (8 digits, 1km area, 例: '53394511')",
+        pattern="^[0-9]{8}$",
+        example="53394511"
+    )
+
+
+class PlateauBatchBuildingRequest(BaseModel):
+    """Request for batch building search (Phase 6.1)"""
+    buildings: list[BuildingIdWithMeshItem] = Field(
+        description="建物ID+メッシュコードのリスト / List of building ID + mesh code pairs",
+        min_length=1,
+        max_length=100,  # Limit to 100 buildings per batch
+        example=[
+            {"building_id": "13101-bldg-2287", "mesh_code": "53394511"},
+            {"building_id": "13101-bldg-2288", "mesh_code": "53394511"}
+        ]
+    )
+
+
+class PlateauBatchBuildingResponse(BaseModel):
+    """Response for batch building search (Phase 6.1)"""
+    results: list[PlateauBuildingIdSearchResponse] = Field(
+        description="検索結果のリスト（各建物の検索レスポンス） / List of search results for each building"
+    )
+    total_requested: int = Field(
+        description="リクエストした建物の総数 / Total number of buildings requested"
+    )
+    total_success: int = Field(
+        description="正常に取得できた建物数 / Number of successfully retrieved buildings"
+    )
+    total_failed: int = Field(
+        description="取得失敗した建物数 / Number of failed retrievals"
+    )

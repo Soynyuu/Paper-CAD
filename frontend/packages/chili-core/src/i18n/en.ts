@@ -105,6 +105,7 @@ export default {
         "plateau.cesium.selectedCount": "Selected: {0} building(s)",
         "plateau.cesium.importSelected": "Import Selected Buildings",
         "plateau.cesium.clearSelection": "Clear Selection",
+        "plateau.cesium.zoomToSelection": "Zoom to Selection",
         "plateau.cesium.instructions.click": "Click building to select",
         "plateau.cesium.instructions.ctrlClick": "Ctrl+Click for multiple selection",
         "plateau.cesium.instructions.clearArea": "Click empty area to clear",

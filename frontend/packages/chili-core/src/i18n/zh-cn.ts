@@ -105,6 +105,7 @@ export default {
         "plateau.cesium.selectedCount": "已选择: {0} 个建筑物",
         "plateau.cesium.importSelected": "导入选中的建筑物",
         "plateau.cesium.clearSelection": "清除选择",
+        "plateau.cesium.zoomToSelection": "缩放到所选范围",
         "plateau.cesium.instructions.click": "点击建筑物以选择",
         "plateau.cesium.instructions.ctrlClick": "Ctrl+点击进行多选",
         "plateau.cesium.instructions.clearArea": "点击空白区域以清除",

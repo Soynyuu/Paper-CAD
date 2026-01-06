@@ -32,6 +32,9 @@ export interface ICityGMLService extends IService {
         meshCode: string,
         options?: PlateauBuildingIdWithMeshSearchOptions,
     ): Promise<Result<PlateauBuildingIdSearchResponse>>;
+    batchSearchByBuildingIds(
+        requests: BatchBuildingRequest[],
+    ): Promise<Result<PlateauBatchBuildingResponse>>;
 }
 
 export interface ValidationResponse {
@@ -111,6 +114,18 @@ export interface PlateauBuildingIdSearchResponse {
     total_buildings_in_file?: number;
     error?: string;
     error_details?: string;
+}
+
+export interface BatchBuildingRequest {
+    buildingId: string;
+    meshCode: string;
+}
+
+export interface PlateauBatchBuildingResponse {
+    results: PlateauBuildingIdSearchResponse[];
+    total_requested: number;
+    total_success: number;
+    total_failed: number;
 }
 
 export class CityGMLService implements ICityGMLService {
@@ -518,6 +533,64 @@ export class CityGMLService implements ICityGMLService {
                 return Result.err(error.message);
             }
             return Result.err("Unknown error during PLATEAU fetch and convert");
+        }
+    }
+
+    async batchSearchByBuildingIds(
+        requests: BatchBuildingRequest[],
+    ): Promise<Result<PlateauBatchBuildingResponse>> {
+        try {
+            if (requests.length === 0) {
+                return Result.err("Batch request cannot be empty");
+            }
+
+            if (requests.length > 100) {
+                return Result.err("Batch request cannot exceed 100 buildings");
+            }
+
+            // Convert to backend format (snake_case)
+            const requestBody = {
+                buildings: requests.map((req) => ({
+                    building_id: req.buildingId,
+                    mesh_code: req.meshCode,
+                })),
+            };
+
+            const response = await fetch(`${this.baseUrl}/plateau/buildings/batch`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 400) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Invalid batch request parameters";
+                } else if (response.status === 500) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Batch search failed due to server error";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            const data: PlateauBatchBuildingResponse = await response.json();
+            return Result.ok(data);
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("fetch")) {
+                    return Result.err(
+                        "Cannot connect to PLATEAU batch search service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
+                }
+                return Result.err(error.message);
+            }
+            return Result.err("Unknown error during PLATEAU batch search");
         }
     }
 

@@ -11,7 +11,12 @@ import {
     PubSub,
     Transaction,
 } from "chili-core";
-import { PlateauCesiumPickerDialog, type PlateauCesiumPickerResult } from "chili-ui";
+import {
+    PlateauCesiumPickerDialog,
+    type PlateauCesiumPickerResult,
+    renderReactDialog,
+    PlateauCesiumPickerReact,
+} from "chili-ui";
 
 @command({
     key: "file.importCityGMLByCesium",
@@ -28,140 +33,142 @@ export class ImportCityGMLByCesium implements ICommand {
     }
 
     async execute(application: IApplication): Promise<void> {
-        // Open Cesium 3D Tiles picker dialog
-        PlateauCesiumPickerDialog.show(
-            application,
-            async (result: DialogResult, data?: PlateauCesiumPickerResult) => {
-                if (result !== DialogResult.ok || !data || data.selectedBuildings.length === 0) {
-                    return;
-                }
+        // Shared callback for both React and Legacy dialogs
+        const handleDialogResult = async (result: DialogResult, data?: PlateauCesiumPickerResult) => {
+            if (result !== DialogResult.ok || !data || data.selectedBuildings.length === 0) {
+                return;
+            }
 
-                const buildings = data.selectedBuildings;
-                console.log(
-                    `[ImportCityGMLByCesium] User selected ${buildings.length} building(s):`,
-                    buildings,
-                );
+            const buildings = data.selectedBuildings;
+            console.log(`[ImportCityGMLByCesium] User selected ${buildings.length} building(s):`, buildings);
 
-                // Get or create document
-                let document =
-                    application.activeView?.document ??
-                    (await application.newDocument("PLATEAU Cesium Import"));
+            // Get or create document
+            let document =
+                application.activeView?.document ?? (await application.newDocument("PLATEAU Cesium Import"));
 
-                // Convert and import buildings
-                PubSub.default.pub(
-                    "showPermanent",
-                    async () => {
-                        try {
-                            PubSub.default.pub(
-                                "showToast",
-                                "toast.plateau.converting:{0}",
-                                buildings.length.toString(),
+            // Convert and import buildings
+            PubSub.default.pub(
+                "showPermanent",
+                async () => {
+                    try {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.converting:{0}",
+                            buildings.length.toString(),
+                        );
+
+                        const stepBlobs: Blob[] = [];
+                        const failedBuildings: string[] = [];
+
+                        // Convert each building to STEP
+                        for (let i = 0; i < buildings.length; i++) {
+                            const building = buildings[i];
+                            console.log(
+                                `[ImportCityGMLByCesium] Converting building ${i + 1}/${buildings.length}: ${building.gmlId}`,
                             );
 
-                            const stepBlobs: Blob[] = [];
-                            const failedBuildings: string[] = [];
-
-                            // Convert each building to STEP
-                            for (let i = 0; i < buildings.length; i++) {
-                                const building = buildings[i];
-                                console.log(
-                                    `[ImportCityGMLByCesium] Converting building ${i + 1}/${buildings.length}: ${building.gmlId}`,
+                            try {
+                                const result = await this.cityGMLService.fetchAndConvertByBuildingIdAndMesh(
+                                    building.gmlId,
+                                    building.meshCode,
+                                    {
+                                        debug: false,
+                                        mergeBuildingParts: false,
+                                    },
                                 );
 
-                                try {
-                                    const result =
-                                        await this.cityGMLService.fetchAndConvertByBuildingIdAndMesh(
-                                            building.gmlId,
-                                            building.meshCode,
-                                            {
-                                                debug: false,
-                                                mergeBuildingParts: false,
-                                            },
-                                        );
-
-                                    if (!result.isOk) {
-                                        console.error(
-                                            `[ImportCityGMLByCesium] Failed to convert ${building.gmlId}:`,
-                                            result.error,
-                                        );
-                                        failedBuildings.push(building.properties.name || building.gmlId);
-                                        continue;
-                                    }
-
-                                    stepBlobs.push(result.value);
-                                } catch (error) {
+                                if (!result.isOk) {
                                     console.error(
-                                        `[ImportCityGMLByCesium] Exception converting ${building.gmlId}:`,
-                                        error,
+                                        `[ImportCityGMLByCesium] Failed to convert ${building.gmlId}:`,
+                                        result.error,
                                     );
                                     failedBuildings.push(building.properties.name || building.gmlId);
+                                    continue;
                                 }
-                            }
 
-                            if (stepBlobs.length === 0) {
-                                PubSub.default.pub(
-                                    "showToast",
-                                    "toast.plateau.allConversionsFailed:{0}",
-                                    failedBuildings.join(", "),
+                                stepBlobs.push(result.value);
+                            } catch (error) {
+                                console.error(
+                                    `[ImportCityGMLByCesium] Exception converting ${building.gmlId}:`,
+                                    error,
                                 );
-                                return;
+                                failedBuildings.push(building.properties.name || building.gmlId);
                             }
+                        }
 
-                            // Import all converted STEP files
-                            await Transaction.executeAsync(
-                                document,
-                                "import PLATEAU Cesium models",
-                                async () => {
-                                    for (let i = 0; i < stepBlobs.length; i++) {
-                                        const building = buildings[i];
-                                        const filename = `cesium_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
-                                        const stepFile = new File([stepBlobs[i]], filename, {
-                                            type: "application/step",
-                                        });
-
-                                        await document.application.dataExchange.import(document, [stepFile]);
-                                    }
-                                },
-                            );
-
-                            // Fit camera and show success
-                            document.application.activeView?.cameraController.fitContent();
-
-                            // Success message
-                            if (failedBuildings.length > 0) {
-                                PubSub.default.pub(
-                                    "showToast",
-                                    "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}",
-                                    stepBlobs.length.toString(),
-                                    failedBuildings.length.toString(),
-                                    failedBuildings.join(", "),
-                                );
-                            } else {
-                                PubSub.default.pub(
-                                    "showToast",
-                                    "toast.plateau.cesiumImportSuccess:{0}",
-                                    stepBlobs.length.toString(),
-                                );
-                            }
-
-                            console.log("[ImportCityGMLByCesium] Import successful:", {
-                                succeeded: stepBlobs.length,
-                                failed: failedBuildings.length,
-                            });
-                        } catch (error) {
-                            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                        if (stepBlobs.length === 0) {
                             PubSub.default.pub(
                                 "showToast",
-                                "toast.plateau.cesiumImportFailed:{0}",
-                                errorMessage,
+                                "toast.plateau.allConversionsFailed:{0}",
+                                failedBuildings.join(", "),
                             );
-                            console.error("[ImportCityGMLByCesium] Import failed:", error);
+                            return;
                         }
-                    },
-                    "toast.excuting{0}",
-                    "command.file.importCityGMLByCesium",
-                );
-            },
-        );
+
+                        // Import all converted STEP files
+                        await Transaction.executeAsync(
+                            document,
+                            "import PLATEAU Cesium models",
+                            async () => {
+                                for (let i = 0; i < stepBlobs.length; i++) {
+                                    const building = buildings[i];
+                                    const filename = `cesium_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
+                                    const stepFile = new File([stepBlobs[i]], filename, {
+                                        type: "application/step",
+                                    });
+
+                                    await document.application.dataExchange.import(document, [stepFile]);
+                                }
+                            },
+                        );
+
+                        // Fit camera and show success
+                        document.application.activeView?.cameraController.fitContent();
+
+                        // Success message
+                        if (failedBuildings.length > 0) {
+                            PubSub.default.pub(
+                                "showToast",
+                                "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}",
+                                stepBlobs.length.toString(),
+                                failedBuildings.length.toString(),
+                                failedBuildings.join(", "),
+                            );
+                        } else {
+                            PubSub.default.pub(
+                                "showToast",
+                                "toast.plateau.cesiumImportSuccess:{0}",
+                                stepBlobs.length.toString(),
+                            );
+                        }
+
+                        console.log("[ImportCityGMLByCesium] Import successful:", {
+                            succeeded: stepBlobs.length,
+                            failed: failedBuildings.length,
+                        });
+                    } catch (error) {
+                        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.cesiumImportFailed:{0}",
+                            errorMessage,
+                        );
+                        console.error("[ImportCityGMLByCesium] Import failed:", error);
+                    }
+                },
+                "toast.excuting{0}",
+                "command.file.importCityGMLByCesium",
+            );
+        };
+
+        // Phase 4.2: Conditional dialog routing based on feature flag
+        if (__APP_CONFIG__.useReactCesiumPicker) {
+            renderReactDialog(PlateauCesiumPickerReact, {
+                application,
+                onClose: handleDialogResult,
+            });
+        } else {
+            PlateauCesiumPickerDialog.show(application, handleDialogResult);
+        }
     }
 }

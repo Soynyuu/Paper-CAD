@@ -100,6 +100,7 @@ const I18N_KEYS = [
     "plateau.cesium.selectedCount",
     "plateau.cesium.importSelected",
     "plateau.cesium.clearSelection",
+    "plateau.cesium.zoomToSelection",
     "plateau.cesium.instructions.click",
     "plateau.cesium.instructions.ctrlClick",
     "plateau.cesium.instructions.clearArea",

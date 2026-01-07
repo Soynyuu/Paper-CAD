@@ -88,6 +88,7 @@ export default {
         "command.file.importCityGML": "CityGMLインポート",
         "command.file.importCityGMLByAddress": "住所からインポート",
         "command.file.importCityGMLByCesium": "Cesium 3D地図から取り込み",
+        "command.file.importPlateauBuilding": "PLATEAU建物インポート",
         "command.file.stepUnfold": "展開図",
         "command.file.assemblyMode": "組み立てをする",
         "citygml.defaultHeight": "デフォルト高さ",
@@ -191,6 +192,7 @@ export default {
         "error.citygml.conversionFailed:{0}": "CityGML変換に失敗しました: {0}",
         "error.citygml.importFailed:{0}": "CityGMLインポートに失敗しました: {0}",
         "error.plateau.emptyQuery": "住所または施設名を入力してください",
+        "error.plateau.emptyMeshCode": "メッシュコードを入力してください",
         "error.plateau.searchFailed:{0}": "建物の検索に失敗しました: {0}",
         "error.plateau.noBuildingsFound:{0}": "建物が見つかりませんでした: {0}",
         "error.plateau.conversionFailed:{0}": "STEP変換に失敗しました: {0}",
@@ -337,6 +339,10 @@ export default {
         "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}":
             "Cesiumから{0}件の建物を取り込みました（{1}件失敗: {2}）",
         "toast.plateau.cesiumImportFailed:{0}": "Cesiumからの取り込みに失敗しました: {0}",
+        "toast.plateau.importSuccess:{0}": "{0}件の建物を取り込みました",
+        "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}":
+            "{0}件の建物を取り込みました（{1}件失敗: {2}）",
+        "toast.plateau.importFailed:{0}": "建物の取り込みに失敗しました: {0}",
         "toast.stepUnfold.success": "展開図を生成しました",
         "toast.stepUnfold.error": "展開図の生成に失敗しました",
         "stepUnfold.scale": "縮尺",

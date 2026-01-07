@@ -11,19 +11,14 @@ import {
     PubSub,
     Transaction,
 } from "chili-core";
-import {
-    PlateauCesiumPickerDialog,
-    type PlateauCesiumPickerResult,
-    renderReactDialog,
-    PlateauCesiumPickerReact,
-} from "chili-ui";
+import { type PlateauCesiumPickerResult, renderReactDialog, PlateauCesiumPickerReact } from "chili-ui";
 
 @command({
-    key: "file.importCityGMLByCesium",
+    key: "file.importPlateauBuilding",
     icon: "icon-3d-map",
     isApplicationCommand: true,
 })
-export class ImportCityGMLByCesium implements ICommand {
+export class ImportPlateauBuilding implements ICommand {
     private cityGMLService: CityGMLService;
 
     constructor() {
@@ -33,18 +28,19 @@ export class ImportCityGMLByCesium implements ICommand {
     }
 
     async execute(application: IApplication): Promise<void> {
-        // Shared callback for both React and Legacy dialogs
+        // Unified dialog with integrated search and Cesium picker
         const handleDialogResult = async (result: DialogResult, data?: PlateauCesiumPickerResult) => {
             if (result !== DialogResult.ok || !data || data.selectedBuildings.length === 0) {
                 return;
             }
 
             const buildings = data.selectedBuildings;
-            console.log(`[ImportCityGMLByCesium] User selected ${buildings.length} building(s):`, buildings);
+            console.log(`[ImportPlateauBuilding] User selected ${buildings.length} building(s):`, buildings);
 
             // Get or create document
             let document =
-                application.activeView?.document ?? (await application.newDocument("PLATEAU Cesium Import"));
+                application.activeView?.document ??
+                (await application.newDocument("PLATEAU Building Import"));
 
             // Convert and import buildings
             PubSub.default.pub(
@@ -64,7 +60,7 @@ export class ImportCityGMLByCesium implements ICommand {
                         for (let i = 0; i < buildings.length; i++) {
                             const building = buildings[i];
                             console.log(
-                                `[ImportCityGMLByCesium] Converting building ${i + 1}/${buildings.length}: ${building.gmlId}`,
+                                `[ImportPlateauBuilding] Converting building ${i + 1}/${buildings.length}: ${building.gmlId}`,
                             );
 
                             try {
@@ -79,7 +75,7 @@ export class ImportCityGMLByCesium implements ICommand {
 
                                 if (!result.isOk) {
                                     console.error(
-                                        `[ImportCityGMLByCesium] Failed to convert ${building.gmlId}:`,
+                                        `[ImportPlateauBuilding] Failed to convert ${building.gmlId}:`,
                                         result.error,
                                     );
                                     failedBuildings.push(building.properties.name || building.gmlId);
@@ -89,7 +85,7 @@ export class ImportCityGMLByCesium implements ICommand {
                                 stepBlobs.push(result.value);
                             } catch (error) {
                                 console.error(
-                                    `[ImportCityGMLByCesium] Exception converting ${building.gmlId}:`,
+                                    `[ImportPlateauBuilding] Exception converting ${building.gmlId}:`,
                                     error,
                                 );
                                 failedBuildings.push(building.properties.name || building.gmlId);
@@ -106,21 +102,17 @@ export class ImportCityGMLByCesium implements ICommand {
                         }
 
                         // Import all converted STEP files
-                        await Transaction.executeAsync(
-                            document,
-                            "import PLATEAU Cesium models",
-                            async () => {
-                                for (let i = 0; i < stepBlobs.length; i++) {
-                                    const building = buildings[i];
-                                    const filename = `cesium_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
-                                    const stepFile = new File([stepBlobs[i]], filename, {
-                                        type: "application/step",
-                                    });
+                        await Transaction.executeAsync(document, "import PLATEAU buildings", async () => {
+                            for (let i = 0; i < stepBlobs.length; i++) {
+                                const building = buildings[i];
+                                const filename = `plateau_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
+                                const stepFile = new File([stepBlobs[i]], filename, {
+                                    type: "application/step",
+                                });
 
-                                    await document.application.dataExchange.import(document, [stepFile]);
-                                }
-                            },
-                        );
+                                await document.application.dataExchange.import(document, [stepFile]);
+                            }
+                        });
 
                         // Fit camera and show success
                         document.application.activeView?.cameraController.fitContent();
@@ -129,7 +121,7 @@ export class ImportCityGMLByCesium implements ICommand {
                         if (failedBuildings.length > 0) {
                             PubSub.default.pub(
                                 "showToast",
-                                "toast.plateau.cesiumImportSuccessWithFailures:{0}:{1}:{2}",
+                                "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}",
                                 stepBlobs.length.toString(),
                                 failedBuildings.length.toString(),
                                 failedBuildings.join(", "),
@@ -137,38 +129,30 @@ export class ImportCityGMLByCesium implements ICommand {
                         } else {
                             PubSub.default.pub(
                                 "showToast",
-                                "toast.plateau.cesiumImportSuccess:{0}",
+                                "toast.plateau.importSuccess:{0}",
                                 stepBlobs.length.toString(),
                             );
                         }
 
-                        console.log("[ImportCityGMLByCesium] Import successful:", {
+                        console.log("[ImportPlateauBuilding] Import successful:", {
                             succeeded: stepBlobs.length,
                             failed: failedBuildings.length,
                         });
                     } catch (error) {
                         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                        PubSub.default.pub(
-                            "showToast",
-                            "toast.plateau.cesiumImportFailed:{0}",
-                            errorMessage,
-                        );
-                        console.error("[ImportCityGMLByCesium] Import failed:", error);
+                        PubSub.default.pub("showToast", "toast.plateau.importFailed:{0}", errorMessage);
+                        console.error("[ImportPlateauBuilding] Import failed:", error);
                     }
                 },
                 "toast.excuting{0}",
-                "command.file.importCityGMLByCesium",
+                "command.file.importPlateauBuilding",
             );
         };
 
-        // Phase 4.2: Conditional dialog routing based on feature flag
-        if (__APP_CONFIG__.useReactCesiumPicker) {
-            renderReactDialog(PlateauCesiumPickerReact, {
-                application,
-                onClose: handleDialogResult,
-            });
-        } else {
-            PlateauCesiumPickerDialog.show(application, handleDialogResult);
-        }
+        // Use React-based unified search + Cesium picker dialog
+        renderReactDialog(PlateauCesiumPickerReact, {
+            application,
+            onClose: handleDialogResult,
+        });
     }
 }

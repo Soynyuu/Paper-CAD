@@ -158,6 +158,22 @@
     background-color: var(--primary-color-lighter, #bbdefb);
 }
 
+/* NEW: 場所名と建物件数の表示 */
+.locationName {
+    font-weight: var(--font-weight-medium, 500);
+    font-size: var(--font-size-sm, 14px);
+}
+
+.buildingCount {
+    font-size: var(--font-size-xs, 12px);
+    color: var(--text-secondary, #666);
+    margin-top: 4px;
+}
+
+.searchResultItem:hover .buildingCount {
+    color: var(--primary-color, #2196f3);
+}
+
 .searchError {
     padding: 16px;
     text-align: center;

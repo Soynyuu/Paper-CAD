@@ -65,6 +65,7 @@ interface SearchResult {
     longitude: number;
     osmType?: string;
     osmId?: number;
+    buildingCount?: number; // NEW: 周辺の建物件数
 }
 
 /**
@@ -98,6 +99,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+    // Search mode state (NEW)
+    const [searchMode, setSearchMode] = useState<"facility" | "address" | "buildingId">("facility");
+    const [searchRadius, setSearchRadius] = useState<number>(100); // meters
+    const [meshCode, setMeshCode] = useState<string>("");
 
     // Initialize with first city
     useEffect(() => {
@@ -325,6 +331,13 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         const query = searchQuery.trim();
         if (!query) return;
 
+        // GML IDモードの場合、メッシュコードもチェック
+        if (searchMode === "buildingId" && !meshCode.trim()) {
+            setSearchError("メッシュコードを入力してください");
+            setShowResults(true);
+            return;
+        }
+
         setIsSearching(true);
         setSearchError(null);
         setShowResults(false);
@@ -338,34 +351,76 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const apiBaseUrl = (window as any).__APP_CONFIG__?.stepUnfoldApiUrl ||
                               "http://localhost:8001/api";
 
-            const response = await fetch(`${apiBaseUrl}/plateau/search-by-address`, {
+            // 検索モードに応じてエンドポイント切り替え
+            const endpoint = searchMode === "buildingId"
+                ? `/plateau/search-by-building-id-and-mesh`
+                : `/plateau/search-by-address`;
+
+            const requestBody = searchMode === "buildingId"
+                ? {
+                    building_id: query,
+                    mesh_code: meshCode.trim(),
+                    debug: false,
+                    merge_building_parts: false
+                  }
+                : {
+                    query,
+                    radius: searchRadius / 111000, // m → degrees
+                    limit: 20,
+                    search_mode: searchMode === "facility" ? "hybrid" : "distance",
+                    name_filter: searchMode === "facility" ? query : undefined
+                  };
+
+            const response = await fetch(`${apiBaseUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    query,
-                    radius: 0.001,
-                    limit: 7,
-                    search_mode: "hybrid"
-                }),
+                body: JSON.stringify(requestBody),
                 signal: abortControllerRef.current.signal
             });
 
             const data = await response.json();
 
-            if (!data.success || !data.geocoding) {
-                setSearchError("該当する場所が見つかりません");
+            if (!data.success) {
+                setSearchError(data.error || "検索に失敗しました");
                 setSearchResults([]);
                 setShowResults(true);
                 return;
             }
 
-            const result: SearchResult = {
-                displayName: data.geocoding.display_name,
-                latitude: data.geocoding.latitude,
-                longitude: data.geocoding.longitude,
-                osmType: data.geocoding.osm_type,
-                osmId: data.geocoding.osm_id
-            };
+            // 検索結果を統一フォーマットに変換
+            let result: SearchResult;
+
+            if (searchMode === "buildingId") {
+                // GML ID検索の場合
+                if (!data.building) {
+                    setSearchError("建物が見つかりません");
+                    setSearchResults([]);
+                    setShowResults(true);
+                    return;
+                }
+                result = {
+                    displayName: data.building.name || data.building.gml_id,
+                    latitude: data.building.latitude || 35.681,
+                    longitude: data.building.longitude || 139.767,
+                    buildingCount: 1
+                };
+            } else {
+                // 施設名/住所検索の場合
+                if (!data.geocoding) {
+                    setSearchError("該当する場所が見つかりません");
+                    setSearchResults([]);
+                    setShowResults(true);
+                    return;
+                }
+                result = {
+                    displayName: data.geocoding.display_name,
+                    latitude: data.geocoding.latitude,
+                    longitude: data.geocoding.longitude,
+                    osmType: data.geocoding.osm_type,
+                    osmId: data.geocoding.osm_id,
+                    buildingCount: data.buildings ? data.buildings.length : 0
+                };
+            }
 
             setSearchResults([result]);
             setShowResults(true);
@@ -379,7 +434,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         } finally {
             setIsSearching(false);
         }
-    }, [searchQuery]);
+    }, [searchQuery, searchMode, searchRadius, meshCode]);
 
     const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.nativeEvent.isComposing) return;
@@ -453,26 +508,35 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         const viewer = cesiumViewRef.current?.getViewer();
         if (!viewer) return;
 
+        // 検索ドロップダウンを閉じる
         setShowResults(false);
         setSearchQuery(result.displayName);
 
+        // Cesiumカメラを該当位置へ飛ばす
         viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(
                 result.longitude,
                 result.latitude,
-                1000
+                1000  // 高度1000m（建物が見やすい高さ）
             ),
             duration: 2.0,
             orientation: {
                 heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-45),
+                pitch: Cesium.Math.toRadians(-45),  // 斜め上から見下ろす角度
                 roll: 0
             }
         });
 
+        // 最寄り都市の3Dタイルを自動読み込み
         const nearestCity = findNearestCity(result.latitude, result.longitude);
         if (nearestCity && nearestCity.key !== currentCity) {
             setCurrentCity(nearestCity.key);
+        }
+
+        // ユーザーに建物選択を促すトースト（将来的にi18nキーに置き換え）
+        // PubSubはi18nキーが必要なため、コンソールログに変更
+        if (result.buildingCount && result.buildingCount > 0) {
+            console.log(`[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`);
         }
     }, [currentCity, setCurrentCity, findNearestCity]);
 
@@ -536,7 +600,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                         role="option"
                                         aria-selected={index === selectedResultIndex}
                                     >
-                                        📍 {result.displayName}
+                                        {/* 場所情報のみ表示 */}
+                                        <div className={styles.locationName}>
+                                            📍 {result.displayName}
+                                        </div>
+
+                                        {/* 建物件数の情報のみ追加 */}
+                                        {result.buildingCount !== undefined && result.buildingCount > 0 && (
+                                            <div className={styles.buildingCount}>
+                                                周辺の建物 {result.buildingCount}件
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

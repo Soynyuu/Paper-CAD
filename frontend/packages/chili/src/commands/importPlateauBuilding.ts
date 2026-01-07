@@ -22,6 +22,7 @@ export class ImportPlateauBuilding implements ICommand {
     private cityGMLService: CityGMLService;
 
     constructor() {
+        console.log("[ImportPlateauBuilding] Command registered and constructor called");
         // Use the configured API URL from environment
         const apiUrl = __APP_CONFIG__.stepUnfoldApiUrl || "http://localhost:8001/api";
         this.cityGMLService = new CityGMLService(apiUrl);

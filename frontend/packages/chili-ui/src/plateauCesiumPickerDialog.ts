@@ -264,6 +264,20 @@ export class PlateauCesiumPickerDialog {
         viewerContainer.appendChild(loadingIndicator);
 
         /**
+         * Check if coordinates are within Japan's boundaries
+         *
+         * @param latitude - Latitude in degrees
+         * @param longitude - Longitude in degrees
+         * @returns true if within Japan
+         */
+        const isWithinJapan = (latitude: number, longitude: number): boolean => {
+            // Japan's rough boundaries (including main islands and remote islands)
+            // Latitude: 24°N (Yonaguni) ~ 46°N (Etorofu)
+            // Longitude: 123°E (Yonaguni) ~ 154°E (Minamitorishima)
+            return latitude >= 24 && latitude <= 46 && longitude >= 123 && longitude <= 154;
+        };
+
+        /**
          * Switch search tab
          */
         const switchSearchTab = (mode: "address" | "buildingId" | "meshCode") => {
@@ -330,6 +344,14 @@ export class PlateauCesiumPickerDialog {
 
                 const coordinates = result.value.geocoding;
 
+                // Check if coordinates are within Japan
+                if (!isWithinJapan(coordinates.latitude, coordinates.longitude)) {
+                    console.warn("[Address Search] Coordinates out of bounds:", coordinates);
+                    meshIndicator.textContent = "日本国内の座標のみサポートしています";
+                    loadingIndicator.style.display = "none";
+                    return;
+                }
+
                 // Calculate mesh codes + neighbors
                 const meshCodes = resolveMeshCodesFromCoordinates(
                     coordinates.latitude,
@@ -357,7 +379,21 @@ export class PlateauCesiumPickerDialog {
 
                 if (data.total_found === 0) {
                     console.warn("[Address Search] No tilesets found for meshes:", meshCodes);
-                    meshIndicator.textContent = "該当する3D Tilesが見つかりませんでした";
+
+                    // Check if coordinate is likely on water or land without data
+                    const displayName = coordinates.display_name?.toLowerCase() || "";
+                    const isLikelyWater =
+                        displayName.includes("sea") ||
+                        displayName.includes("ocean") ||
+                        displayName.includes("bay") ||
+                        displayName.includes("海");
+
+                    if (isLikelyWater) {
+                        meshIndicator.textContent = "海上には建物データがありません";
+                    } else {
+                        meshIndicator.textContent = "この地域のPLATEAUデータは未整備です";
+                    }
+
                     loadingIndicator.style.display = "none";
                     return;
                 }

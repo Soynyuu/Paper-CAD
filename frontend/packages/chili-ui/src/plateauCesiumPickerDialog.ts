@@ -68,6 +68,11 @@ export class PlateauCesiumPickerDialog {
         // Metadata cache (Phase 6.3)
         const metadataCache = new Map<string, PickedBuilding>();
 
+        const apiBaseUrl = (__APP_CONFIG__.stepUnfoldApiUrl || "http://localhost:8001/api").replace(
+            /\/$/,
+            "",
+        );
+
         // Cesium viewer container (left panel, 75%)
         const viewerContainer = div({
             style: {
@@ -357,13 +362,17 @@ export class PlateauCesiumPickerDialog {
                     limit: 50,
                 });
 
-                if (!result.success || !result.geocoding) {
-                    PubSub.default.pub("showToast", "error.plateau.searchFailed");
+                if (!result.isOk || !result.value.success || !result.value.geocoding) {
+                    console.error(
+                        "[Address Search] Search failed:",
+                        result.isOk ? result.value.error : result.error,
+                    );
                     meshIndicator.textContent = "検索に失敗しました";
+                    loadingIndicator.style.display = "none";
                     return;
                 }
 
-                const coordinates = result.geocoding;
+                const coordinates = result.value.geocoding;
 
                 // Calculate mesh codes + neighbors
                 const meshCodes = resolveMeshCodesFromCoordinates(
@@ -375,7 +384,7 @@ export class PlateauCesiumPickerDialog {
                 console.log(`[Search] Found ${meshCodes.length} mesh codes:`, meshCodes);
 
                 // Fetch 3D Tiles URLs for mesh codes
-                const response = await fetch(`${app.envs.apiUrl}/api/plateau/mesh-to-tilesets`, {
+                const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -391,13 +400,15 @@ export class PlateauCesiumPickerDialog {
                 const data = await response.json();
 
                 if (data.total_found === 0) {
-                    PubSub.default.pub("showToast", "error.plateau.noTilesetsFound");
+                    console.warn("[Address Search] No tilesets found for meshes:", meshCodes);
                     meshIndicator.textContent = "該当する3D Tilesが見つかりませんでした";
+                    loadingIndicator.style.display = "none";
                     return;
                 }
 
                 // Load multiple tilesets
-                if (tilesetLoader && cesiumView) {
+                const viewer = cesiumView?.getViewer();
+                if (tilesetLoader && viewer) {
                     await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -406,7 +417,7 @@ export class PlateauCesiumPickerDialog {
                     );
 
                     // Fly to search location
-                    cesiumView.viewer.camera.flyTo({
+                    viewer.camera.flyTo({
                         destination: Cesium.Cartesian3.fromDegrees(
                             coordinates.longitude,
                             coordinates.latitude,
@@ -418,13 +429,11 @@ export class PlateauCesiumPickerDialog {
 
                 // Update indicator
                 updateMeshIndicator(meshCodes.length);
-
-                PubSub.default.pub("showToast", "success.plateau.searchComplete");
             } catch (error) {
                 console.error("[Search] Address search failed:", error);
                 PubSub.default.pub(
                     "showToast",
-                    "error.plateau.searchError:{0}",
+                    "error.plateau.searchFailed:{0}",
                     error instanceof Error ? error.message : String(error),
                 );
                 meshIndicator.textContent = "エラーが発生しました";
@@ -444,7 +453,7 @@ export class PlateauCesiumPickerDialog {
             const meshCode = meshCodeInput?.value.trim();
 
             if (!buildingId) {
-                PubSub.default.pub("showToast", "error.plateau.emptyBuildingId");
+                meshIndicator.textContent = "建物IDを入力してください";
                 return;
             }
 
@@ -460,13 +469,12 @@ export class PlateauCesiumPickerDialog {
                 const citygmlService = new CityGMLService();
                 // TODO: Implement building ID search with mesh codes
                 // For now, show error
-                PubSub.default.pub("showToast", "error.plateau.notImplemented");
+                console.warn("[Building ID Search] Not implemented yet");
                 meshIndicator.textContent = "建物ID検索は未実装です";
+                loadingIndicator.style.display = "none";
             } catch (error) {
                 console.error("[Search] Building ID search failed:", error);
-                PubSub.default.pub("showToast", "error.plateau.searchError");
                 meshIndicator.textContent = "エラーが発生しました";
-            } finally {
                 loadingIndicator.style.display = "none";
             }
         };
@@ -479,7 +487,7 @@ export class PlateauCesiumPickerDialog {
             const meshCode = input?.value.trim();
 
             if (!meshCode || !/^\d{8}$/.test(meshCode)) {
-                PubSub.default.pub("showToast", "error.plateau.invalidMeshCode");
+                meshIndicator.textContent = "メッシュコードは8桁の数字で入力してください";
                 return;
             }
 
@@ -488,7 +496,7 @@ export class PlateauCesiumPickerDialog {
                 meshIndicator.textContent = "検索中...";
 
                 // Fetch 3D Tiles URL for single mesh code
-                const response = await fetch(`${app.envs.apiUrl}/api/plateau/mesh-to-tilesets`, {
+                const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -504,13 +512,15 @@ export class PlateauCesiumPickerDialog {
                 const data = await response.json();
 
                 if (data.total_found === 0) {
-                    PubSub.default.pub("showToast", "error.plateau.meshCodeNotFound");
+                    console.warn("[Mesh Search] Mesh code not found:", meshCode);
                     meshIndicator.textContent = "該当するメッシュが見つかりませんでした";
+                    loadingIndicator.style.display = "none";
                     return;
                 }
 
                 // Load tileset
-                if (tilesetLoader && cesiumView) {
+                const viewer = cesiumView?.getViewer();
+                if (tilesetLoader && viewer) {
                     await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -520,7 +530,7 @@ export class PlateauCesiumPickerDialog {
 
                     // Calculate mesh center and fly to it
                     const center = meshToLatLon(meshCode);
-                    cesiumView.viewer.camera.flyTo({
+                    viewer.camera.flyTo({
                         destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, 1000),
                         duration: 1.5,
                     });
@@ -528,10 +538,14 @@ export class PlateauCesiumPickerDialog {
 
                 updateMeshIndicator(1);
 
-                PubSub.default.pub("showToast", "success.plateau.meshCodeLoaded");
+                console.log("[Mesh Search] Successfully loaded mesh:", meshCode);
             } catch (error) {
                 console.error("[Search] Mesh code search failed:", error);
-                PubSub.default.pub("showToast", "error.plateau.searchError");
+                PubSub.default.pub(
+                    "showToast",
+                    "error.plateau.searchFailed:{0}",
+                    error instanceof Error ? error.message : String(error),
+                );
                 meshIndicator.textContent = "エラーが発生しました";
             } finally {
                 loadingIndicator.style.display = "none";
@@ -963,12 +977,8 @@ export class PlateauCesiumPickerDialog {
                         }));
 
                         // Get base URL from config
-                        const baseUrl =
-                            (window as any).__APP_CONFIG__?.stepUnfoldApiUrl ||
-                            "https://backend-paper-cad.soynyuu.com/api";
-
                         // Fetch batch
-                        const citygmlService = new CityGMLService(baseUrl);
+                        const citygmlService = new CityGMLService(apiBaseUrl);
                         const result = await citygmlService.batchSearchByBuildingIds(requests);
 
                         if (result.isOk) {

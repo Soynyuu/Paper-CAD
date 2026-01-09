@@ -1,10 +1,7 @@
 # Large files (>100MB)
 *.gml
-unfold-step2svg/53394642_bldg_6697_op.gml
-PLATEAU-VIEW-4.0/
 # OS generated files
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes

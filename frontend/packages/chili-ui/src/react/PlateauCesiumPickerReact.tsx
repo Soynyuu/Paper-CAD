@@ -208,48 +208,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         };
     }, []); // Run once on mount
 
-    // Load 3D Tiles tileset when URL changes
-    useEffect(() => {
-        if (!viewerReady || !tilesetUrl) return;
-
-        const viewer = cesiumViewRef.current?.getViewer();
-        if (!viewer) return;
-
-        console.log("[PlateauCesiumPickerReact] Loading tileset:", tilesetUrl);
-
-        // Phase 4.4: Use CesiumTilesetLoader instead of direct fromUrl()
-        const loader = tilesetLoaderRef.current;
-        if (!loader) {
-            console.error("[PlateauCesiumPickerReact] TilesetLoader not initialized");
-            setLoading(false);
-            setLoadingMessage("");
-            return;
-        }
-
-        loader
-            .loadTileset(tilesetUrl)
-            .then((tileset) => {
-                tilesetRef.current = tileset;
-                console.log("[PlateauCesiumPickerReact] Tileset loaded successfully");
-                setLoading(false);
-                setLoadingMessage("");
-            })
-            .catch((error: Error) => {
-                console.error("[PlateauCesiumPickerReact] Failed to load tileset:", error);
-                // Note: Toast notification removed due to missing i18n key
-                setLoading(false);
-                setLoadingMessage("");
-            });
-
-        // Cleanup on tileset change
-        return () => {
-            const currentTileset = tilesetRef.current;
-            if (currentTileset && viewer.scene.primitives.contains(currentTileset)) {
-                viewer.scene.primitives.remove(currentTileset);
-                tilesetRef.current = null;
-            }
-        };
-    }, [viewerReady, tilesetUrl, setLoading, setLoadingMessage]);
+    // Tileset loading removed - using mesh-based dynamic loading (Issue #177)
 
     // Close search results when clicking outside
     useEffect(() => {

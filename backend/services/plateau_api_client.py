@@ -79,12 +79,16 @@ async def _fetch_plateau_catalog() -> List[Dict[str, Any]]:
             response.raise_for_status()
             data = await response.json()
 
-            # API returns array of datasets directly
-            if not isinstance(data, list):
-                raise ValueError(f"Expected list from PLATEAU API, got: {type(data)}")
+            # API returns {"datasets": [...]} structure
+            if not isinstance(data, dict) or "datasets" not in data:
+                raise ValueError(f"Unexpected PLATEAU API response format: {type(data)}")
 
-            logger.info(f"Fetched {len(data)} datasets from PLATEAU catalog")
-            return data
+            datasets = data["datasets"]
+            if not isinstance(datasets, list):
+                raise ValueError(f"Expected datasets to be a list, got: {type(datasets)}")
+
+            logger.info(f"Fetched {len(datasets)} datasets from PLATEAU catalog")
+            return datasets
 
 
 async def _get_cached_catalog() -> List[Dict[str, Any]]:
@@ -150,10 +154,15 @@ def _filter_building_datasets(
         if dataset.get("format") != "3D Tiles":
             continue
 
-        # Check LOD if specified
+        # Check LOD if specified (API returns LOD as string)
         if lod is not None:
             dataset_lod = dataset.get("lod")
-            if dataset_lod != lod:
+            # Convert to int for comparison (API returns "1", "2", "3")
+            try:
+                dataset_lod_int = int(dataset_lod) if dataset_lod else None
+                if dataset_lod_int != lod:
+                    continue
+            except (ValueError, TypeError):
                 continue
 
         filtered.append(dataset)

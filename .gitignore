@@ -46,3 +46,4 @@ backend/*_output.txt
 # Frontend environment files
 frontend/.env.development
 frontend/.env.local
+frontend/.env.demo

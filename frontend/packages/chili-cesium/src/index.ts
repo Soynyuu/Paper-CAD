@@ -5,5 +5,6 @@ export * from "./types";
 export * from "./cesiumCoordinateUtils";
 export * from "./cesiumBuildingPicker";
 export * from "./cesiumCityDatabase";
+export * from "./cesiumMeshResolver";
 export * from "./cesiumTilesetLoader";
 export * from "./cesiumView";

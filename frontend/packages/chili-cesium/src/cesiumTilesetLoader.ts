@@ -23,6 +23,7 @@ import * as Cesium from "cesium";
 export class CesiumTilesetLoader {
     private viewer: Cesium.Viewer;
     private currentTileset: Cesium.Cesium3DTileset | null = null;
+    private loadedTilesets: Map<string, Cesium.Cesium3DTileset> = new Map();
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
@@ -144,5 +145,116 @@ export class CesiumTilesetLoader {
         if (this.currentTileset) {
             this.setDefaultStyle(this.currentTileset);
         }
+    }
+
+    /**
+     * Load multiple tilesets in parallel
+     *
+     * @param tilesets - Array of tileset info with meshCode and url
+     * @returns Promise that resolves when all tilesets are loaded
+     *
+     * @example
+     * await loader.loadMultipleTilesets([
+     *     { meshCode: "53394511", url: "https://..." },
+     *     { meshCode: "53394512", url: "https://..." }
+     * ]);
+     */
+    async loadMultipleTilesets(tilesets: Array<{ meshCode: string; url: string }>): Promise<void> {
+        const loadPromises = tilesets.map(async ({ meshCode, url }) => {
+            // Skip if already loaded
+            if (this.loadedTilesets.has(meshCode)) {
+                console.log(`[CesiumTilesetLoader] Mesh ${meshCode} already loaded, skipping`);
+                return;
+            }
+
+            try {
+                const tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
+                    debugShowBoundingVolume: false,
+                    debugShowContentBoundingVolume: false,
+                    debugShowGeometricError: false,
+
+                    maximumScreenSpaceError: 16,
+
+                    skipLevelOfDetail: true,
+                    baseScreenSpaceError: 1024,
+                    skipScreenSpaceErrorFactor: 16,
+                    skipLevels: 1,
+
+                    preloadWhenHidden: true,
+                    preloadFlightDestinations: false,
+                    preferLeaves: true,
+
+                    dynamicScreenSpaceError: true,
+                    dynamicScreenSpaceErrorDensity: 0.00278,
+                    dynamicScreenSpaceErrorFactor: 4.0,
+                    dynamicScreenSpaceErrorHeightFalloff: 0.25,
+                });
+
+                // Add to scene
+                this.viewer.scene.primitives.add(tileset);
+                this.loadedTilesets.set(meshCode, tileset);
+
+                // Apply default styling
+                this.setDefaultStyle(tileset);
+
+                console.log(`[CesiumTilesetLoader] Loaded mesh ${meshCode}`);
+            } catch (error) {
+                console.warn(`[CesiumTilesetLoader] Failed to load mesh ${meshCode}:`, error);
+            }
+        });
+
+        await Promise.all(loadPromises);
+
+        console.log(`[CesiumTilesetLoader] Loaded ${this.loadedTilesets.size} tilesets total`);
+    }
+
+    /**
+     * Unload tileset for specific mesh code
+     *
+     * @param meshCode - Mesh code to unload
+     */
+    unloadTilesetByMesh(meshCode: string): void {
+        const tileset = this.loadedTilesets.get(meshCode);
+        if (tileset) {
+            this.viewer.scene.primitives.remove(tileset);
+            this.loadedTilesets.delete(meshCode);
+            console.log(`[CesiumTilesetLoader] Unloaded mesh ${meshCode}`);
+        }
+    }
+
+    /**
+     * Get list of loaded mesh codes
+     *
+     * @returns Array of loaded mesh codes
+     */
+    getLoadedMeshCodes(): string[] {
+        return Array.from(this.loadedTilesets.keys());
+    }
+
+    /**
+     * Clear all loaded tilesets
+     */
+    clearAll(): void {
+        this.loadedTilesets.forEach((tileset) => {
+            this.viewer.scene.primitives.remove(tileset);
+        });
+        this.loadedTilesets.clear();
+
+        // Also clear legacy currentTileset
+        if (this.currentTileset) {
+            this.viewer.scene.primitives.remove(this.currentTileset);
+            this.currentTileset = null;
+        }
+
+        console.log(`[CesiumTilesetLoader] Cleared all tilesets`);
+    }
+
+    /**
+     * Get total number of loaded tilesets
+     *
+     * @returns Number of loaded tilesets
+     */
+    getTilesetCount(): number {
+        return this.loadedTilesets.size;
     }
 }

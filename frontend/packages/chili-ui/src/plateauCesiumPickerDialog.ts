@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { button, div, label, select } from "chili-controls";
+import { button, div, input, label, select } from "chili-controls";
 import {
     DialogResult,
     I18n,
@@ -16,6 +16,8 @@ import {
     CesiumView,
     getAllCities,
     getCityConfig,
+    meshToLatLon,
+    resolveMeshCodesFromCoordinates,
     type PickedBuilding,
     type CityConfig,
 } from "chili-cesium";
@@ -91,35 +93,123 @@ export class PlateauCesiumPickerDialog {
             },
         });
 
-        // City selector dropdown
-        const cities = getAllCities();
-        const cityOptions = cities.map((city: CityConfig) => ({
-            value: city.key,
-            text: city.name,
-        }));
+        // Search mode state
+        let currentSearchMode: "address" | "buildingId" | "meshCode" = "address";
 
-        const citySelectElement = select(
-            {
-                style: {
-                    width: "100%",
-                    padding: "8px",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--radius-sm)",
-                    fontSize: "var(--font-size-sm)",
-                    marginBottom: "12px",
+        // Search tabs container
+        const searchTabsContainer = div(
+            { className: style.searchTabsContainer },
+
+            // Tab headers
+            div(
+                { className: style.searchTabsHeader },
+                button({
+                    className: style.searchTab,
+                    dataset: { active: "true" },
+                    textContent: "🔍 住所検索",
+                    onclick: () => switchSearchTab("address"),
+                }),
+                button({
+                    className: style.searchTab,
+                    textContent: "🏢 建物ID",
+                    onclick: () => switchSearchTab("buildingId"),
+                }),
+                button({
+                    className: style.searchTab,
+                    textContent: "📊 メッシュコード",
+                    onclick: () => switchSearchTab("meshCode"),
+                }),
+            ),
+
+            // Tab content: Address search
+            div(
+                {
+                    id: "address-search",
+                    className: style.searchTabContent,
+                    dataset: { active: "true" },
                 },
-                onchange: async (e) => {
-                    const cityKey = (e.target as HTMLSelectElement).value;
-                    await loadCity(cityKey);
+                input({
+                    type: "text",
+                    placeholder: "東京駅、千代田区丸の内...",
+                    className: style.searchInput,
+                    id: "address-input",
+                }),
+                button({
+                    textContent: "検索",
+                    className: style.searchButton,
+                    onclick: () => executeAddressSearch(),
+                }),
+            ),
+
+            // Tab content: Building ID search
+            div(
+                {
+                    id: "building-id-search",
+                    className: style.searchTabContent,
                 },
-            },
-            ...cityOptions.map((opt: { value: string; text: string }) =>
-                Object.assign(document.createElement("option"), {
-                    value: opt.value,
-                    textContent: opt.text,
+                div(
+                    { className: style.searchFormRow },
+                    div(
+                        { style: { flex: "1" } },
+                        div({ className: style.inputLabel, textContent: "建物ID" }),
+                        input({
+                            type: "text",
+                            placeholder: "bldg_xxx...",
+                            className: style.searchInput,
+                            id: "building-id-input",
+                        }),
+                    ),
+                ),
+                div(
+                    { className: style.searchFormRow },
+                    div(
+                        { style: { flex: "1" } },
+                        div({
+                            className: style.inputLabel,
+                            textContent: "メッシュコード (任意)",
+                        }),
+                        input({
+                            type: "text",
+                            placeholder: "53394511 (8桁)",
+                            className: style.searchInput,
+                            id: "mesh-code-optional-input",
+                            pattern: "[0-9]{8}",
+                        }),
+                    ),
+                ),
+                button({
+                    textContent: "検索",
+                    className: style.searchButton,
+                    onclick: () => executeBuildingIdSearch(),
+                }),
+            ),
+
+            // Tab content: Mesh code search
+            div(
+                {
+                    id: "mesh-search",
+                    className: style.searchTabContent,
+                },
+                input({
+                    type: "text",
+                    placeholder: "53394511 (8桁)",
+                    className: style.searchInput,
+                    id: "mesh-code-input",
+                    pattern: "[0-9]{8}",
+                }),
+                button({
+                    textContent: "検索",
+                    className: style.searchButton,
+                    onclick: () => executeMeshCodeSearch(),
                 }),
             ),
         );
+
+        // Mesh indicator
+        const meshIndicator = div({
+            className: style.meshIndicator,
+            textContent: "検索してください",
+        });
 
         // Instructions overlay
         const instructionsOverlay = div(
@@ -207,6 +297,242 @@ export class PlateauCesiumPickerDialog {
                     cityConfig.name,
                     error instanceof Error ? error.message : String(error),
                 );
+            } finally {
+                loadingIndicator.style.display = "none";
+            }
+        };
+
+        /**
+         * Switch search tab
+         */
+        const switchSearchTab = (mode: "address" | "buildingId" | "meshCode") => {
+            currentSearchMode = mode;
+
+            // Update tab headers
+            const tabs = dialog.querySelectorAll(`.${style.searchTab}`);
+            tabs.forEach((tab, index) => {
+                const modes = ["address", "buildingId", "meshCode"];
+                tab.setAttribute("data-active", modes[index] === mode ? "true" : "false");
+            });
+
+            // Update tab contents
+            const addressTab = dialog.querySelector("#address-search");
+            const buildingIdTab = dialog.querySelector("#building-id-search");
+            const meshTab = dialog.querySelector("#mesh-search");
+
+            if (addressTab) addressTab.setAttribute("data-active", mode === "address" ? "true" : "false");
+            if (buildingIdTab)
+                buildingIdTab.setAttribute("data-active", mode === "buildingId" ? "true" : "false");
+            if (meshTab) meshTab.setAttribute("data-active", mode === "meshCode" ? "true" : "false");
+        };
+
+        /**
+         * Update mesh indicator
+         */
+        const updateMeshIndicator = (meshCount: number) => {
+            const coverage = Math.sqrt(meshCount); // 3x3 = 9 → "約3km"
+            meshIndicator.textContent = `💡 表示中: ${meshCount}メッシュ (約${coverage.toFixed(0)}km範囲)`;
+        };
+
+        /**
+         * Execute address search
+         */
+        const executeAddressSearch = async () => {
+            const input = dialog.querySelector("#address-input") as HTMLInputElement;
+            const query = input?.value.trim();
+
+            if (!query) {
+                PubSub.default.pub("showToast", "error.plateau.emptyQuery");
+                return;
+            }
+
+            try {
+                loadingIndicator.style.display = "block";
+                meshIndicator.textContent = "検索中...";
+
+                // Call backend API
+                const citygmlService = new CityGMLService();
+                const result = await citygmlService.searchByAddress(query, {
+                    radius: 0.001,
+                    limit: 50,
+                });
+
+                if (!result.success || !result.geocoding) {
+                    PubSub.default.pub("showToast", "error.plateau.searchFailed");
+                    meshIndicator.textContent = "検索に失敗しました";
+                    return;
+                }
+
+                const coordinates = result.geocoding;
+
+                // Calculate mesh codes + neighbors
+                const meshCodes = resolveMeshCodesFromCoordinates(
+                    coordinates.latitude,
+                    coordinates.longitude,
+                    true, // Include neighbors
+                );
+
+                console.log(`[Search] Found ${meshCodes.length} mesh codes:`, meshCodes);
+
+                // Fetch 3D Tiles URLs for mesh codes
+                const response = await fetch(`${app.envs.apiUrl}/api/plateau/mesh-to-tilesets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        mesh_codes: meshCodes,
+                        lod: 1,
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.total_found === 0) {
+                    PubSub.default.pub("showToast", "error.plateau.noTilesetsFound");
+                    meshIndicator.textContent = "該当する3D Tilesが見つかりませんでした";
+                    return;
+                }
+
+                // Load multiple tilesets
+                if (tilesetLoader && cesiumView) {
+                    await tilesetLoader.loadMultipleTilesets(
+                        data.tilesets.map((t: any) => ({
+                            meshCode: t.mesh_code,
+                            url: t.tileset_url,
+                        })),
+                    );
+
+                    // Fly to search location
+                    cesiumView.viewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(
+                            coordinates.longitude,
+                            coordinates.latitude,
+                            1000,
+                        ),
+                        duration: 1.5,
+                    });
+                }
+
+                // Update indicator
+                updateMeshIndicator(meshCodes.length);
+
+                PubSub.default.pub("showToast", "success.plateau.searchComplete");
+            } catch (error) {
+                console.error("[Search] Address search failed:", error);
+                PubSub.default.pub(
+                    "showToast",
+                    "error.plateau.searchError:{0}",
+                    error instanceof Error ? error.message : String(error),
+                );
+                meshIndicator.textContent = "エラーが発生しました";
+            } finally {
+                loadingIndicator.style.display = "none";
+            }
+        };
+
+        /**
+         * Execute building ID search
+         */
+        const executeBuildingIdSearch = async () => {
+            const buildingIdInput = dialog.querySelector("#building-id-input") as HTMLInputElement;
+            const meshCodeInput = dialog.querySelector("#mesh-code-optional-input") as HTMLInputElement;
+
+            const buildingId = buildingIdInput?.value.trim();
+            const meshCode = meshCodeInput?.value.trim();
+
+            if (!buildingId) {
+                PubSub.default.pub("showToast", "error.plateau.emptyBuildingId");
+                return;
+            }
+
+            try {
+                loadingIndicator.style.display = "block";
+                meshIndicator.textContent = "検索中...";
+
+                // Use mesh-optimized endpoint if mesh code provided
+                const endpoint = meshCode
+                    ? `/api/plateau/search-by-id-and-mesh`
+                    : `/api/plateau/search-by-id`;
+
+                const citygmlService = new CityGMLService();
+                // TODO: Implement building ID search with mesh codes
+                // For now, show error
+                PubSub.default.pub("showToast", "error.plateau.notImplemented");
+                meshIndicator.textContent = "建物ID検索は未実装です";
+            } catch (error) {
+                console.error("[Search] Building ID search failed:", error);
+                PubSub.default.pub("showToast", "error.plateau.searchError");
+                meshIndicator.textContent = "エラーが発生しました";
+            } finally {
+                loadingIndicator.style.display = "none";
+            }
+        };
+
+        /**
+         * Execute mesh code search
+         */
+        const executeMeshCodeSearch = async () => {
+            const input = dialog.querySelector("#mesh-code-input") as HTMLInputElement;
+            const meshCode = input?.value.trim();
+
+            if (!meshCode || !/^\d{8}$/.test(meshCode)) {
+                PubSub.default.pub("showToast", "error.plateau.invalidMeshCode");
+                return;
+            }
+
+            try {
+                loadingIndicator.style.display = "block";
+                meshIndicator.textContent = "検索中...";
+
+                // Fetch 3D Tiles URL for single mesh code
+                const response = await fetch(`${app.envs.apiUrl}/api/plateau/mesh-to-tilesets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        mesh_codes: [meshCode],
+                        lod: 1,
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.total_found === 0) {
+                    PubSub.default.pub("showToast", "error.plateau.meshCodeNotFound");
+                    meshIndicator.textContent = "該当するメッシュが見つかりませんでした";
+                    return;
+                }
+
+                // Load tileset
+                if (tilesetLoader && cesiumView) {
+                    await tilesetLoader.loadMultipleTilesets(
+                        data.tilesets.map((t: any) => ({
+                            meshCode: t.mesh_code,
+                            url: t.tileset_url,
+                        })),
+                    );
+
+                    // Calculate mesh center and fly to it
+                    const center = meshToLatLon(meshCode);
+                    cesiumView.viewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, 1000),
+                        duration: 1.5,
+                    });
+                }
+
+                updateMeshIndicator(1);
+
+                PubSub.default.pub("showToast", "success.plateau.meshCodeLoaded");
+            } catch (error) {
+                console.error("[Search] Mesh code search failed:", error);
+                PubSub.default.pub("showToast", "error.plateau.searchError");
+                meshIndicator.textContent = "エラーが発生しました";
             } finally {
                 loadingIndicator.style.display = "none";
             }
@@ -705,20 +1031,15 @@ export class PlateauCesiumPickerDialog {
                 style: {
                     display: "flex",
                     flexDirection: "column",
-                    gap: "12px",
+                    gap: "0px",
                     width: "1200px",
                     maxWidth: "90vw",
                 },
             },
-            // City selector
-            div(
-                { style: { display: "flex", flexDirection: "column", gap: "4px" } },
-                label(
-                    { style: { fontSize: "var(--font-size-sm)", fontWeight: "500" } },
-                    I18n.translate("plateau.cesium.selectCity"),
-                ),
-                citySelectElement,
-            ),
+            // Search tabs
+            searchTabsContainer,
+            // Mesh indicator
+            meshIndicator,
             // Viewer + Selected panel
             div(
                 {
@@ -854,9 +1175,19 @@ export class PlateauCesiumPickerDialog {
                     mouseDownPosition = null;
                 }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
-                // Load first city
-                if (cities.length > 0) {
-                    await loadCity(cities[0].key);
+                // Set initial camera position (Japan overview)
+                viewer.camera.setView({
+                    destination: Cesium.Cartesian3.fromDegrees(
+                        138.0, // Japan center longitude
+                        36.0, // Japan center latitude
+                        1500000, // Altitude (m)
+                    ),
+                });
+
+                // Focus on address search input
+                const addressInput = dialog.querySelector("#address-input") as HTMLInputElement;
+                if (addressInput) {
+                    addressInput.focus();
                 }
             } catch (error) {
                 console.error("[PlateauCesiumPickerDialog] Initialization error:", error);

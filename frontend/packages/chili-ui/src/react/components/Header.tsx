@@ -3,12 +3,9 @@
 
 import React from "react";
 import { I18n } from "chili-core";
-import { CitySelector } from "./CitySelector";
 import styles from "./Header.module.css";
 
 export interface HeaderProps {
-    currentCity: string;
-    onCityChange: (cityKey: string) => void;
     onClose: () => void;
     loading?: boolean;
 }
@@ -16,14 +13,14 @@ export interface HeaderProps {
 /**
  * Header - Top bar of the Cesium picker dialog
  *
- * Contains title, city selector, and close button.
+ * Contains title and close button.
+ * City selector removed in favor of unified search interface (Issue #177).
  */
-export function Header({ currentCity, onCityChange, onClose, loading = false }: HeaderProps) {
+export function Header({ onClose, loading = false }: HeaderProps) {
     return (
         <div className={styles.header}>
             <h2 className={styles.title}>Building Picker</h2>
             <div className={styles.headerControls}>
-                <CitySelector currentCity={currentCity} onChange={onCityChange} disabled={loading} />
                 <button
                     className={styles.closeButton}
                     onClick={onClose}

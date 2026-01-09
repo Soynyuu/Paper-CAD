@@ -9,13 +9,9 @@ import {
     CesiumView,
     CesiumBuildingPicker,
     CesiumTilesetLoader,
-    getAllCities,
-    getCityConfig,
     type PickedBuilding,
-    type CityConfig,
 } from "chili-cesium";
 import {
-    currentCityAtom,
     selectedBuildingsAtom,
     loadingAtom,
     loadingMessageAtom,
@@ -94,11 +90,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
     const tilesetLoaderRef = useRef<CesiumTilesetLoader | null>(null);
 
-    const [currentCity, setCurrentCity] = useAtom(currentCityAtom);
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
     const [loading, setLoading] = useAtom(loadingAtom);
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
-    const [tilesetUrl, setTilesetUrl] = useState<string>("");
     const [viewerReady, setViewerReady] = useState(false);
 
     // Search state
@@ -116,44 +110,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [searchRadius, setSearchRadius] = useState<number>(100); // meters
     const [meshCode, setMeshCode] = useState<string>("");
 
-    // Initialize with first city
-    useEffect(() => {
-        const cities = getAllCities();
-        if (cities.length > 0 && !currentCity) {
-            setCurrentCity(cities[0].key);
-        }
-    }, [currentCity, setCurrentCity]);
-
-    // Load city tileset when city changes
-    useEffect(() => {
-        if (!currentCity) return;
-
-        const cityConfig = getCityConfig(currentCity);
-        if (!cityConfig) {
-            PubSub.default.pub("showToast", "error.plateau.cityNotFound:{0}", currentCity);
-            return;
-        }
-
-        setLoading(true);
-        setLoadingMessage(I18n.translate("plateau.cesium.loading"));
-
-        // Clear previous selections
-        if (buildingPickerRef.current) {
-            buildingPickerRef.current.clearSelection();
-        }
-        setSelectedBuildings([]);
-
-        // Update tileset URL
-        setTilesetUrl(cityConfig.tilesetUrl);
-
-        // Use CesiumView.flyToCity instead of manual camera control
-        if (cesiumViewRef.current) {
-            console.log("[PlateauCesiumPickerReact] Flying to city:", currentCity);
-            cesiumViewRef.current.flyToCity(cityConfig, 2.0);
-        }
-
-        // Loading will be cleared when tileset loads
-    }, [currentCity, setSelectedBuildings, setLoading, setLoadingMessage]);
+    // City initialization removed - using unified search interface (Issue #177)
 
     // Setup click handler when viewer is ready
     useEffect(() => {
@@ -308,13 +265,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [showResults]);
 
-    // Handle city change
-    const handleCityChange = useCallback(
-        (cityKey: string) => {
-            setCurrentCity(cityKey);
-        },
-        [setCurrentCity],
-    );
+    // handleCityChange removed - using mesh-based dynamic loading (Issue #177)
 
     // Handle remove building
     const handleRemoveBuilding = useCallback(
@@ -509,58 +460,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         setSelectedResultIndex(-1);
     };
 
-    // Camera control for search results
-    const findNearestCity = useCallback((latitude: number, longitude: number) => {
-        const toRadians = (deg: number) => deg * (Math.PI / 180);
-        const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-            const R = 6371; // Earth radius in km
-            const dLat = toRadians(lat2 - lat1);
-            const dLon = toRadians(lon2 - lon1);
-            const a = Math.sin(dLat / 2) ** 2 +
-                      Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
-                      Math.sin(dLon / 2) ** 2;
-            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        };
-
-        // Use actual available cities from config
-        const availableCities = getAllCities();
-        if (availableCities.length === 0) {
-            console.warn("[PlateauCesiumPicker] No cities available");
-            return null;
-        }
-
-        // Get city configs with coordinates
-        const citiesWithCoords = availableCities
-            .map(city => {
-                const config = getCityConfig(city.key);
-                if (!config || !config.initialView) return null;
-                return {
-                    key: city.key,
-                    name: city.name,
-                    lat: config.initialView.latitude,
-                    lon: config.initialView.longitude
-                };
-            })
-            .filter((city): city is NonNullable<typeof city> => city !== null);
-
-        if (citiesWithCoords.length === 0) {
-            console.warn("[PlateauCesiumPicker] No cities with valid coordinates");
-            return null;
-        }
-
-        let nearestCity = citiesWithCoords[0];
-        let minDistance = haversine(latitude, longitude, citiesWithCoords[0].lat, citiesWithCoords[0].lon);
-
-        for (const city of citiesWithCoords.slice(1)) {
-            const distance = haversine(latitude, longitude, city.lat, city.lon);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestCity = city;
-            }
-        }
-
-        return nearestCity;
-    }, []);
+    // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
     const handleResultClick = useCallback((result: SearchResult) => {
         const viewer = cesiumViewRef.current?.getViewer();
@@ -585,24 +485,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             }
         });
 
-        // 最寄り都市の3Dタイルを自動読み込み
-        const nearestCity = findNearestCity(result.latitude, result.longitude);
-        if (nearestCity && nearestCity.key !== currentCity) {
-            console.log(`[PlateauCesiumPicker] Switching to nearest city: ${nearestCity.name}`);
-            setCurrentCity(nearestCity.key);
-        }
+        // City switching removed - using mesh-based dynamic loading (Issue #177)
 
         // ユーザーに建物選択を促す（カメラ移動完了後）
         if (result.buildingCount && result.buildingCount > 0) {
             console.log(`[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`);
         }
-    }, [currentCity, setCurrentCity, findNearestCity]);
+    }, []);
 
     return (
         <div className={styles.dialog}>
             <Header
-                currentCity={currentCity}
-                onCityChange={handleCityChange}
                 onClose={handleClose}
                 loading={loading}
             />

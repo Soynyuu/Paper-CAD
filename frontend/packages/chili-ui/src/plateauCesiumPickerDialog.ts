@@ -14,12 +14,10 @@ import {
     CesiumBuildingPicker,
     CesiumTilesetLoader,
     CesiumView,
-    getAllCities,
-    getCityConfig,
+    latLonToMesh3rd,
     meshToLatLon,
     resolveMeshCodesFromCoordinates,
     type PickedBuilding,
-    type CityConfig,
 } from "chili-cesium";
 import * as Cesium from "cesium";
 import style from "./dialog.module.css";
@@ -266,48 +264,6 @@ export class PlateauCesiumPickerDialog {
         viewerContainer.appendChild(loadingIndicator);
 
         /**
-         * Load city tileset
-         */
-        const loadCity = async (cityKey: string) => {
-            const cityConfig = getCityConfig(cityKey);
-            if (!cityConfig) {
-                PubSub.default.pub("showToast", "error.plateau.cityNotFound:{0}", cityKey);
-                return;
-            }
-
-            try {
-                // Show loading
-                loadingIndicator.style.display = "block";
-
-                // Clear previous selection
-                if (buildingPicker) {
-                    buildingPicker.clearSelection();
-                }
-
-                // Load tileset
-                if (tilesetLoader && cesiumView) {
-                    await tilesetLoader.loadTileset(cityConfig.tilesetUrl);
-
-                    // Fly to city
-                    cesiumView.flyToCity(cityConfig);
-                }
-
-                // Update panel
-                updateSelectedPanel();
-            } catch (error) {
-                console.error("[PlateauCesiumPickerDialog] Failed to load city:", error);
-                PubSub.default.pub(
-                    "showToast",
-                    "error.plateau.cityLoadFailed:{0}:{1}",
-                    cityConfig.name,
-                    error instanceof Error ? error.message : String(error),
-                );
-            } finally {
-                loadingIndicator.style.display = "none";
-            }
-        };
-
-        /**
          * Switch search tab
          */
         const switchSearchTab = (mode: "address" | "buildingId" | "meshCode") => {
@@ -457,24 +413,95 @@ export class PlateauCesiumPickerDialog {
                 return;
             }
 
+            // Validate mesh code if provided
+            if (meshCode && !/^\d{8}$/.test(meshCode)) {
+                meshIndicator.textContent = "メッシュコードは8桁の数字で入力してください";
+                return;
+            }
+
             try {
                 loadingIndicator.style.display = "block";
                 meshIndicator.textContent = "検索中...";
 
-                // Use mesh-optimized endpoint if mesh code provided
-                const endpoint = meshCode
-                    ? `/api/plateau/search-by-id-and-mesh`
-                    : `/api/plateau/search-by-id`;
+                const citygmlService = new CityGMLService(apiBaseUrl);
 
-                const citygmlService = new CityGMLService();
-                // TODO: Implement building ID search with mesh codes
-                // For now, show error
-                console.warn("[Building ID Search] Not implemented yet");
-                meshIndicator.textContent = "建物ID検索は未実装です";
-                loadingIndicator.style.display = "none";
+                // Use optimized endpoint if mesh code provided
+                const result = meshCode
+                    ? await citygmlService.searchByBuildingIdAndMesh(buildingId, meshCode)
+                    : await citygmlService.searchByBuildingId(buildingId);
+
+                if (!result.isOk || !result.value.success || !result.value.building) {
+                    console.error(
+                        "[Building ID Search] Not found:",
+                        result.isOk ? result.value.error : result.error,
+                    );
+                    meshIndicator.textContent = "建物が見つかりませんでした";
+                    loadingIndicator.style.display = "none";
+                    return;
+                }
+
+                const building = result.value.building;
+
+                // Calculate mesh code from coordinates if not provided
+                const meshCodeToUse = meshCode || latLonToMesh3rd(building.latitude, building.longitude);
+
+                // Fetch 3D Tiles for the mesh
+                const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        mesh_codes: [meshCodeToUse],
+                        lod: 1,
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.total_found === 0) {
+                    console.warn("[Building ID Search] No 3D Tiles found for mesh:", meshCodeToUse);
+                    meshIndicator.textContent = "該当する3D Tilesが見つかりませんでした";
+                    loadingIndicator.style.display = "none";
+                    return;
+                }
+
+                // Load tileset
+                const viewer = cesiumView?.getViewer();
+                if (tilesetLoader && viewer) {
+                    await tilesetLoader.loadMultipleTilesets(
+                        data.tilesets.map((t: any) => ({
+                            meshCode: t.mesh_code,
+                            url: t.tileset_url,
+                        })),
+                    );
+
+                    // Fly to building location
+                    viewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(
+                            building.longitude,
+                            building.latitude,
+                            1000,
+                        ),
+                        duration: 1.5,
+                    });
+                }
+
+                updateMeshIndicator(1);
+                meshIndicator.textContent = `✓ 建物を発見: ${building.name || building.gml_id}`;
+
+                console.log("[Building ID Search] Success:", building);
             } catch (error) {
-                console.error("[Search] Building ID search failed:", error);
+                console.error("[Building ID Search] Error:", error);
+                PubSub.default.pub(
+                    "showToast",
+                    "error.plateau.searchFailed:{0}",
+                    error instanceof Error ? error.message : String(error),
+                );
                 meshIndicator.textContent = "エラーが発生しました";
+            } finally {
                 loadingIndicator.style.display = "none";
             }
         };

@@ -24,6 +24,8 @@ export class CesiumTilesetLoader {
     private viewer: Cesium.Viewer;
     private currentTileset: Cesium.Cesium3DTileset | null = null;
     private loadedTilesets: Map<string, Cesium.Cesium3DTileset> = new Map();
+    private meshLoadOrder: string[] = []; // LRU tracking
+    private readonly MAX_LOADED_MESHES = 25; // 5x5 grid maximum
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
@@ -161,10 +163,19 @@ export class CesiumTilesetLoader {
      */
     async loadMultipleTilesets(tilesets: Array<{ meshCode: string; url: string }>): Promise<void> {
         const loadPromises = tilesets.map(async ({ meshCode, url }) => {
-            // Skip if already loaded
+            // Skip if already loaded, but update access time
             if (this.loadedTilesets.has(meshCode)) {
-                console.log(`[CesiumTilesetLoader] Mesh ${meshCode} already loaded, skipping`);
+                this.updateMeshAccessTime(meshCode);
+                console.log(`[CesiumTilesetLoader] Mesh ${meshCode} already loaded, updating access time`);
                 return;
+            }
+
+            // Check if we need to unload old meshes before loading new ones
+            if (this.loadedTilesets.size >= this.MAX_LOADED_MESHES) {
+                this.unloadOldestMesh();
+                console.log(
+                    `[CesiumTilesetLoader] Reached max meshes (${this.MAX_LOADED_MESHES}), unloaded oldest`,
+                );
             }
 
             try {
@@ -194,6 +205,9 @@ export class CesiumTilesetLoader {
                 this.viewer.scene.primitives.add(tileset);
                 this.loadedTilesets.set(meshCode, tileset);
 
+                // Track in LRU order
+                this.meshLoadOrder.push(meshCode);
+
                 // Apply default styling
                 this.setDefaultStyle(tileset);
 
@@ -218,7 +232,44 @@ export class CesiumTilesetLoader {
         if (tileset) {
             this.viewer.scene.primitives.remove(tileset);
             this.loadedTilesets.delete(meshCode);
+
+            // Remove from LRU order
+            const index = this.meshLoadOrder.indexOf(meshCode);
+            if (index > -1) {
+                this.meshLoadOrder.splice(index, 1);
+            }
+
             console.log(`[CesiumTilesetLoader] Unloaded mesh ${meshCode}`);
+        }
+    }
+
+    /**
+     * Update mesh access time for LRU (move to end = most recently used)
+     *
+     * @param meshCode - Mesh code that was accessed
+     */
+    private updateMeshAccessTime(meshCode: string): void {
+        const index = this.meshLoadOrder.indexOf(meshCode);
+        if (index > -1) {
+            // Remove from current position
+            this.meshLoadOrder.splice(index, 1);
+        }
+        // Add to end (most recently used)
+        this.meshLoadOrder.push(meshCode);
+    }
+
+    /**
+     * Unload the oldest (least recently used) mesh to free memory
+     */
+    private unloadOldestMesh(): void {
+        const oldestMesh = this.meshLoadOrder.shift();
+        if (oldestMesh) {
+            const tileset = this.loadedTilesets.get(oldestMesh);
+            if (tileset) {
+                this.viewer.scene.primitives.remove(tileset);
+                this.loadedTilesets.delete(oldestMesh);
+                console.log(`[CesiumTilesetLoader] Auto-unloaded old mesh: ${oldestMesh}`);
+            }
         }
     }
 
@@ -239,6 +290,9 @@ export class CesiumTilesetLoader {
             this.viewer.scene.primitives.remove(tileset);
         });
         this.loadedTilesets.clear();
+
+        // Clear LRU tracking
+        this.meshLoadOrder = [];
 
         // Also clear legacy currentTileset
         if (this.currentTileset) {

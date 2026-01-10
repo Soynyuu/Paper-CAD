@@ -9,6 +9,7 @@ import {
     CesiumView,
     CesiumBuildingPicker,
     CesiumTilesetLoader,
+    resolveMeshCodesFromCoordinates,
     type PickedBuilding,
 } from "chili-cesium";
 import {
@@ -421,9 +422,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
-    const handleResultClick = useCallback((result: SearchResult) => {
+    const handleResultClick = useCallback(async (result: SearchResult) => {
         const viewer = cesiumViewRef.current?.getViewer();
-        if (!viewer) return;
+        const loader = tilesetLoaderRef.current;
+        if (!viewer || !loader) return;
 
         // 検索ドロップダウンを閉じる
         setShowResults(false);
@@ -444,13 +446,71 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             }
         });
 
-        // City switching removed - using mesh-based dynamic loading (Issue #177)
+        // Load 3D Tiles for this location (Issue #177 - mesh-based dynamic loading)
+        try {
+            setLoading(true);
+            setLoadingMessage("3D Tilesを読み込み中...");
 
-        // ユーザーに建物選択を促す（カメラ移動完了後）
-        if (result.buildingCount && result.buildingCount > 0) {
-            console.log(`[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`);
+            // Calculate mesh codes (center + surrounding)
+            const meshCodes = resolveMeshCodesFromCoordinates(result.latitude, result.longitude);
+
+            console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
+
+            // Get API base URL
+            interface AppConfig {
+                stepUnfoldApiUrl?: string;
+            }
+            interface WindowWithConfig extends Window {
+                __APP_CONFIG__?: AppConfig;
+            }
+            const apiBaseUrl = (window as unknown as WindowWithConfig).__APP_CONFIG__?.stepUnfoldApiUrl ||
+                              "http://localhost:8001";
+
+            // Fetch 3D Tiles URLs from backend
+            const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mesh_codes: meshCodes, lod: 1 })
+            });
+
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const tilesets = data.tilesets || [];
+
+            if (tilesets.length === 0) {
+                console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                setLoading(false);
+                setLoadingMessage("");
+                return;
+            }
+
+            // Load tilesets
+            const tilesetsToLoad = tilesets.map((t: any) => ({
+                meshCode: t.mesh_code,
+                url: t.tileset_url
+            }));
+
+            await loader.loadMultipleTilesets(tilesetsToLoad);
+
+            console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
+
+            setLoading(false);
+            setLoadingMessage("");
+
+            // ユーザーに建物選択を促す（カメラ移動完了後）
+            if (result.buildingCount && result.buildingCount > 0) {
+                console.log(`[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`);
+            }
+
+        } catch (error) {
+            console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
+            setLoading(false);
+            setLoadingMessage("");
         }
-    }, []);
+    }, [setLoading, setLoadingMessage]);
 
     return (
         <div className={styles.dialog}>

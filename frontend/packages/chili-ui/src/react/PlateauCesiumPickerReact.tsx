@@ -431,28 +431,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         setShowResults(false);
         setSearchQuery(result.displayName);
 
-        // Cesiumカメラを該当位置へ飛ばす
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-                result.longitude,
-                result.latitude,
-                1000  // 高度1000m（建物が見やすい高さ）
-            ),
-            duration: 2.0,
-            orientation: {
-                heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-45),  // 斜め上から見下ろす角度
-                roll: 0
-            }
-        });
-
-        // Load 3D Tiles for this location (Issue #177 - mesh-based dynamic loading)
+        // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
         try {
             setLoading(true);
             setLoadingMessage("3D Tilesを読み込み中...");
 
             // Calculate mesh codes (center + surrounding)
-            const meshCodes = resolveMeshCodesFromCoordinates(result.latitude, result.longitude);
+            const meshCodes = resolveMeshCodesFromCoordinates(
+                result.latitude,
+                result.longitude,
+                true // Include neighbors
+            );
 
             console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
@@ -496,6 +485,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             await loader.loadMultipleTilesets(tilesetsToLoad);
 
             console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
+
+            // NOW move camera AFTER tiles are loaded (matching Web Components version)
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(
+                    result.longitude,
+                    result.latitude,
+                    1000  // 高度1000m（建物が見やすい高さ）
+                ),
+                duration: 1.5,
+            });
 
             setLoading(false);
             setLoadingMessage("");

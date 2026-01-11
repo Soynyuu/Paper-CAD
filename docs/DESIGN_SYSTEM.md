@@ -1,116 +1,166 @@
 # Paper-CAD Design System
 
-**Version:** 1.0 (Draft)
-**Philosophy:** "Precision meets Modernity"
+**Status:** Draft  
+**Version:** 1.0  
+**Principle:** Less, but better. The model is the UI.
 
-Paper-CAD is a tool for precision. Its design should reflect the clarity, accuracy, and focus required by its users. The interface is not just a wrapper; it is the drafting table. It should be invisible when you are working, and obvious when you need tools.
+Paper-CAD is a precision tool. The UI exists to support modeling, not to decorate it. If a UI element does not improve understanding or control, it does not belong.
 
-## 1. Design Principles
+## 1. Principles (Dieter Rams, adapted)
 
-*   **Content First:** The 3D model/canvas is the hero. UI elements float above it or sit quietly to the side.
-*   **High Contrast & Legibility:** Technical data must be readable. Use high contrast for text, distinct colors for actions.
-*   **Tactile Feedback:** Buttons should feel clickable (hover/active states). Inputs should clearly indicate focus.
-*   **Consistent Rhythm:** Use the 4px baseline grid for all spacing and sizing.
+1. **Useful, not clever:** Prefer clarity and speed over novelty.
+2. **Understandable:** Controls look and behave like controls. No hidden “magic”.
+3. **Unobtrusive:** The canvas/viewport stays primary; UI stays quiet.
+4. **Honest:** Don’t fake affordances. Don’t hide limitations.
+5. **Durable:** Avoid trendy visuals that age fast.
+6. **Thorough:** Every component defines its states (hover/active/focus/disabled/loading).
+7. **Accessible:** Keyboard-first, sufficient contrast, visible focus.
+8. **Efficient:** No heavy effects that compete with 60fps interaction.
+9. **Consistent:** Same tokens, same patterns, same outcomes.
+10. **As little design as possible:** Remove until only the necessary remains.
 
-## 2. Design Tokens
+## 2. Scope & Source of Truth
 
-The following tokens map to CSS Custom Properties defined in `index.css`.
+- **Tokens:** CSS Custom Properties in `frontend/public/index.css`.
+- **Themes:** `theme="light"` / `theme="dark"` on the root element (`<html>` / `:root`).
+- **Components:** `frontend/packages/chili-ui` should consume tokens (prefer semantic tokens first).
 
-### 2.1 Colors
+## 3. Token Rules (Non-Negotiable)
 
-#### Brand
-Used for primary actions (Save, Submit, Select).
-*   **Primary:** `var(--brand-primary)` (`#ff6633`) - The "Paper-CAD Orange". Energetic, visible.
-*   **Secondary:** `var(--brand-secondary)` (`#ff5533`)
-*   **Tertiary:** `var(--brand-tertiary)` (`#ff8844`)
+- New or modified UI code **MUST** use `var(--...)`. No hard-coded hex colors or “random” spacing values.
+- Any new token **MUST** have values for both themes (`:root[theme="light"]` and `:root[theme="dark"]`).
+- Prefer **semantic tokens** (e.g. `--background-color`, `--border-color`, `--panel-background-color`, `--button-*`) over raw palette tokens (`--neutral-*`).
+- If a component needs a token that doesn’t exist, add it to `frontend/public/index.css` instead of improvising.
 
-#### Neutrals (Surface & Text)
-Used for backgrounds, borders, and text.
-*   **Background:** `var(--neutral-0)` (Light: `#ffffff`, Dark: `#121212`)
-*   **Surface:** `var(--neutral-50)` (Light: `#f5f5f5`, Dark: `#1f1f1f`) - Panels, Cards.
-*   **Border:** `var(--neutral-200)` - Subtle dividers.
-*   **Text Main:** `var(--neutral-900)` - Primary content.
-*   **Text Muted:** `var(--neutral-500)` - Labels, secondary info.
+## 4. Foundations (Tokens)
 
-#### Semantics
-*   **Success:** `var(--success-color)` (`#2ecc71`)
-*   **Warning:** `var(--warning-color)` (`#ff8b35`)
-*   **Error:** `var(--danger-color)` (`#ec5f5f`)
-*   **Info:** `var(--info-color)` (`#3498db`)
+### 4.1 Color
 
-### 2.2 Typography
+**Brand**
 
-**Font Family:**
-*   UI: `"Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
-*   Code/Data: `Monaco, Consolas, "Courier New", monospace` (Recommended addition)
+- `--brand-primary`: primary actions and focus emphasis (use sparingly).
+- `--brand-secondary`, `--brand-tertiary`: accents; avoid using multiple brand colors in the same view.
 
-**Scale:**
-*   `xs` (12px): Metadata, tiny labels.
-*   `sm` (14px): Standard UI text, dense lists.
-*   `base` (16px): Body text, inputs.
-*   `lg` (19px): Section headers.
-*   `xl` (24px): Page titles.
+**Neutrals (Palette)**
 
-### 2.3 Spacing & Geometry
+- `--neutral-0` … `--neutral-900`: use as a palette, but prefer semantic tokens below.
 
-**Grid Unit:** 4px
-*   `xs` (4px)
-*   `sm` (8px)
-*   `md` (16px) - Standard padding.
-*   `lg` (24px)
-*   `xl` (32px)
+**Semantic**
 
-**Radius:**
-*   `xs` (2px): Sharp, technical feel. Used for inner elements.
-*   `sm` (4px): Standard buttons, inputs.
-*   `md` (8px): Cards, dialogs.
+- `--success-color`, `--info-color`, `--warning-color`, `--danger-color`
+- Use only for status and feedback. Do not use semantics to “decorate” layouts.
 
-### 2.4 Shadows & Depth
+**Semantic (Recommended Defaults)**
 
-*   `shadow-sm`: Subtle lift for buttons.
-*   `shadow-md`: Dropdown menus, tooltips.
-*   `shadow-lg`: Modals, floating panels.
+- Surface & layout: `--background-color`, `--panel-background-color`, `--control-background-color`
+- Text: `--foreground-color`
+- Borders: `--border-color`
+- Interaction: `--hover-background-color`, `--active-background-color`
 
-## 3. Component Guide
+**Contrast**
 
-### Buttons
-*   **Height:** 32px (Compact), 40px (Standard).
-*   **Primary:** Solid Brand Orange background, White text.
-*   **Secondary:** Transparent background, Border `neutral-300`, Text `neutral-800`.
-*   **Ghost:** Transparent background, Text `neutral-600`, Hover `neutral-100`.
+- Text should meet WCAG AA as a baseline (4.5:1 normal text, 3:1 large text).
+- Never rely on color alone for meaning; pair with icon and/or copy.
 
-### Inputs
-*   **Background:** `neutral-0` (or `neutral-100` in dark mode).
-*   **Border:** 1px solid `neutral-300`.
-*   **Focus:** Border color `brand-primary`, Box-shadow `shadow-focus`.
-*   **Label:** `text-sm`, `font-medium`, `neutral-700`.
+### 4.2 Typography
 
-### Panels & Cards
-*   **Background:** `neutral-0` (or `neutral-50` floating).
-*   **Border:** 1px solid `neutral-200`.
-*   **Header:** `neutral-50`, `border-bottom` 1px solid `neutral-200`.
+- Primary stack is set on `html, body` in `frontend/public/index.css`.
+- Default UI text today is `14px` (dense and practical for CAD).
+- Use the token scale when styling components: `--font-size-xs`/`sm`/`base`/`lg`/`xl`.
+- Numeric data, IDs, and code-like strings should use a monospace stack for alignment:
+  - `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`
 
-## 4. Implementation Guidelines
+### 4.3 Spacing & Geometry
 
-### CSS Modules
+- Base unit is 4px (`--spacing-xs`).
+- Use `--spacing-xs`/`sm`/`md`/`lg`/`xl` for almost everything.
+- `--spacing-10` and `--spacing-12` exist for legacy alignment. Avoid introducing new “special” spacing.
+
+### 4.4 Radius
+
+- Default: `--radius-sm` (4px).
+- Keep radii consistent within a component; mixing radii reads as indecision.
+
+### 4.5 Shadows, Focus, and Layering
+
+- Elevation: `--shadow-sm` (controls), `--shadow-md` (menus/popovers), `--shadow-lg` (dialogs).
+- Focus ring: `--shadow-focus` is required with `:focus-visible` on interactive elements.
+- Layering: use `--z-*` tokens. Never hardcode `9999`.
+
+### 4.6 Motion
+
+- Use `--transition-fast`/`--transition-base`/`--transition-slow`.
+- Respect `prefers-reduced-motion`: disable non-essential animations.
+
+## 5. Component Guide
+
+### 5.1 Buttons
+
+- Heights: 32px (compact), 40px (standard).
+- Variants:
+  - **Primary:** `--brand-primary` background, `--neutral-0` text.
+  - **Secondary:** `--button-background` background, `--button-border-color` border, `--button-text-color` text.
+  - **Ghost:** transparent background; hover uses `--button-hover-background`.
+  - **Danger:** use `--danger-color` for destructive actions (do not use brand orange).
+- States (must exist): hover, active, focus (`:focus-visible`), disabled, loading.
+- Icon-only buttons: minimum 32×32 hit area, and always an accessible name.
+
+### 5.2 Inputs
+
+- Align height with buttons (32px/40px).
+- Background: `--control-background-color`.
+- Border: `1px solid var(--border-color)`.
+- Focus: border `--brand-primary` + `--shadow-focus`.
+- Error: border + helper text use `--danger-color`.
+- Readonly: use `--opacity-readonly` (but keep text contrast).
+
+### 5.3 Panels & Cards
+
+- Background: `--panel-background-color`.
+- Border: `1px solid var(--border-color)`.
+- Header: `--panel-header-background`.
+- Resizable panels: drag handles must be visible and have an 8px+ hit area.
+
+### 5.4 Dialogs, Popovers, Tooltips
+
+- Shadows: dialog `--shadow-lg`, popover `--shadow-md`.
+- Layering: `--z-modal-backdrop`/`--z-modal`/`--z-popover`/`--z-tooltip`.
+- Keyboard: focus trap for dialogs; `Esc` closes when safe.
+
+## 6. Accessibility & Interaction
+
+- Keyboard-first: every control must be reachable and operable via keyboard.
+- Focus: never remove focus indication; use `:focus-visible` + `--shadow-focus`.
+- Targets: 32px minimum; small icons must include padding.
+- Errors: state what happened, why, and what the user can do next.
+
+## 7. Implementation (CSS Modules)
+
 We use CSS Modules for component scoping.
-1.  **Import Styles:** `import styles from './MyComponent.module.css';`
-2.  **Use Variables:** Always reference variables, never hardcode hex values.
-    ```css
-    .container {
-        padding: var(--spacing-md);
-        background-color: var(--neutral-0);
-        border: 1px solid var(--border-color);
-        border-radius: var(--radius-sm);
-    }
-    ```
 
-### Theme Support
-The application supports Light and Dark modes via `[theme="dark"]` on `:root`.
-*   Testing: Toggle the attribute on the `<html>` tag to verify your component looks good in both.
+```css
+.container {
+  padding: var(--spacing-md);
+  background-color: var(--panel-background-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
 
-### Refactoring Legacy Code
-When touching old components:
-1.  Replace hardcoded px margins with `var(--spacing-*)`.
-2.  Replace `#ccc` borders with `var(--border-color)`.
-3.  Replace black/white text with `var(--neutral-900)` / `var(--neutral-0)`.
+.container:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+```
+
+## 8. Change Process
+
+1. Update tokens in `frontend/public/index.css` (both themes).
+2. Update this document when new tokens or patterns are introduced.
+3. Run formatting: `cd frontend && npm run format`.
+
+## 9. Legacy Refactor Checklist
+
+- Replace hardcoded spacing with `--spacing-*`.
+- Replace hardcoded borders with `--border-color`.
+- Prefer semantic tokens over palette tokens.
+- Verify light/dark themes and all interaction states.

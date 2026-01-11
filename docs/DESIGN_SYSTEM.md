@@ -210,8 +210,25 @@ Every exported sheet SHOULD include a minimal, quiet metadata block:
 
 ### 5.6 Motion
 
-- Use `--transition-fast`/`--transition-base`/`--transition-slow`.
-- Respect `prefers-reduced-motion`: disable non-essential animations.
+Motion is functional. It communicates state changes, preserves continuity, and reduces cognitive load. It must never be decorative.
+
+- Use `--transition-fast`/`--transition-base`/`--transition-slow` (default: `--transition-base`).
+- Prefer animating `opacity` and `transform`. Avoid layout-affecting properties (`width`, `height`, `top`, `left`, `margin`) and expensive effects (`filter`, `backdrop-filter`) unless justified.
+- During direct manipulation (dragging, resizing, scrubbing), transitions SHOULD be disabled to keep the tool crisp.
+- Keep motion small: avoid large travel; no bounce/elastic easing in production UI.
+- Avoid infinite or attention-seeking animations; they compete with drafting.
+- Respect `prefers-reduced-motion`: non-essential motion MUST be removed; essential meaning MUST remain via non-animated cues (contrast, outline, label).
+
+Example (pattern, not a global mandate):
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .animated {
+    transition-duration: 0ms !important;
+    animation: none !important;
+  }
+}
+```
 
 ## 6. Component Guide
 
@@ -284,6 +301,7 @@ If any item fails, the change is not done.
 - Keyboard navigation works; no focus traps outside dialogs.
 - Text contrast meets WCAG AA as a baseline.
 - Labels are tool-like: no decorative emoji, no novelty copy in production UI.
+- Motion is minimal and purposeful; no infinite animations; respects `prefers-reduced-motion`.
 
 ### 9.2 Output (SVG/PDF)
 

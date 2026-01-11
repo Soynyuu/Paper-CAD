@@ -39,7 +39,7 @@ export function renderReactDialog<P extends object>(
         left: 0;
         width: 100vw;
         height: 100vh;
-        z-index: 9998;
+        z-index: var(--z-tooltip, 10001);
     `;
     document.body.appendChild(container);
 

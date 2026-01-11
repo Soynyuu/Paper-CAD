@@ -174,8 +174,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const viewer = cesiumView.getViewer();
             if (!viewer || !mounted) return;
 
-            // Force resize after initialization
-            viewer.resize();
+            const resizeViewer = () => {
+                if (viewer.isDestroyed()) return;
+                viewer.resize();
+                viewer.scene?.requestRender();
+                viewer.render();
+            };
+
+            // Force resize after initialization (and again after layout settles)
+            resizeViewer();
+            requestAnimationFrame(() => resizeViewer());
+            requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer()));
 
             // Initialize building picker and tileset loader
             buildingPickerRef.current = new CesiumBuildingPicker(viewer);
@@ -183,7 +192,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             // Watch for container resize
             resizeObserver = new ResizeObserver(() => {
-                if (!viewer.isDestroyed()) viewer.resize();
+                resizeViewer();
             });
             resizeObserver.observe(container);
 

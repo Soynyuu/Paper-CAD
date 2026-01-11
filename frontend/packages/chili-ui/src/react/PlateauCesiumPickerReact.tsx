@@ -90,11 +90,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-    // Search mode state (NEW)
+    // Search mode state
     const [searchMode, setSearchMode] = useState<"facility" | "address" | "buildingId">("facility");
     const [searchRadius, setSearchRadius] = useState<number>(100); // meters
     const [meshCode, setMeshCode] = useState<string>("");
+
+    // UI state for Google-style progressive disclosure
+    const [isExpanded, setIsExpanded] = useState<boolean>(false);
+    const [isComposing, setIsComposing] = useState<boolean>(false);
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -196,19 +201,20 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // Tileset loading removed - using mesh-based dynamic loading (Issue #177)
 
-    // Close search results when clicking outside
+    // Close search results and collapse when clicking outside
     useEffect(() => {
-        if (!showResults) return;
-
         const handleClickOutside = (e: MouseEvent) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
                 setShowResults(false);
+                if (!searchQuery.trim()) {
+                    setIsExpanded(false);
+                }
             }
         };
 
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showResults]);
+    }, [searchQuery]);
 
     // handleCityChange removed - using mesh-based dynamic loading (Issue #177)
 
@@ -375,8 +381,18 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         }
     }, [searchQuery, searchMode, searchRadius, meshCode]);
 
+    // IME composition handlers for proper Japanese input support
+    const handleCompositionStart = useCallback(() => {
+        setIsComposing(true);
+    }, []);
+
+    const handleCompositionEnd = useCallback(() => {
+        setIsComposing(false);
+    }, []);
+
     const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.nativeEvent.isComposing) return;
+        // Block keyboard handling during IME composition
+        if (isComposing || e.nativeEvent.isComposing) return;
 
         if (e.key === "Enter") {
             e.preventDefault();
@@ -384,6 +400,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         } else if (e.key === "Escape") {
             setShowResults(false);
             setSearchError(null);
+            if (!searchQuery.trim()) {
+                setIsExpanded(false);
+                searchInputRef.current?.blur();
+            }
         } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
             e.preventDefault();
             setSelectedResultIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
@@ -393,13 +413,18 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         }
     };
 
-    const handleSearchClear = () => {
+    const handleSearchFocus = useCallback(() => {
+        setIsExpanded(true);
+    }, []);
+
+    const handleSearchClear = useCallback(() => {
         setSearchQuery("");
         setSearchResults([]);
         setShowResults(false);
         setSearchError(null);
         setSelectedResultIndex(-1);
-    };
+        searchInputRef.current?.focus();
+    }, []);
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
@@ -513,91 +538,96 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             overflow: "hidden",
                         }}
                     />
-                    {/* Google Earth-style search box (top-left overlay) */}
+                    {/* Google-style search box with progressive disclosure */}
                     <div ref={searchContainerRef} className={styles.searchContainer}>
-                        {/* Search mode tabs */}
-                        <div className={styles.searchModeTabs}>
-                            <button
-                                className={`${styles.searchModeTab} ${searchMode === "facility" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("facility")}
-                                aria-label="施設名で検索"
-                            >
-                                🏢 施設名
-                            </button>
-                            <button
-                                className={`${styles.searchModeTab} ${searchMode === "address" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("address")}
-                                aria-label="住所で検索"
-                            >
-                                📍 住所
-                            </button>
-                            <button
-                                className={`${styles.searchModeTab} ${searchMode === "buildingId" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("buildingId")}
-                                aria-label="建物IDで検索"
-                            >
-                                🆔 建物ID
-                            </button>
-                        </div>
-
-                        <div className={styles.searchInputWrapper}>
-                            <span className={styles.searchIcon} aria-hidden="true">
-                                🔍
-                            </span>
-                            <input
-                                type="text"
-                                className={styles.searchInput}
-                                placeholder={
-                                    searchMode === "facility"
-                                        ? "施設名を検索（例: 東京駅）"
-                                        : searchMode === "address"
-                                          ? "住所を検索（例: 千代田区丸の内）"
-                                          : "建物IDを入力（例: bldg_xxx）"
-                                }
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyDown={handleSearchKeyDown}
-                                disabled={isSearching}
-                                aria-label={
-                                    searchMode === "facility"
-                                        ? "施設名を検索"
-                                        : searchMode === "address"
-                                          ? "住所を検索"
-                                          : "建物IDを検索"
-                                }
-                                autoComplete="off"
-                                spellCheck="false"
-                            />
-                            {isSearching && <div className={styles.searchSpinner} />}
-                            {!isSearching && searchQuery && (
-                                <button className={styles.searchClearButton} onClick={handleSearchClear}>
-                                    ×
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Mesh code input for buildingId mode */}
-                        {searchMode === "buildingId" && (
-                            <div className={styles.meshCodeInputWrapper}>
-                                <span className={styles.meshCodeIcon} aria-hidden="true">
-                                    🗺️
+                        <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
+                            {/* Main search input */}
+                            <div className={styles.searchInputWrapper}>
+                                <span className={styles.searchIcon} aria-hidden="true">
+                                    <svg viewBox="0 0 24 24">
+                                        <circle cx="11" cy="11" r="7" />
+                                        <path d="M21 21l-4.35-4.35" />
+                                    </svg>
                                 </span>
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    className={styles.searchInput}
+                                    placeholder="場所や施設を検索"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onFocus={handleSearchFocus}
+                                    onKeyDown={handleSearchKeyDown}
+                                    onCompositionStart={handleCompositionStart}
+                                    onCompositionEnd={handleCompositionEnd}
+                                    disabled={isSearching}
+                                    aria-label="場所や施設を検索"
+                                    autoComplete="off"
+                                    spellCheck="false"
+                                />
+                                {isSearching && <div className={styles.searchSpinner} />}
+                                {!isSearching && searchQuery && (
+                                    <button
+                                        className={styles.searchClearButton}
+                                        onClick={handleSearchClear}
+                                        aria-label="クリア"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M18 6L6 18M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Mode chips - appears on expand */}
+                            <div className={`${styles.searchModes} ${isExpanded ? styles.visible : ""}`}>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("facility")}
+                                >
+                                    施設名
+                                </button>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("address")}
+                                >
+                                    住所
+                                </button>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("buildingId")}
+                                >
+                                    建物ID
+                                </button>
+                            </div>
+
+                            {/* Mesh code input - only for buildingId mode */}
+                            <div
+                                className={`${styles.meshCodeSection} ${isExpanded && searchMode === "buildingId" ? styles.visible : ""}`}
+                            >
                                 <input
                                     type="text"
                                     className={styles.meshCodeInput}
                                     placeholder="メッシュコード（例: 53394511）"
                                     value={meshCode}
                                     onChange={(e) => setMeshCode(e.target.value)}
+                                    onCompositionStart={handleCompositionStart}
+                                    onCompositionEnd={handleCompositionEnd}
                                     disabled={isSearching}
                                     aria-label="メッシュコードを入力"
                                 />
                             </div>
-                        )}
 
-                        {showResults && (
-                            <div className={styles.searchResults} role="listbox">
+                            {/* Divider before results */}
+                            {showResults && <div className={styles.searchDivider} />}
+
+                            {/* Search results */}
+                            <div
+                                className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
+                                role="listbox"
+                            >
                                 {searchError ? (
-                                    <div className={styles.searchError}>⚠️ {searchError}</div>
+                                    <div className={styles.searchError}>{searchError}</div>
                                 ) : (
                                     searchResults.map((result, index) => (
                                         <div
@@ -609,23 +639,27 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                             role="option"
                                             aria-selected={index === selectedResultIndex}
                                         >
-                                            {/* 場所情報のみ表示 */}
                                             <div className={styles.locationName}>
-                                                📍 {result.displayName}
+                                                {result.displayName}
                                             </div>
-
-                                            {/* 建物件数の情報のみ追加 */}
                                             {result.buildingCount !== undefined &&
                                                 result.buildingCount > 0 && (
                                                     <div className={styles.buildingCount}>
-                                                        周辺の建物 {result.buildingCount}件
+                                                        {result.buildingCount}件の建物
                                                     </div>
                                                 )}
                                         </div>
                                     ))
                                 )}
                             </div>
-                        )}
+
+                            {/* Hint text */}
+                            {isExpanded && !showResults && !searchQuery && (
+                                <div className={styles.searchHint}>
+                                    Enter で検索
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <Instructions />
                     {loading && <Loading message={loadingMessage} />}

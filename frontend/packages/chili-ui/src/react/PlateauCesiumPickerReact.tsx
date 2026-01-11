@@ -151,12 +151,30 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     useEffect(() => {
         if (!containerRef.current) return;
 
+        const container = containerRef.current;
+        const rect = container.getBoundingClientRect();
+        console.log("[PlateauCesiumPickerReact] Container size:", {
+            width: rect.width,
+            height: rect.height,
+            offsetWidth: container.offsetWidth,
+            offsetHeight: container.offsetHeight,
+        });
+
+        // Wait a frame to ensure layout is complete
+        requestAnimationFrame(() => {
+            const rectAfter = container.getBoundingClientRect();
+            console.log("[PlateauCesiumPickerReact] Container size after frame:", {
+                width: rectAfter.width,
+                height: rectAfter.height,
+            });
+        });
+
         console.log("[PlateauCesiumPickerReact] Initializing CesiumView");
 
         let mounted = true;
 
         // Create and initialize CesiumView
-        const cesiumView = new CesiumView(containerRef.current);
+        const cesiumView = new CesiumView(container);
         cesiumView.initialize();
         cesiumViewRef.current = cesiumView;
 

@@ -48,6 +48,39 @@ conda run -n paper-cad python backend/scripts/build_mesh2_municipality_map.py \\
 ```
 The generator uses `shapely` (already listed in `backend/environment.yml`).
 
+## How the JSON is generated
+The generator reads N03 GeoJSON features and produces a mesh2 (6-digit) to municipality code map:
+
+1) Read features (EPSG:4326 lon/lat).
+2) Extract municipality code from `N03_007` (5 digits).
+   - Prefecture-level codes ending with `000` are skipped.
+3) Merge geometries per municipality (unary union).
+4) For each municipality, enumerate mesh2 cells that intersect its bounding box.
+5) Test each mesh2 cell for intersection with the municipality polygon.
+   - Optional filter: `--min-overlap-ratio` (default: 0.0).
+6) Store `mesh2 -> [municipality_code...]` with de-duplicated, sorted codes.
+
+Mesh2 cell size:
+- Latitude step: 5/60 degrees
+- Longitude step: 7.5/60 degrees
+
+Output format:
+```json
+{
+  "meta": {
+    "generated_at": "2025-01-11T10:00:00+00:00",
+    "source_name": "National Land Numerical Information (N03 Administrative Areas)",
+    "source_url": "https://nlftp.mlit.go.jp/ksj/",
+    "input_file": ["N03_01.geojson", "N03_02.geojson"],
+    "min_overlap_ratio": 0.0
+  },
+  "mesh2_to_municipalities": {
+    "533945": ["13101", "13102"],
+    "533946": ["13101", "13113"]
+  }
+}
+```
+
 Optional flags:
 - `--min-overlap-ratio 0.01` (exclude tiny overlaps)
 - `--code-keys N03_007` (property key for municipality code)

@@ -7,7 +7,7 @@ import type { CityConfig } from "./types";
 /**
  * Basemap types supported by CesiumView
  */
-export type BasemapType = "natural-earth" | "gsi-standard" | "gsi-pale" | "gsi-photo";
+export type BasemapType = "natural-earth" | "gsi-standard" | "gsi-pale" | "gsi-photo" | "plateau-ortho-2023";
 
 /**
  * Basemap configuration interface
@@ -20,6 +20,9 @@ interface BasemapConfig {
 const GSI_CREDIT_HTML =
     '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>';
 const createGsiCredit = () => new Cesium.Credit(GSI_CREDIT_HTML, true);
+const PLATEAU_CREDIT_HTML =
+    '<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">Project PLATEAU</a>';
+const createPlateauCredit = () => new Cesium.Credit(PLATEAU_CREDIT_HTML, true);
 
 /**
  * Basemap registry with GSI (Geospatial Information Authority of Japan) layers
@@ -60,6 +63,16 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
                 url: "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
                 maximumLevel: 18,
                 credit: createGsiCredit(),
+            });
+        },
+    },
+    "plateau-ortho-2023": {
+        name: "PLATEAU Ortho 2023",
+        provider: async () => {
+            return new Cesium.UrlTemplateImageryProvider({
+                url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
+                maximumLevel: 19,
+                credit: createPlateauCredit(),
             });
         },
     },
@@ -142,7 +155,7 @@ const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
 export class CesiumView {
     private viewer: Cesium.Viewer | null = null;
     private container: HTMLElement;
-    private currentBasemap: BasemapType = "gsi-pale";
+    private currentBasemap: BasemapType = "plateau-ortho-2023";
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -151,9 +164,9 @@ export class CesiumView {
     /**
      * Initialize Cesium viewer with PLATEAU-optimized settings
      *
-     * @param basemap - Initial basemap type (default: gsi-pale)
+     * @param basemap - Initial basemap type (default: plateau-ortho-2023)
      */
-    async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
+    async initialize(basemap: BasemapType = "plateau-ortho-2023"): Promise<void> {
         const appConfig = getRuntimeAppConfig();
 
         // Set Cesium base URL from environment
@@ -164,7 +177,7 @@ export class CesiumView {
         await ensureCesiumWidgetCss(baseUrl);
 
         // Set Cesium Ion token if provided
-        const ionToken = appConfig?.cesiumIonToken;
+        const ionToken = appConfig?.cesiumIonToken || appConfig?.cesiumTerrainIonToken;
         if (ionToken) {
             Cesium.Ion.defaultAccessToken = ionToken;
         }
@@ -187,7 +200,7 @@ export class CesiumView {
             requestRenderMode: true,
             maximumRenderTimeChange: Infinity,
 
-            // Use GSI basemap with Natural Earth fallback
+            // Use configured basemap with Natural Earth fallback
             baseLayer: false, // Will be added manually after viewer creation
         });
 
@@ -244,19 +257,36 @@ export class CesiumView {
             return;
         }
 
-        if (!appConfig?.cesiumIonToken) {
+        const terrainIonToken = appConfig?.cesiumTerrainIonToken || appConfig?.cesiumIonToken;
+        if (!terrainIonToken) {
             console.warn(
-                "[CesiumView] cesiumIonToken is missing; skipping terrain loading (CESIUM_TERRAIN_ASSET_ID is set).",
+                "[CesiumView] Terrain ion access token is missing; skipping terrain loading (CESIUM_TERRAIN_ASSET_ID is set).",
             );
             return;
         }
 
         try {
-            const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId);
+            const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId, {
+                accessToken: terrainIonToken,
+            } as any);
             this.viewer.terrainProvider = terrainProvider;
             this.viewer.scene?.requestRender();
         } catch (error) {
-            console.warn("[CesiumView] Failed to load PLATEAU terrain, using default terrain.", error);
+            console.warn(
+                `[CesiumView] Failed to load terrain from ion asset ${assetId}. Falling back to Cesium World Terrain.`,
+                error,
+            );
+
+            try {
+                const fallbackTerrain = await Cesium.createWorldTerrainAsync();
+                this.viewer.terrainProvider = fallbackTerrain;
+                this.viewer.scene?.requestRender();
+            } catch (fallbackError) {
+                console.warn(
+                    "[CesiumView] Failed to load Cesium World Terrain, using default terrain.",
+                    fallbackError,
+                );
+            }
         }
     }
 

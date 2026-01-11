@@ -127,7 +127,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
-    const preferredPickLod = 3;
+    const preferredPickLod = Math.min(
+        3,
+        Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 3)),
+    );
 
     // City initialization removed - using unified search interface (Issue #177)
 

@@ -42,6 +42,16 @@ const ensureCesiumRuntime = () => {
         link.rel = "stylesheet";
         link.href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
         document.head.appendChild(link);
+        return;
+    }
+
+    const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;
+    if (existing) {
+        const href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+        const resolvedHref = new URL(href, window.location.href).href;
+        if (existing.href !== resolvedHref) {
+            existing.href = href;
+        }
     }
 };
 
@@ -537,130 +547,148 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     );
 
     return (
-        <div style={{ position: "fixed", inset: 0, display: "flex", zIndex: 9999 }}>
-            {/* Map area */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-                {/* Cesium container */}
-                <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+        <div className={styles.dialog}>
+            <div className={styles.body}>
+                {/* Map area */}
+                <div className={styles.mapContainer}>
+                    {/* Cesium container */}
+                    <div ref={containerRef} className={styles.cesiumContainer} />
 
-                {/* Close button */}
-                <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
-                    <svg viewBox="0 0 24 24" fill="none">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                </button>
+                    {/* Close button */}
+                    <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                    </button>
 
-                {/* Search box */}
-                <div ref={searchContainerRef} className={styles.searchContainer}>
-                    <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
-                        <div className={styles.searchInputWrapper}>
-                            <span className={styles.searchIcon}>
-                                <svg viewBox="0 0 24 24">
-                                    <circle cx="11" cy="11" r="7" />
-                                    <path d="M21 21l-4.35-4.35" />
-                                </svg>
-                            </span>
-                            <input
-                                ref={searchInputRef}
-                                type="text"
-                                className={styles.searchInput}
-                                placeholder="場所や施設を検索"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onFocus={handleSearchFocus}
-                                onKeyDown={handleSearchKeyDown}
-                                disabled={isSearching}
-                                autoComplete="off"
-                            />
-                            {isSearching && <div className={styles.searchSpinner} />}
-                            {!isSearching && searchQuery && (
-                                <button
-                                    className={styles.searchClearButton}
-                                    onClick={handleSearchClear}
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    type="button"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M18 6L6 18M6 6l12 12" />
+                    {/* Search box */}
+                    <div ref={searchContainerRef} className={styles.searchContainer}>
+                        <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
+                            <div className={styles.searchInputWrapper}>
+                                <span className={styles.searchIcon}>
+                                    <svg viewBox="0 0 24 24">
+                                        <circle cx="11" cy="11" r="7" />
+                                        <path d="M21 21l-4.35-4.35" />
                                     </svg>
-                                </button>
-                            )}
-                        </div>
-
-                        <div className={`${styles.searchModes} ${isExpanded ? styles.visible : ""}`}>
-                            <button
-                                className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("facility")}
-                            >
-                                施設名
-                            </button>
-                            <button
-                                className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("address")}
-                            >
-                                住所
-                            </button>
-                            <button
-                                className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
-                                onClick={() => setSearchMode("buildingId")}
-                            >
-                                建物ID
-                            </button>
-                        </div>
-
-                        {isExpanded && searchMode === "buildingId" && (
-                            <div className={styles.meshCodeSection} style={{ opacity: 1, maxHeight: 60, padding: "0 16px 12px" }}>
+                                </span>
                                 <input
+                                    ref={searchInputRef}
                                     type="text"
-                                    className={styles.meshCodeInput}
-                                    placeholder="メッシュコード（例: 53394511）"
-                                    value={meshCode}
-                                    onChange={(e) => setMeshCode(e.target.value)}
+                                    className={styles.searchInput}
+                                    placeholder="場所や施設を検索"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onFocus={handleSearchFocus}
+                                    onKeyDown={handleSearchKeyDown}
                                     disabled={isSearching}
+                                    autoComplete="off"
                                 />
-                            </div>
-                        )}
-
-                        {showResults && <div className={styles.searchDivider} />}
-
-                        <div className={`${styles.searchResults} ${showResults ? styles.visible : ""}`} role="listbox">
-                            {searchError ? (
-                                <div className={styles.searchError}>{searchError}</div>
-                            ) : (
-                                searchResults.map((result, index) => (
-                                    <div
-                                        key={`${result.osmType}-${result.osmId}-${index}`}
-                                        className={`${styles.searchResultItem} ${index === selectedResultIndex ? styles.selected : ""}`}
-                                        onClick={() => handleResultClick(result)}
-                                        role="option"
-                                        aria-selected={index === selectedResultIndex}
+                                {isSearching && <div className={styles.searchSpinner} />}
+                                {!isSearching && searchQuery && (
+                                    <button
+                                        className={styles.searchClearButton}
+                                        onClick={handleSearchClear}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        type="button"
                                     >
-                                        <div className={styles.locationName}>{result.displayName}</div>
-                                        {result.buildingCount !== undefined && result.buildingCount > 0 && (
-                                            <div className={styles.buildingCount}>{result.buildingCount}件の建物</div>
-                                        )}
-                                    </div>
-                                ))
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                        >
+                                            <path d="M18 6L6 18M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className={`${styles.searchModes} ${isExpanded ? styles.visible : ""}`}>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("facility")}
+                                >
+                                    施設名
+                                </button>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("address")}
+                                >
+                                    住所
+                                </button>
+                                <button
+                                    className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
+                                    onClick={() => setSearchMode("buildingId")}
+                                >
+                                    建物ID
+                                </button>
+                            </div>
+
+                            {isExpanded && searchMode === "buildingId" && (
+                                <div
+                                    className={styles.meshCodeSection}
+                                    style={{ opacity: 1, maxHeight: 60, padding: "0 16px 12px" }}
+                                >
+                                    <input
+                                        type="text"
+                                        className={styles.meshCodeInput}
+                                        placeholder="メッシュコード（例: 53394511）"
+                                        value={meshCode}
+                                        onChange={(e) => setMeshCode(e.target.value)}
+                                        disabled={isSearching}
+                                    />
+                                </div>
+                            )}
+
+                            {showResults && <div className={styles.searchDivider} />}
+
+                            <div
+                                className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
+                                role="listbox"
+                            >
+                                {searchError ? (
+                                    <div className={styles.searchError}>{searchError}</div>
+                                ) : (
+                                    searchResults.map((result, index) => (
+                                        <div
+                                            key={`${result.osmType}-${result.osmId}-${index}`}
+                                            className={`${styles.searchResultItem} ${
+                                                index === selectedResultIndex ? styles.selected : ""
+                                            }`}
+                                            onClick={() => handleResultClick(result)}
+                                            role="option"
+                                            aria-selected={index === selectedResultIndex}
+                                        >
+                                            <div className={styles.locationName}>{result.displayName}</div>
+                                            {result.buildingCount !== undefined &&
+                                                result.buildingCount > 0 && (
+                                                    <div className={styles.buildingCount}>
+                                                        {result.buildingCount}件の建物
+                                                    </div>
+                                                )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {isExpanded && !showResults && !searchQuery && (
+                                <div className={styles.searchHint}>Enter で検索</div>
                             )}
                         </div>
-
-                        {isExpanded && !showResults && !searchQuery && (
-                            <div className={styles.searchHint}>Enter で検索</div>
-                        )}
                     </div>
+
+                    <Instructions />
+                    {loading && <Loading message={loadingMessage} />}
                 </div>
 
-                <Instructions />
-                {loading && <Loading message={loadingMessage} />}
+                {/* Sidebar */}
+                <Sidebar
+                    selectedBuildings={selectedBuildings}
+                    onRemove={handleRemoveBuilding}
+                    onImport={handleImport}
+                    onClear={handleClear}
+                />
             </div>
-
-            {/* Sidebar */}
-            <Sidebar
-                selectedBuildings={selectedBuildings}
-                onRemove={handleRemoveBuilding}
-                onImport={handleImport}
-                onClear={handleClear}
-            />
         </div>
     );
 }

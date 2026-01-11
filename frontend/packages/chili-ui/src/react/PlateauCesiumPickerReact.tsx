@@ -13,7 +13,6 @@ import {
     type PickedBuilding,
 } from "chili-cesium";
 import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
-import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
@@ -99,7 +98,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
-    const [isComposing, setIsComposing] = useState<boolean>(false);
+    const isComposingRef = useRef<boolean>(false);
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -383,35 +382,54 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // IME composition handlers for proper Japanese input support
     const handleCompositionStart = useCallback(() => {
-        setIsComposing(true);
+        isComposingRef.current = true;
     }, []);
 
     const handleCompositionEnd = useCallback(() => {
-        setIsComposing(false);
+        // Delay to ensure composition is fully complete
+        setTimeout(() => {
+            isComposingRef.current = false;
+        }, 10);
     }, []);
 
-    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        // Block keyboard handling during IME composition
-        if (isComposing || e.nativeEvent.isComposing) return;
-
-        if (e.key === "Enter") {
-            e.preventDefault();
-            performSearch();
-        } else if (e.key === "Escape") {
-            setShowResults(false);
-            setSearchError(null);
-            if (!searchQuery.trim()) {
-                setIsExpanded(false);
-                searchInputRef.current?.blur();
+    const handleSearchKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            // Block during active IME composition
+            if (isComposingRef.current || e.nativeEvent.isComposing) {
+                return;
             }
-        } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
-            e.preventDefault();
-            setSelectedResultIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
-        } else if (e.key === "ArrowUp" && showResults && searchResults.length > 0) {
-            e.preventDefault();
-            setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
-        }
-    };
+
+            switch (e.key) {
+                case "Enter":
+                    e.preventDefault();
+                    performSearch();
+                    break;
+                case "Escape":
+                    setShowResults(false);
+                    setSearchError(null);
+                    if (!searchQuery.trim()) {
+                        setIsExpanded(false);
+                        searchInputRef.current?.blur();
+                    }
+                    break;
+                case "ArrowDown":
+                    if (showResults && searchResults.length > 0) {
+                        e.preventDefault();
+                        setSelectedResultIndex((prev) =>
+                            prev < searchResults.length - 1 ? prev + 1 : prev,
+                        );
+                    }
+                    break;
+                case "ArrowUp":
+                    if (showResults && searchResults.length > 0) {
+                        e.preventDefault();
+                        setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                    }
+                    break;
+            }
+        },
+        [performSearch, searchQuery, showResults, searchResults.length],
+    );
 
     const handleSearchFocus = useCallback(() => {
         setIsExpanded(true);
@@ -523,7 +541,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     return (
         <div className={styles.dialog}>
-            <Header onClose={handleClose} loading={loading} />
             <div className={styles.body}>
                 <div className={styles.mapContainer}>
                     {/* Map container for CesiumView (Web Components) */}
@@ -538,6 +555,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             overflow: "hidden",
                         }}
                     />
+
+                    {/* Floating close button */}
+                    <button
+                        className={styles.closeButton}
+                        onClick={handleClose}
+                        aria-label="閉じる"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                    </button>
                     {/* Google-style search box with progressive disclosure */}
                     <div ref={searchContainerRef} className={styles.searchContainer}>
                         <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
@@ -570,6 +598,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                     <button
                                         className={styles.searchClearButton}
                                         onClick={handleSearchClear}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        type="button"
                                         aria-label="クリア"
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

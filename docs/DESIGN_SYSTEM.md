@@ -4,7 +4,9 @@
 **Version:** 1.0  
 **Principle:** Less, but better. Honest to paper.
 
-Paper-CAD is a CAD tool for making architectural paper models. The primary artifact is not a screenshot—it is a printed sheet (SVG/PDF) that will be cut, folded, and assembled.
+Paper-CAD is a CAD tool for making architectural paper models. The final artifact is a physical model. The printed sheet (SVG/PDF) is not the end—it is an interface to a build process that the app must actively support.
+
+Digital is not decoration here. Digital is leverage: instant feedback, reversible decisions, and continuity across 3D ↔ 2D ↔ paper. The goal is a new assembly experience where the sheet can “talk back” through a device.
 
 We design like a Japanese studio shaping a German industrial tool: quiet surfaces, explicit hierarchy, obsessive consistency. The viewport is the work; the UI is the instrument.
 Everything is measured. Nothing is decorative.
@@ -29,8 +31,9 @@ Everything is measured. Nothing is decorative.
 ### 1.1 Paper-CAD-specific: Material & Output
 
 - **Paper is the medium:** assume prints in real-world conditions (cheap printers, imperfect cutting, human hands).
-- **The sheet is the product:** the UI must serve print accuracy, assembly clarity, and trust.
+- **The sheet is the contract:** it must be print-accurate, assembly-true, and trustworthy.
 - **Do not rely on color alone:** printing may be grayscale; semantics must survive in line style and labeling.
+- **Continuity wins:** face identity and intent must survive 3D ↔ 2D ↔ paper ↔ device.
 
 ## 2. Paper-First Product Context (Architectural Models)
 
@@ -48,7 +51,21 @@ Everything is measured. Nothing is decorative.
 4. **Export is the deliverable** (SVG/PDF should be print-ready).
 5. **Assembly is the end-user test** (if it’s confusing on paper, it’s a UI bug).
 
-### 2.3 Unfold Output Semantics (SVG/PDF)
+### 2.3 Digital Assembly Experience (Device Interaction)
+
+Paper assembly is a mapping problem (“Which face is this?”). Digital should eliminate that question.
+
+- The app MUST provide a fast way to locate a face from a printed sheet:
+  - scan a printed QR/deep link, or
+  - search by face number / ID.
+- When a face is located, the app MUST show a consistent, unambiguous context:
+  - the face highlighted in 3D and 2D,
+  - orientation cues (front/back, mirrored, page orientation),
+  - the page and position on the sheet (when available).
+- The interaction MUST be low-friction on mobile (one-handed, large targets, readable in dark mode).
+- Linking MUST degrade gracefully: if a QR cannot resolve, manual lookup still works.
+
+### 2.4 Unfold Output Semantics (SVG/PDF)
 
 - Output classes should remain stable and legible in black & white:
   - Face outlines: `.face-polygon`
@@ -56,27 +73,27 @@ Everything is measured. Nothing is decorative.
   - Fold hints: `.fold-line`
   - Cut hints: `.cut-line`
   - Page boundaries: `.page-border` / `.page-separator`
-- Do not rename output selectors without updating exporters (e.g. multi-page detection depends on `.page-border`).
+- Multi-page SVGs MUST include a `.page-border` element per page as a stable marker; treat selectors as a public contract.
 
-### 2.4 Print Reality Checklist
+### 2.5 Print Reality Checklist
 
 - Units are physical (mm). Prefer explicit units over implicit assumptions.
 - Respect margins: treat at least 10mm as non-printable safe area.
 - Assume monochrome printing is common: line meaning must survive without color.
 - Prefer warnings over surprises: if output will be clipped, scaled, or mirrored, say it before export.
 
-### 2.5 Print Output Specification (Commercial Bar)
+### 2.6 Print Output Specification (Commercial Bar)
 
 This section defines what “print-ready” means. If export violates these, the UI is lying.
 
-#### 2.5.1 Units & Conversion
+#### 2.6.1 Units & Conversion
 
 - Output geometry is physical. Prefer **mm** end-to-end.
 - If SVG uses px-based coordinates, conversion MUST be explicit and consistent:
   - 96 DPI assumption: `1mm = 3.78px`
   - If this changes, update exporters and this document together.
 
-#### 2.5.2 Page, Safe Area, and Layout
+#### 2.6.2 Page, Safe Area, and Layout
 
 - Supported page formats MUST match:
   - A4: 210×297mm, A3: 297×420mm, Letter: 216×279mm
@@ -84,7 +101,7 @@ This section defines what “print-ready” means. If export violates these, the
 - Layout MUST keep critical geometry, labels, and QR codes inside the safe area.
 - If content will overflow or be scaled, the UI SHOULD show a clear warning before export.
 
-#### 2.5.3 Line System (Monochrome-First)
+#### 2.6.3 Line System (Monochrome-First)
 
 The print output MUST remain understandable in pure black & white.
 
@@ -98,7 +115,7 @@ The print output MUST remain understandable in pure black & white.
 - Strokes SHOULD use `vector-effect: non-scaling-stroke` so scaling never destroys legibility.
 - Output SHOULD avoid heavy fills; paper needs whitespace to breathe.
 
-#### 2.5.4 Typography & Labeling in Output
+#### 2.6.4 Typography & Labeling in Output
 
 - Default output font MUST use a generic, portable stack (no external font dependency).
 - Labels MUST be readable at arm’s length on A4:
@@ -106,7 +123,7 @@ The print output MUST remain understandable in pure black & white.
   - Recommended: 2.8–3.2mm (~10–11pt) for primary labels
 - Face numbers MUST be legible but not aggressive; avoid bright red as the only channel.
 
-#### 2.5.5 Sheet Metadata (Quiet, Useful)
+#### 2.6.5 Sheet Metadata (Quiet, Useful)
 
 Every exported sheet SHOULD include a minimal, quiet metadata block:
 
@@ -116,11 +133,12 @@ Every exported sheet SHOULD include a minimal, quiet metadata block:
 - Page number / total pages
 - Export timestamp or version (for reproducibility)
 
-#### 2.5.6 Stability & Compatibility
+#### 2.6.6 Stability & Compatibility
 
 - Output class names (`.face-polygon`, `.tab-polygon`, `.fold-line`, `.cut-line`, `.page-border`) MUST be stable.
-- Multi-page detection MUST remain robust (today it depends on `.page-border` in the SVG).
+- Multi-page detection MUST use a stable page boundary marker (`.page-border`).
 - QR or linking graphics (if used) SHOULD be vector (paths), not raster.
+- If QR/deep links are included, placement MUST avoid tabs and fold/cut lines; for tiny faces, prefer a per-page index panel.
 
 ## 3. Scope & Source of Truth
 
@@ -274,10 +292,18 @@ If any item fails, the change is not done.
 - Face identity is stable between 3D and 2D (numbers/labels don’t reshuffle unexpectedly).
 - Export is deterministic enough to diff (no random IDs unless necessary).
 
-### 9.3 Evidence (PR)
+### 9.3 Assembly (Device Interaction)
+
+- From paper: scan QR or search by face number/ID → correct face context within 2 steps.
+- Cross-highlighting between 3D and 2D is consistent (no ambiguous “selected” state).
+- Works on mobile: touch targets, readable typography, no tiny hit areas.
+- Failure modes are polite: broken links show a recovery path (manual face lookup).
+
+### 9.4 Evidence (PR)
 
 - UI changes: screenshots for light/dark.
 - Unfold/export changes: attach exported PDF/SVG (and ideally a quick photo of a real print).
+- Assembly features: short screen recording + one photo of a real build-in-progress.
 
 ## 10. Change Process
 

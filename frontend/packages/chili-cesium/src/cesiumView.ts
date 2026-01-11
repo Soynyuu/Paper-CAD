@@ -65,14 +65,44 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
     },
 };
 
-// Load Cesium CSS dynamically
-if (typeof document !== "undefined" && !document.getElementById("cesium-widget-css")) {
+const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
+
+const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
+    if (typeof document === "undefined") {
+        return Promise.resolve();
+    }
+
+    const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    const href = `${normalizedBaseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+    const resolvedHref = new URL(href, window.location.href).href;
+
+    const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;
+    if (existing) {
+        if (existing.href !== resolvedHref) {
+            existing.href = href;
+        }
+
+        if (existing.sheet) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            existing.addEventListener("load", () => resolve(), { once: true });
+            existing.addEventListener("error", () => resolve(), { once: true });
+        });
+    }
+
     const link = document.createElement("link");
-    link.id = "cesium-widget-css";
+    link.id = CESIUM_WIDGET_CSS_ID;
     link.rel = "stylesheet";
-    link.href = "/cesium/Widgets/CesiumWidget/CesiumWidget.css";
+    link.href = href;
     document.head.appendChild(link);
-}
+
+    return new Promise((resolve) => {
+        link.addEventListener("load", () => resolve(), { once: true });
+        link.addEventListener("error", () => resolve(), { once: true });
+    });
+};
 
 /**
  * CesiumView
@@ -108,8 +138,11 @@ export class CesiumView {
      */
     async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
         // Set Cesium base URL from environment
-        const cesiumBaseUrl = (window as any).__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
-        (window as any).CESIUM_BASE_URL = cesiumBaseUrl;
+        const rawBaseUrl = (window as any).__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
+        const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
+        (window as any).CESIUM_BASE_URL = baseUrl;
+
+        await ensureCesiumWidgetCss(baseUrl);
 
         // Set Cesium Ion token if provided
         const ionToken = (window as any).__APP_CONFIG__?.cesiumIonToken;

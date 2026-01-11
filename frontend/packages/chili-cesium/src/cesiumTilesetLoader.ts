@@ -23,9 +23,43 @@ import * as Cesium from "cesium";
 export class CesiumTilesetLoader {
     private viewer: Cesium.Viewer;
     private currentTileset: Cesium.Cesium3DTileset | null = null;
+    private loadedTilesets: Map<string, Cesium.Cesium3DTileset> = new Map();
+    private meshLoadOrder: string[] = []; // LRU tracking
+    // Limit based on memory profiling: ~500MB for 25 meshes (LOD1)
+    // 3x3 search grid + buffer meshes for smooth panning.
+    private readonly MAX_LOADED_MESHES = 25;
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
+    }
+
+    private getTilesetOptions() {
+        return {
+            // Enable debugging for development
+            debugShowBoundingVolume: false,
+            debugShowContentBoundingVolume: false,
+            debugShowGeometricError: false,
+
+            // Performance settings
+            maximumScreenSpaceError: 16,
+
+            // Skip LOD levels for faster loading
+            skipLevelOfDetail: true,
+            baseScreenSpaceError: 1024,
+            skipScreenSpaceErrorFactor: 16,
+            skipLevels: 1,
+
+            // Preload ancestors for better picking
+            preloadWhenHidden: true,
+            preloadFlightDestinations: false,
+            preferLeaves: true,
+
+            // Enable dynamic screen space error for LOD
+            dynamicScreenSpaceError: true,
+            dynamicScreenSpaceErrorDensity: 0.00278,
+            dynamicScreenSpaceErrorFactor: 4.0,
+            dynamicScreenSpaceErrorHeightFalloff: 0.25,
+        };
     }
 
     /**
@@ -41,32 +75,7 @@ export class CesiumTilesetLoader {
         }
 
         try {
-            const tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
-                // Enable debugging for development
-                debugShowBoundingVolume: false,
-                debugShowContentBoundingVolume: false,
-                debugShowGeometricError: false,
-
-                // Performance settings
-                maximumScreenSpaceError: 16,
-
-                // Skip LOD levels for faster loading
-                skipLevelOfDetail: true,
-                baseScreenSpaceError: 1024,
-                skipScreenSpaceErrorFactor: 16,
-                skipLevels: 1,
-
-                // Preload ancestors for better picking
-                preloadWhenHidden: true,
-                preloadFlightDestinations: false,
-                preferLeaves: true,
-
-                // Enable dynamic screen space error for LOD
-                dynamicScreenSpaceError: true,
-                dynamicScreenSpaceErrorDensity: 0.00278,
-                dynamicScreenSpaceErrorFactor: 4.0,
-                dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            });
+            const tileset = await Cesium.Cesium3DTileset.fromUrl(url, this.getTilesetOptions());
 
             // Add to scene
             this.viewer.scene.primitives.add(tileset);
@@ -144,5 +153,153 @@ export class CesiumTilesetLoader {
         if (this.currentTileset) {
             this.setDefaultStyle(this.currentTileset);
         }
+    }
+
+    /**
+     * Load multiple tilesets in parallel
+     *
+     * @param tilesets - Array of tileset info with meshCode and url
+     * @returns Promise that resolves when all tilesets are loaded, with failed meshes
+     *
+     * @example
+     * await loader.loadMultipleTilesets([
+     *     { meshCode: "53394511", url: "https://..." },
+     *     { meshCode: "53394512", url: "https://..." }
+     * ]);
+     */
+    async loadMultipleTilesets(
+        tilesets: Array<{ meshCode: string; url: string }>,
+    ): Promise<{ failedMeshes: string[] }> {
+        const failedMeshes: string[] = [];
+        const loadPromises = tilesets.map(async ({ meshCode, url }) => {
+            // Skip if already loaded, but update access time
+            if (this.loadedTilesets.has(meshCode)) {
+                this.updateMeshAccessTime(meshCode);
+                console.log(`[CesiumTilesetLoader] Mesh ${meshCode} already loaded, updating access time`);
+                return;
+            }
+
+            // Check if we need to unload old meshes before loading new ones
+            if (this.loadedTilesets.size >= this.MAX_LOADED_MESHES) {
+                this.unloadOldestMesh();
+                console.log(
+                    `[CesiumTilesetLoader] Reached max meshes (${this.MAX_LOADED_MESHES}), unloaded oldest`,
+                );
+            }
+
+            try {
+                const tileset = await Cesium.Cesium3DTileset.fromUrl(url, this.getTilesetOptions());
+
+                // Add to scene
+                this.viewer.scene.primitives.add(tileset);
+                this.loadedTilesets.set(meshCode, tileset);
+
+                // Track in LRU order
+                this.meshLoadOrder.push(meshCode);
+
+                // Apply default styling
+                this.setDefaultStyle(tileset);
+
+                console.log(`[CesiumTilesetLoader] Loaded mesh ${meshCode}`);
+            } catch (error) {
+                console.warn(`[CesiumTilesetLoader] Failed to load mesh ${meshCode}:`, error);
+                failedMeshes.push(meshCode);
+            }
+        });
+
+        await Promise.all(loadPromises);
+
+        console.log(`[CesiumTilesetLoader] Loaded ${this.loadedTilesets.size} tilesets total`);
+        return { failedMeshes };
+    }
+
+    /**
+     * Unload tileset for specific mesh code
+     *
+     * @param meshCode - Mesh code to unload
+     */
+    unloadTilesetByMesh(meshCode: string): void {
+        const tileset = this.loadedTilesets.get(meshCode);
+        if (tileset) {
+            this.viewer.scene.primitives.remove(tileset);
+            this.loadedTilesets.delete(meshCode);
+
+            // Remove from LRU order
+            const index = this.meshLoadOrder.indexOf(meshCode);
+            if (index > -1) {
+                this.meshLoadOrder.splice(index, 1);
+            }
+
+            console.log(`[CesiumTilesetLoader] Unloaded mesh ${meshCode}`);
+        }
+    }
+
+    /**
+     * Update mesh access time for LRU (move to end = most recently used)
+     *
+     * @param meshCode - Mesh code that was accessed
+     */
+    private updateMeshAccessTime(meshCode: string): void {
+        const index = this.meshLoadOrder.indexOf(meshCode);
+        if (index > -1) {
+            // Remove from current position
+            this.meshLoadOrder.splice(index, 1);
+        }
+        // Add to end (most recently used)
+        this.meshLoadOrder.push(meshCode);
+    }
+
+    /**
+     * Unload the oldest (least recently used) mesh to free memory
+     */
+    private unloadOldestMesh(): void {
+        const oldestMesh = this.meshLoadOrder.shift();
+        if (oldestMesh) {
+            const tileset = this.loadedTilesets.get(oldestMesh);
+            if (tileset) {
+                this.viewer.scene.primitives.remove(tileset);
+                this.loadedTilesets.delete(oldestMesh);
+                console.log(`[CesiumTilesetLoader] Auto-unloaded old mesh: ${oldestMesh}`);
+            }
+        }
+    }
+
+    /**
+     * Get list of loaded mesh codes
+     *
+     * @returns Array of loaded mesh codes
+     */
+    getLoadedMeshCodes(): string[] {
+        return Array.from(this.loadedTilesets.keys());
+    }
+
+    /**
+     * Clear all loaded tilesets
+     */
+    clearAll(): void {
+        this.loadedTilesets.forEach((tileset) => {
+            this.viewer.scene.primitives.remove(tileset);
+        });
+        this.loadedTilesets.clear();
+
+        // Clear LRU tracking
+        this.meshLoadOrder = [];
+
+        // Also clear legacy currentTileset
+        if (this.currentTileset) {
+            this.viewer.scene.primitives.remove(this.currentTileset);
+            this.currentTileset = null;
+        }
+
+        console.log(`[CesiumTilesetLoader] Cleared all tilesets`);
+    }
+
+    /**
+     * Get total number of loaded tilesets
+     *
+     * @returns Number of loaded tilesets
+     */
+    getTilesetCount(): number {
+        return this.loadedTilesets.size;
     }
 }

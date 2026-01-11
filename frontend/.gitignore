@@ -7,3 +7,4 @@ coverage
 .clang-format
 CMakeUserPresets.json
 .env
+.env.demo

@@ -38,9 +38,93 @@
     position: absolute;
     top: 16px;
     left: 16px;
-    width: 320px;
+    width: 360px;
     z-index: 200;
     pointer-events: auto;
+}
+
+/* Search mode tabs */
+.searchModeTabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: var(--radius-md, 8px);
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.searchModeTab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary, #666);
+    font-size: var(--font-size-xs, 12px);
+    font-weight: var(--font-weight-medium, 500);
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.searchModeTab:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary, #333);
+}
+
+.searchModeTab.active {
+    background-color: var(--primary-color, #2196f3);
+    color: white;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+}
+
+.searchModeTab.active:hover {
+    background-color: var(--primary-color-dark, #1976d2);
+}
+
+/* Mesh code input wrapper */
+.meshCodeInputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease;
+    margin-top: 8px;
+}
+
+.meshCodeInputWrapper:focus-within {
+    border-color: var(--primary-color, #2196f3);
+}
+
+.meshCodeIcon {
+    position: absolute;
+    left: 12px;
+    font-size: 16px;
+    color: var(--text-secondary, #666);
+    pointer-events: none;
+}
+
+.meshCodeInput {
+    flex: 1;
+    padding: 10px 12px 10px 40px;
+    border: none;
+    background: transparent;
+    font-size: var(--font-size-sm, 14px);
+    outline: none;
+    color: var(--text-primary, #333);
+}
+
+.meshCodeInput::placeholder {
+    color: var(--text-secondary, #999);
+}
+
+.meshCodeInput:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 .searchInputWrapper {
@@ -156,6 +240,22 @@
 
 .searchResultItem:active {
     background-color: var(--primary-color-lighter, #bbdefb);
+}
+
+/* NEW: 場所名と建物件数の表示 */
+.locationName {
+    font-weight: var(--font-weight-medium, 500);
+    font-size: var(--font-size-sm, 14px);
+}
+
+.buildingCount {
+    font-size: var(--font-size-xs, 12px);
+    color: var(--text-secondary, #666);
+    margin-top: 4px;
+}
+
+.searchResultItem:hover .buildingCount {
+    color: var(--primary-color, #2196f3);
 }
 
 .searchError {

@@ -12,6 +12,25 @@ app = create_app()
 # APIルーターの追加
 app.include_router(router)
 
+# 起動時の初期化処理
+@app.on_event("startup")
+async def startup_event():
+    """
+    サーバー起動時に実行される初期化処理
+
+    - PLATEAU mesh2->municipality マッピングの構築
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        from services.plateau_api_client import _get_cached_mesh2_map
+        await _get_cached_mesh2_map()
+        logger.info("✅ PLATEAU mesh2->municipality map initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize PLATEAU mesh mapping: {e}")
+        logger.warning("PLATEAU search functionality may be limited")
+
 # ルートパスでindex.htmlを返す
 @app.get("/")
 async def read_index():

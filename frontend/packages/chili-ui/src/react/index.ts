@@ -8,11 +8,9 @@ export { renderReactDialog } from "./renderReactDialog";
 
 // Re-export atoms for external use if needed
 export {
-    currentCityAtom,
     selectedBuildingsAtom,
     loadingAtom,
     loadingMessageAtom,
-    cameraPositionAtom,
     highlightedBuildingIdsAtom,
     selectedCountAtom,
     canImportAtom,

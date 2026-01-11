@@ -52,6 +52,16 @@ def _log(message: str, debug: bool = False):
         print(f"[STREAM] {message}")
 
 
+def _build_local_xlink_index(building_elem: ET.Element) -> Dict[str, ET.Element]:
+    """Build local XLink index for a building element."""
+    index: Dict[str, ET.Element] = {}
+    for elem in building_elem.iter():
+        gml_id = elem.get(f"{{{NS['gml']}}}id")
+        if gml_id:
+            index[gml_id] = elem
+    return index
+
+
 def _extract_generic_attributes(building_elem: ET.Element) -> Dict[str, str]:
     """
     Extract gen:genericAttribute values from building element.
@@ -181,113 +191,123 @@ def stream_parse_buildings(
 
     _log("Parsing XML stream...", debug)
 
-    for event, elem in context:
-        if event == "start":
-            depth += 1
+    try:
+        for event, elem in context:
+            if event == "start":
+                depth += 1
 
-            # Build local XLink index for current building
-            # Only index elements within current building scope
-            if current_building is not None:
-                gml_id = elem.get(f"{{{NS['gml']}}}id")
-                if gml_id:
-                    local_xlink_index[gml_id] = elem
+                # Build local XLink index for current building
+                # Only index elements within current building scope
+                if current_building is not None:
+                    gml_id = elem.get(f"{{{NS['gml']}}}id")
+                    if gml_id:
+                        local_xlink_index[gml_id] = elem
 
-            # Detect Building element start
-            if elem.tag == f"{{{NS['bldg']}}}Building":
-                building_stack.append((elem, depth))
+                # Detect Building element start
+                if elem.tag == f"{{{NS['bldg']}}}Building":
+                    building_stack.append((elem, depth))
 
-                # Track top-level building (not BuildingPart)
-                if current_building is None:
-                    current_building = elem
-                    current_building_depth = depth
-                    local_xlink_index = {}  # Reset for new building
+                    # Track top-level building (not BuildingPart)
+                    if current_building is None:
+                        current_building = elem
+                        current_building_depth = depth
+                        local_xlink_index = {}  # Reset for new building
+                        gml_id = elem.get(f"{{{NS['gml']}}}id")
+                        if gml_id:
+                            local_xlink_index[gml_id] = elem
 
-        elif event == "end":
-            # Detect Building element completion
-            if elem.tag == f"{{{NS['bldg']}}}Building" and building_stack:
-                completed_building, building_depth = building_stack.pop()
+            elif event == "end":
+                # Detect Building element completion
+                if elem.tag == f"{{{NS['bldg']}}}Building" and building_stack:
+                    completed_building, building_depth = building_stack.pop()
 
-                # Process top-level building (not nested BuildingPart)
-                if building_depth == current_building_depth:
-                    # === Early Filtering ===
-                    should_process = True
+                    # Process top-level building (not nested BuildingPart)
+                    if building_depth == current_building_depth:
+                        # === Early Filtering ===
+                        should_process = True
 
-                    # Check limit (early termination)
-                    if limit is not None and processed_count >= limit:
-                        _log(f"Reached limit ({limit}), stopping parse", debug)
+                        # Check limit (early termination)
+                        if limit is not None and processed_count >= limit:
+                            _log(f"Reached limit ({limit}), stopping parse", debug)
 
-                        # Clean up and exit
-                        completed_building.clear()
-                        root.clear()
+                            # Clean up and exit
+                            completed_building.clear()
+                            root.clear()
 
-                        # Force garbage collection
-                        gc.collect()
+                            # Force garbage collection
+                            gc.collect()
 
-                        return  # Complete termination of generator
+                            return  # Complete termination of generator
 
-                    # Check building_ids filter
-                    if building_ids_set:
-                        if filter_attribute == "gml:id":
-                            # Filter by gml:id attribute
-                            gml_id = completed_building.get(f"{{{NS['gml']}}}id")
-                            if gml_id not in building_ids_set:
-                                should_process = False
+                        # Check building_ids filter
+                        if building_ids_set:
+                            if filter_attribute == "gml:id":
+                                # Filter by gml:id attribute
+                                gml_id = completed_building.get(f"{{{NS['gml']}}}id")
+                                if gml_id not in building_ids_set:
+                                    should_process = False
+                            else:
+                                # Filter by generic attribute
+                                attrs = _extract_generic_attributes(completed_building)
+                                if not any(attrs.get(k) in building_ids_set for k in attrs):
+                                    should_process = False
+
+                        # === Process or Skip ===
+                        if should_process:
+                            _log(
+                                f"Yielding building #{processed_count + 1} "
+                                f"(XLink cache: {len(local_xlink_index)} elements)",
+                                debug,
+                            )
+
+                            building_copy = ET.fromstring(ET.tostring(completed_building))
+                            xlink_index_copy = _build_local_xlink_index(building_copy)
+
+                            # Yield building with its local XLink index
+                            yield (building_copy, xlink_index_copy)
+
+                            processed_count += 1
                         else:
-                            # Filter by generic attribute
-                            attrs = _extract_generic_attributes(completed_building)
-                            if not any(attrs.get(k) in building_ids_set for k in attrs):
-                                should_process = False
+                            skipped_count += 1
+                            if debug and skipped_count % 100 == 0:
+                                _log(f"Skipped {skipped_count} buildings (filtered)", debug)
 
-                    # === Process or Skip ===
-                    if should_process:
-                        _log(
-                            f"Yielding building #{processed_count + 1} "
-                            f"(XLink cache: {len(local_xlink_index)} elements)",
-                            debug
-                        )
+                        # === Critical: Immediate Memory Release ===
+                        # This is the key to 98% memory reduction
 
-                        # Yield building with its local XLink index
-                        yield (completed_building, local_xlink_index.copy())
+                        # Clear completed building element and all children
+                        completed_building.clear()
 
-                        processed_count += 1
-                    else:
-                        skipped_count += 1
-                        if debug and skipped_count % 100 == 0:
-                            _log(f"Skipped {skipped_count} buildings (filtered)", debug)
+                        # Clear parent references to allow garbage collection
+                        # This prevents memory leaks from parent → child references
+                        while completed_building is not None:
+                            parent_map = {c: p for p in root.iter() for c in p}
+                            parent = parent_map.get(completed_building)
+                            if parent is not None:
+                                parent.remove(completed_building)
+                            completed_building = parent
 
-                    # === Critical: Immediate Memory Release ===
-                    # This is the key to 98% memory reduction
+                        # Clear local XLink index
+                        local_xlink_index.clear()
 
-                    # Clear completed building element and all children
-                    completed_building.clear()
+                        # Force garbage collection after each building
+                        # Recommended for large files to prevent memory accumulation
+                        if config is None or config.enable_gc_per_building:
+                            gc.collect()
 
-                    # Clear parent references to allow garbage collection
-                    # This prevents memory leaks from parent → child references
-                    while completed_building is not None:
-                        parent_map = {c: p for p in root.iter() for c in p}
-                        parent = parent_map.get(completed_building)
-                        if parent is not None:
-                            parent.remove(completed_building)
-                        completed_building = parent
+                        # Reset current building tracking
+                        current_building = None
+                        current_building_depth = 0
 
-                    # Clear local XLink index
-                    local_xlink_index.clear()
+                depth -= 1
 
-                    # Force garbage collection after each building
-                    # Recommended for large files to prevent memory accumulation
-                    if config is None or config.enable_gc_per_building:
-                        gc.collect()
-
-                    # Reset current building tracking
-                    current_building = None
-                    current_building_depth = 0
-
-            depth -= 1
-
-            # Periodic cleanup of processed elements outside building scope
-            # Prevents memory growth from metadata elements
-            if depth < 3 and elem != root and current_building is None:
-                elem.clear()
+                # Periodic cleanup of processed elements outside building scope
+                # Prevents memory growth from metadata elements
+                if depth < 3 and elem != root and current_building is None:
+                    elem.clear()
+    except ET.ParseError as e:
+        _log(f"XML Parse Error: {e}", debug=True)
+        raise ValueError(f"Invalid CityGML XML: {e}")
 
     _log(f"Streaming parse complete: processed={processed_count}, skipped={skipped_count}", debug)
 

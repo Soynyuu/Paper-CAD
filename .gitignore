@@ -1,10 +1,7 @@
 # Large files (>100MB)
 *.gml
-unfold-step2svg/53394642_bldg_6697_op.gml
-PLATEAU-VIEW-4.0/
 # OS generated files
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
@@ -45,7 +42,10 @@ backend/test_*.py
 backend/*_log.txt
 backend/*_debug.txt
 backend/*_output.txt
-
+backend/data/n03/
+backend/.venv-n03/
+frontend/.env.demo
 # Frontend environment files
 frontend/.env.development
 frontend/.env.local
+frontend/.env.demo

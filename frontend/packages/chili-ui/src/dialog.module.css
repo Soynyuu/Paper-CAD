@@ -85,3 +85,134 @@ dialog::backdrop {
         }
     }
 }
+
+/* Search Tabs Styles for PLATEAU Cesium Picker */
+.searchTabsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    background-color: var(--neutral-50);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.searchTabsHeader {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.searchTab {
+    flex: 1;
+    padding: 10px 16px;
+    background-color: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--neutral-600);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.searchTab:hover {
+    background-color: var(--neutral-100);
+    color: var(--foreground-color);
+}
+
+.searchTab[data-active="true"] {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    font-weight: var(--font-weight-semibold);
+}
+
+.searchTabContent {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.searchTabContent[data-active="true"] {
+    display: flex;
+}
+
+.searchInput {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    background-color: var(--panel-background-color);
+    color: var(--foreground-color);
+    transition: border-color var(--transition-fast);
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.1);
+}
+
+.searchInput::placeholder {
+    color: var(--neutral-400);
+}
+
+.searchButton {
+    padding: 10px 20px;
+    background-color: var(--primary-color);
+    color: var(--neutral-0);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.searchButton:hover {
+    background-color: var(--secondary-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.searchButton:active {
+    transform: translateY(0);
+}
+
+.searchButton:disabled {
+    background-color: var(--neutral-300);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.meshIndicator {
+    padding: 8px 12px;
+    background-color: var(--info-background-color, rgba(59, 130, 246, 0.1));
+    border-left: 3px solid var(--info-color, #3b82f6);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    color: var(--foreground-color);
+}
+
+.searchFormRow {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.searchFormRow > * {
+    flex: 1;
+}
+
+.searchFormRow > button {
+    flex: 0 0 auto;
+    min-width: 80px;
+}
+
+.inputLabel {
+    display: block;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--neutral-600);
+    margin-bottom: 4px;
+}

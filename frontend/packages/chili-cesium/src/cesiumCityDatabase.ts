@@ -131,6 +131,10 @@ export const PLATEAU_CITIES: CityConfig[] = [
 /**
  * Get city configuration by key
  *
+ * @deprecated 非推奨: メッシュベース検索を使用してください。
+ * 都市単位のロードから、メッシュコード単位の動的ロードに移行しました。
+ * 代わりに resolveMeshCodesFromCoordinates() を使用してください。
+ *
  * @param cityKey - City key (e.g., "chiyoda")
  * @returns City configuration or undefined if not found
  */
@@ -149,6 +153,10 @@ export function getAvailableCityKeys(): string[] {
 
 /**
  * Get all city configurations
+ *
+ * @deprecated 非推奨: メッシュベース検索を使用してください。
+ * 都市単位のロードから、メッシュコード単位の動的ロードに移行しました。
+ * 代わりに検索APIを使用して必要なメッシュのみをロードしてください。
  *
  * @returns Array of all city configurations
  */

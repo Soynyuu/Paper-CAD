@@ -175,19 +175,19 @@ export class Home extends HTMLElement {
                 {
                     className: `${style.heroCard} ${style.primary}`, // .primary style added in CSS
                     style: { borderColor: "var(--primary-color)", backgroundColor: "var(--neutral-0)" }, // Inline override just in case
-                    onclick: () => PubSub.default.pub("executeCommand", "file.importCityGMLByCesium"),
+                    onclick: () => PubSub.default.pub("executeCommand", "file.importPlateauBuilding"),
                 },
                 svg({ icon: "icon-position", className: style.heroIcon }),
                 div({
                     className: style.heroTitle,
-                    textContent: new Localize("command.file.importCityGMLByCesium"),
+                    textContent: new Localize("command.file.importPlateauBuilding"),
                 }),
                 div({
                     className: style.heroDescription,
                     textContent:
                         I18n.translate("common.language") === "日本語"
-                            ? "3D地図から建物を選んで作成"
-                            : "Pick building from 3D Map",
+                            ? "検索から3D地図で建物を選んで作成"
+                            : "Search and pick building from 3D Map",
                 }),
             ),
         );

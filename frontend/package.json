@@ -51,6 +51,7 @@
         "typescript-plugin-css-modules": "^5.1.0"
     },
     "dependencies": {
+        "dec": "^0.0.1",
         "jotai": "^2.16.1",
         "lottie-web": "^5.13.0",
         "panzoom": "^9.4.3",

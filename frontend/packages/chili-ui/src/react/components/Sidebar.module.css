@@ -1,7 +1,10 @@
+/* Sidebar - Dark theme unified */
 .sidebar {
-    width: 320px;
-    background-color: var(--neutral-50);
-    border-left: 1px solid var(--border-color);
+    width: 340px;
+    background: rgba(32, 33, 36, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
@@ -10,38 +13,37 @@
 
 /* Sidebar Header */
 .sidebarHeader {
-    padding: 16px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--neutral-0);
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .selectionCount {
-    font-weight: var(--font-weight-bold);
-    color: var(--primary-color);
-    font-size: var(--font-size-md);
+    font-weight: 600;
+    color: #8ab4f8;
+    font-size: 15px;
 }
 
 .emptyHeader {
-    font-weight: var(--font-weight-medium);
-    color: var(--neutral-500);
-    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
 }
 
 /* Building List */
 .sidebarList {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .emptyState {
     text-align: center;
-    padding: 40px 20px;
-    color: var(--neutral-500);
-    font-size: var(--font-size-sm);
+    padding: 48px 24px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -50,55 +52,55 @@
 
 /* Sidebar Footer */
 .sidebarFooter {
-    padding: 16px;
-    border-top: 1px solid var(--border-color);
-    background-color: var(--neutral-0);
+    padding: 16px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .importButton {
     width: 100%;
-    padding: 10px;
-    background-color: var(--primary-color);
-    color: white;
+    padding: 12px;
+    background: #8ab4f8;
+    color: #202124;
     border: none;
-    border-radius: var(--radius-md);
-    font-weight: var(--font-weight-medium);
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
     cursor: pointer;
-    font-size: var(--font-size-md);
-    transition: background-color 0.2s;
+    transition: all 0.15s;
 }
 
 .importButton:hover:not(:disabled) {
-    background-color: var(--primary-dark);
+    background: #aecbfa;
 }
 
 .importButton:disabled {
-    background-color: var(--neutral-300);
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.3);
     cursor: not-allowed;
-    opacity: 0.7;
 }
 
 .clearButton {
     width: 100%;
-    padding: 8px;
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--neutral-600);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
+    padding: 10px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 
 .clearButton:hover:not(:disabled) {
-    background-color: var(--neutral-100);
-    color: var(--foreground-color);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #e8eaed;
 }
 
 .clearButton:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }

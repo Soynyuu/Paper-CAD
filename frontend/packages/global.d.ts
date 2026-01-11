@@ -37,6 +37,8 @@ interface AppConfig {
     cesiumTerrainAssetId: number;
     /** Optional dedicated token for terrain assets (e.g. PLATEAU-Terrain) */
     cesiumTerrainIonToken?: string;
+    /** Preferred LOD for PLATEAU 3D Tiles in the Cesium picker (1-3) */
+    cesiumPickLod?: number;
     useReactCesiumPicker: boolean;
 }
 

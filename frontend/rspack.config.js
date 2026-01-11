@@ -30,6 +30,7 @@ loadEnv();
 
 // PLATEAU-Terrain (ion asset 3258112). Override with CESIUM_TERRAIN_ASSET_ID if needed.
 const DEFAULT_TERRAIN_ASSET_ID = 3258112;
+const DEFAULT_PICK_LOD = 3;
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -182,6 +183,7 @@ const config = defineConfig({
                     DEFAULT_TERRAIN_ASSET_ID,
                 ),
                 cesiumTerrainIonToken: process.env.CESIUM_TERRAIN_ION_TOKEN || "",
+                cesiumPickLod: parseNumber(process.env.CESIUM_PICK_LOD, DEFAULT_PICK_LOD),
                 useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),

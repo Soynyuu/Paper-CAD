@@ -114,6 +114,22 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [isSearching, setIsSearching] = useState<boolean>(false);
     const [searchError, setSearchError] = useState<string | null>(null);
     const [showResults, setShowResults] = useState<boolean>(false);
+
+    // Debug: monitor component mount/unmount
+    useEffect(() => {
+        console.log("[Debug] Component MOUNTED");
+        return () => console.log("[Debug] Component UNMOUNTED");
+    }, []);
+
+    // Debug: monitor searchQuery changes
+    useEffect(() => {
+        console.log("[Debug] searchQuery changed to:", searchQuery);
+    }, [searchQuery]);
+
+    // Debug: monitor showResults changes
+    useEffect(() => {
+        console.log("[Debug] showResults changed to:", showResults, "searchResults:", searchResults);
+    }, [showResults, searchResults]);
     const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
@@ -315,8 +331,12 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // Search handlers
     const performSearch = useCallback(async () => {
+        console.log("[Search] performSearch called, searchQuery:", searchQuery);
         const query = searchQuery.trim();
-        if (!query) return;
+        if (!query) {
+            console.log("[Search] Empty query, returning");
+            return;
+        }
 
         // GML IDモードの場合、メッシュコードもチェック
         if (searchMode === "buildingId" && !meshCode.trim()) {
@@ -361,6 +381,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                           name_filter: searchMode === "facility" ? query : undefined,
                       };
 
+            console.log("[Search] Fetching:", `${apiBaseUrl}${endpoint}`, requestBody);
             const response = await fetch(`${apiBaseUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -368,12 +389,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 signal: abortControllerRef.current.signal,
             });
 
+            console.log("[Search] Response status:", response.status);
+
             // Check HTTP status
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
             const data = await response.json();
+            console.log("[Search] Response data:", JSON.stringify(data, null, 2));
 
             if (!data.success) {
                 setSearchError(
@@ -419,9 +443,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 };
             }
 
+            console.log("[Search] Setting result:", result);
             setSearchResults([result]);
             setShowResults(true);
             setSelectedResultIndex(0);
+            console.log("[Search] Results set, showResults should be true now");
         } catch (error: unknown) {
             if (error instanceof Error && error.name === "AbortError") return;
             console.error("[PlateauCesiumPickerReact] Search failed:", error);
@@ -447,16 +473,25 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     const handleSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
-            // Block during active IME composition
+            // For Enter key, only check nativeEvent.isComposing to allow search after IME confirmation
+            if (e.key === "Enter") {
+                // If IME is actively composing (e.g., showing candidates), don't trigger search
+                if (e.nativeEvent.isComposing) {
+                    console.log("[KeyDown] Enter blocked - IME composing");
+                    return;
+                }
+                console.log("[KeyDown] Enter pressed, calling performSearch");
+                e.preventDefault();
+                performSearch();
+                return;
+            }
+
+            // For other keys, block during active IME composition
             if (isComposingRef.current || e.nativeEvent.isComposing) {
                 return;
             }
 
             switch (e.key) {
-                case "Enter":
-                    e.preventDefault();
-                    performSearch();
-                    break;
                 case "Escape":
                     setShowResults(false);
                     setSearchError(null);
@@ -524,10 +559,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
                 // Get API base URL
-                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001";
+                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
                 // Fetch 3D Tiles URLs from backend
-                const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
+                const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ mesh_codes: meshCodes, lod: preferredPickLod }),
@@ -632,6 +667,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onFocus={handleSearchFocus}
                                     onKeyDown={handleSearchKeyDown}
+                                    onCompositionStart={handleCompositionStart}
+                                    onCompositionEnd={handleCompositionEnd}
                                     disabled={isSearching}
                                     autoComplete="off"
                                 />

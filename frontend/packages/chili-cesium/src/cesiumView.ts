@@ -155,7 +155,7 @@ const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
 export class CesiumView {
     private viewer: Cesium.Viewer | null = null;
     private container: HTMLElement;
-    private currentBasemap: BasemapType = "plateau-ortho-2023";
+    private currentBasemap: BasemapType = "gsi-pale";
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -164,9 +164,9 @@ export class CesiumView {
     /**
      * Initialize Cesium viewer with PLATEAU-optimized settings
      *
-     * @param basemap - Initial basemap type (default: plateau-ortho-2023)
+     * @param basemap - Initial basemap type (default: gsi-pale)
      */
-    async initialize(basemap: BasemapType = "plateau-ortho-2023"): Promise<void> {
+    async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
         const appConfig = getRuntimeAppConfig();
 
         // Set Cesium base URL from environment

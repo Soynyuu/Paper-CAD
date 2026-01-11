@@ -17,6 +17,7 @@ Techniques:
 3. NumPy vectorization for bulk operations (optional)
 """
 
+import re
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Optional
 
@@ -26,6 +27,10 @@ try:
     NUMPY_AVAILABLE = True
 except ImportError:
     NUMPY_AVAILABLE = False
+
+_ALPHA_PATTERN = re.compile(r"[A-Za-z]")
+_LAST_NUMPY_TEXT: Optional[str] = None
+_LAST_NUMPY_COORDS: Optional[List[Tuple[float, float, Optional[float]]]] = None
 
 
 def parse_poslist_optimized(elem: ET.Element) -> List[Tuple[float, float, Optional[float]]]:
@@ -124,6 +129,8 @@ def parse_poslist_numpy(elem: ET.Element) -> List[Tuple[float, float, Optional[f
         coords = parse_poslist_numpy(poslist_elem)
         ```
     """
+    global _LAST_NUMPY_TEXT, _LAST_NUMPY_COORDS
+
     if not NUMPY_AVAILABLE:
         # Fallback to optimized version
         return parse_poslist_optimized(elem)
@@ -131,6 +138,14 @@ def parse_poslist_numpy(elem: ET.Element) -> List[Tuple[float, float, Optional[f
     txt = elem.text
     if not txt:
         return []
+
+    if txt == _LAST_NUMPY_TEXT and _LAST_NUMPY_COORDS is not None:
+        return _LAST_NUMPY_COORDS
+
+    # Fallback to optimized parsing if non-numeric tokens are present.
+    # This avoids NumPy silently truncating on invalid input.
+    if _ALPHA_PATTERN.search(txt):
+        return parse_poslist_optimized(elem)
 
     try:
         # NumPy's fromstring is 10-20x faster than Python's float() loop
@@ -144,22 +159,27 @@ def parse_poslist_numpy(elem: ET.Element) -> List[Tuple[float, float, Optional[f
     if len(vals) == 0:
         return []
 
+    vals_list = vals.tolist()
+
     # Detect dimensionality
-    num_vals = len(vals)
+    num_vals = len(vals_list)
     is_3d = (num_vals % 3 == 0) and (num_vals >= 3)
 
     if is_3d:
-        # Reshape to (N, 3) array
-        coords = vals.reshape(-1, 3)
         # Convert to list of tuples (required for compatibility)
-        return list(map(tuple, coords))
+        coords = list(zip(vals_list[0::3], vals_list[1::3], vals_list[2::3]))
+        _LAST_NUMPY_TEXT = txt
+        _LAST_NUMPY_COORDS = coords
+        return coords
 
     else:
         # 2D coordinates (less common in PLATEAU)
         if num_vals % 2 == 0 and num_vals >= 2:
-            coords = vals.reshape(-1, 2)
             # Add None for Z coordinate
-            return [(float(x), float(y), None) for x, y in coords]
+            coords = [(x, y, None) for x, y in zip(vals_list[0::2], vals_list[1::2])]
+            _LAST_NUMPY_TEXT = txt
+            _LAST_NUMPY_COORDS = coords
+            return coords
 
     # Invalid dimensionality
     return []

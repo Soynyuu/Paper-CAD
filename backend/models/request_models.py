@@ -323,3 +323,59 @@ class PlateauBatchBuildingResponse(BaseModel):
     total_failed: int = Field(
         description="取得失敗した建物数 / Number of failed retrievals"
     )
+
+
+class MeshToTilesetsRequest(BaseModel):
+    """Request to convert mesh codes to 3D Tiles URLs (メッシュコード → 3D Tiles URL変換)"""
+
+    mesh_codes: list[str] = Field(
+        description="3次メッシュコードのリスト（8桁、1km区画） / List of 3rd mesh codes (8 digits, 1km area)",
+        min_length=1,
+        max_length=25,  # Limit to 25 meshes (5x5 grid max)
+        example=["53394511", "53394512", "53394521"]
+    )
+    lod: Optional[int] = Field(
+        default=1,
+        description="LODレベル / LOD level (1, 2, or 3)",
+        ge=1,
+        le=3,
+        example=1
+    )
+
+
+class TilesetInfo(BaseModel):
+    """Information about a single 3D Tiles tileset"""
+    mesh_code: str = Field(
+        description="メッシュコード / Mesh code",
+        example="53394511"
+    )
+    tileset_url: str = Field(
+        description="3D Tiles tileset.json URL",
+        example="https://assets.cms.plateau.reearth.io/assets/.../tileset.json"
+    )
+    municipality_name: Optional[str] = Field(
+        default=None,
+        description="市区町村名 / Municipality name",
+        example="千代田区"
+    )
+    municipality_code: Optional[str] = Field(
+        default=None,
+        description="市区町村コード / Municipality code",
+        example="13101"
+    )
+
+
+class MeshToTilesetsResponse(BaseModel):
+    """Response with 3D Tiles URLs for requested mesh codes"""
+    tilesets: list[TilesetInfo] = Field(
+        description="3D Tilesetsの情報リスト / List of tileset information"
+    )
+    total_requested: int = Field(
+        description="リクエストされたメッシュ数 / Total number of meshes requested"
+    )
+    total_found: int = Field(
+        description="見つかったtileset数 / Number of tilesets found"
+    )
+    total_not_found: int = Field(
+        description="見つからなかったメッシュ数 / Number of meshes not found"
+    )

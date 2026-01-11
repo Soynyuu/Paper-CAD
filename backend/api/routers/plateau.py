@@ -12,6 +12,8 @@ from models.request_models import (
     BuildingIdWithMeshItem,
     BuildingInfoResponse,
     GeocodingResultResponse,
+    MeshToTilesetsRequest,
+    MeshToTilesetsResponse,
     PlateauBatchBuildingRequest,
     PlateauBatchBuildingResponse,
     PlateauBuildingIdRequest,
@@ -19,8 +21,10 @@ from models.request_models import (
     PlateauBuildingIdWithMeshRequest,
     PlateauSearchRequest,
     PlateauSearchResponse,
+    TilesetInfo,
 )
 from services.citygml import export_step_from_citygml
+from services.plateau_api_client import fetch_tilesets_for_meshes
 from services.plateau_fetcher import (
     search_building_by_id,
     search_building_by_id_and_mesh,
@@ -1091,6 +1095,123 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
     except HTTPException:
         raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+
+
+# --- PLATEAU Mesh to 3D Tiles Converter ---
+@router.post(
+    "/api/plateau/mesh-to-tilesets",
+    summary="Convert Mesh Codes to 3D Tiles URLs",
+    tags=["PLATEAU Integration"],
+    response_model=MeshToTilesetsResponse,
+    responses={
+        200: {
+            "description": "3D Tiles URLs for requested mesh codes",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "tilesets": [
+                            {
+                                "mesh_code": "53394511",
+                                "tileset_url": "https://assets.cms.plateau.reearth.io/assets/.../tileset.json",
+                                "municipality_name": "千代田区",
+                                "municipality_code": "13101"
+                            }
+                        ],
+                        "total_requested": 9,
+                        "total_found": 1,
+                        "total_not_found": 8
+                    }
+                }
+            }
+        }
+    }
+)
+async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResponse:
+    """
+    メッシュコードのリスト → 3D Tiles URLのリストに変換
+
+    PLATEAU Data Catalog APIを使用して、各メッシュコードに対応する
+    3D Tiles tilesetのURLを取得します。
+
+    **Implementation Note:**
+    事前生成した mesh2→自治体マップ（N03ベース）を使用します。
+    ランタイムは JSON を読むだけで全国対応します。
+
+    ### リクエスト例
+    ```json
+    {
+        "mesh_codes": ["53394511", "53394512", "53394521"],
+        "lod": 1
+    }
+    ```
+
+    ### レスポンス例
+    ```json
+    {
+        "tilesets": [
+            {
+                "mesh_code": "53394511",
+                "tileset_url": "https://assets.cms.plateau.reearth.io/assets/.../tileset.json",
+                "municipality_name": "千代田区",
+                "municipality_code": "13101"
+            }
+        ],
+        "total_requested": 9,
+        "total_found": 1,
+        "total_not_found": 8
+    }
+    ```
+
+    ### メッシュコードについて
+    - 3次メッシュコード（8桁）を使用
+    - 1メッシュ = 約1km x 1km
+    - 周辺メッシュを含めて検索することで境界付近の建物もカバー
+
+    ### 制限事項
+    - 最大25メッシュまで（5x5グリッド）
+    - 同じ市区町村の重複したURLは除外されます
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"[API] /api/plateau/mesh-to-tilesets")
+        print(f"[API] Mesh Codes: {request.mesh_codes}")
+        print(f"[API] LOD: {request.lod}")
+        print(f"{'='*60}\n")
+
+        # Fetch 3D Tiles URLs for mesh codes
+        tilesets_data = await fetch_tilesets_for_meshes(
+            request.mesh_codes,
+            request.lod
+        )
+
+        # Build response
+        tilesets = [
+            TilesetInfo(
+                mesh_code=data["mesh_code"],
+                tileset_url=data["tileset_url"],
+                municipality_name=data.get("municipality_name"),
+                municipality_code=data.get("municipality_code")
+            )
+            for data in tilesets_data
+        ]
+
+        total_requested = len(request.mesh_codes)
+        total_found = len(tilesets)
+        total_not_found = total_requested - total_found
+
+        print(f"[API] Found {total_found}/{total_requested} tilesets")
+
+        return MeshToTilesetsResponse(
+            tilesets=tilesets,
+            total_requested=total_requested,
+            total_found=total_found,
+            total_not_found=total_not_found
+        )
+
     except Exception as e:
         import traceback
         traceback.print_exc()

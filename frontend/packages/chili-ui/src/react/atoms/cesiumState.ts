@@ -5,11 +5,6 @@ import { atom } from "jotai";
 import type { PickedBuilding } from "chili-cesium";
 
 /**
- * Currently selected city key (e.g., "tokyo-chiyoda")
- */
-export const currentCityAtom = atom<string>("");
-
-/**
  * Array of selected buildings
  */
 export const selectedBuildingsAtom = atom<PickedBuilding[]>([]);
@@ -23,16 +18,6 @@ export const loadingAtom = atom<boolean>(false);
  * Current loading message
  */
 export const loadingMessageAtom = atom<string>("");
-
-/**
- * Camera position for the current city
- * Used to restore camera when switching cities
- */
-export const cameraPositionAtom = atom<{
-    lat: number;
-    lng: number;
-    height: number;
-} | null>(null);
 
 /**
  * Highlighted building IDs (visual feedback on hover)

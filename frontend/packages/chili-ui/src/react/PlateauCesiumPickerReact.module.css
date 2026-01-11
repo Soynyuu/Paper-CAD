@@ -5,9 +5,9 @@
     max-height: 100vh;
     padding: 0;
     border: none;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-xl);
-    background-color: var(--panel-background-color);
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    background-color: var(--panel-background-color, #1a1a1a);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -18,7 +18,6 @@
     z-index: 9999;
 }
 
-/* Main Body: Map + Sidebar */
 .body {
     display: flex;
     flex: 1;
@@ -29,176 +28,128 @@
 .mapContainer {
     flex: 1;
     position: relative;
-    background-color: #1a1a1a;
+    background-color: #0a0a0a;
     overflow: hidden;
 }
 
-/* Search container (top-left overlay) */
+/* ============================================
+   Search Container - Dieter Rams Inspired
+   "Less, but better" - Minimal, functional
+   ============================================ */
 .searchContainer {
     position: absolute;
-    top: 16px;
-    left: 16px;
-    width: 360px;
+    top: 20px;
+    left: 20px;
+    width: 380px;
     z-index: 200;
     pointer-events: auto;
 }
 
-/* Search mode tabs */
-.searchModeTabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 8px;
-    background-color: rgba(255, 255, 255, 0.95);
-    border-radius: var(--radius-md, 8px);
-    padding: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+/* Main search box - Google-style simplicity */
+.searchBox {
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
 
-.searchModeTab {
-    flex: 1;
-    padding: 8px 12px;
-    border: none;
-    background-color: transparent;
-    color: var(--text-secondary, #666);
-    font-size: var(--font-size-xs, 12px);
-    font-weight: var(--font-weight-medium, 500);
-    border-radius: var(--radius-sm, 6px);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
+.searchBox:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.searchModeTab:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-    color: var(--text-primary, #333);
+.searchBox.expanded {
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
-.searchModeTab.active {
-    background-color: var(--primary-color, #2196f3);
-    color: white;
-    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
-}
-
-.searchModeTab.active:hover {
-    background-color: var(--primary-color-dark, #1976d2);
-}
-
-/* Mesh code input wrapper */
-.meshCodeInputWrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-    background-color: rgba(255, 255, 255, 0.98);
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border: 2px solid transparent;
-    transition: border-color 0.2s ease;
-    margin-top: 8px;
-}
-
-.meshCodeInputWrapper:focus-within {
-    border-color: var(--primary-color, #2196f3);
-}
-
-.meshCodeIcon {
-    position: absolute;
-    left: 12px;
-    font-size: 16px;
-    color: var(--text-secondary, #666);
-    pointer-events: none;
-}
-
-.meshCodeInput {
-    flex: 1;
-    padding: 10px 12px 10px 40px;
-    border: none;
-    background: transparent;
-    font-size: var(--font-size-sm, 14px);
-    outline: none;
-    color: var(--text-primary, #333);
-}
-
-.meshCodeInput::placeholder {
-    color: var(--text-secondary, #999);
-}
-
-.meshCodeInput:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
+/* Search input wrapper */
 .searchInputWrapper {
     position: relative;
     display: flex;
     align-items: center;
-    background-color: rgba(255, 255, 255, 0.98);
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    border: 2px solid transparent;
-    transition: border-color 0.2s ease;
-}
-
-.searchInputWrapper:focus-within {
-    border-color: var(--primary-color, #2196f3);
+    height: 48px;
 }
 
 .searchIcon {
     position: absolute;
-    left: 12px;
-    font-size: 16px;
-    color: var(--text-secondary, #666);
+    left: 16px;
+    width: 20px;
+    height: 20px;
+    color: #5f6368;
     pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.searchIcon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
 }
 
 .searchInput {
     flex: 1;
-    padding: 12px 40px 12px 40px;
+    height: 100%;
+    padding: 0 48px;
     border: none;
     background: transparent;
-    font-size: var(--font-size-sm, 14px);
+    font-size: 16px;
+    font-family: inherit;
+    color: #202124;
     outline: none;
-    color: var(--text-primary, #333);
+    caret-color: #1a73e8;
 }
 
 .searchInput::placeholder {
-    color: var(--text-secondary, #999);
+    color: #9aa0a6;
 }
 
 .searchInput:disabled {
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
+/* Clear button */
 .searchClearButton {
     position: absolute;
     right: 12px;
-    background: none;
+    width: 32px;
+    height: 32px;
     border: none;
-    font-size: 24px;
-    color: var(--text-secondary, #666);
+    background: transparent;
+    color: #5f6368;
     cursor: pointer;
-    padding: 0;
-    width: 24px;
-    height: 24px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s ease;
+    transition: background-color 0.15s;
 }
 
 .searchClearButton:hover {
-    color: var(--text-primary, #333);
+    background: rgba(0, 0, 0, 0.06);
+    color: #202124;
 }
 
+.searchClearButton svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Loading spinner */
 .searchSpinner {
     position: absolute;
-    right: 12px;
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--primary-color, #2196f3);
-    border-top-color: transparent;
+    right: 16px;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e8eaed;
+    border-top-color: #1a73e8;
     border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+    animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -207,67 +158,165 @@
     }
 }
 
+/* Divider line */
+.searchDivider {
+    height: 1px;
+    background: #e8eaed;
+    margin: 0 16px;
+}
+
+/* Mode selector - appears on focus/expand */
+.searchModes {
+    display: flex;
+    padding: 8px 12px;
+    gap: 6px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.searchModes.visible {
+    opacity: 1;
+    max-height: 52px;
+    padding: 12px;
+}
+
+.searchModeChip {
+    padding: 6px 14px;
+    border: 1px solid #dadce0;
+    border-radius: 16px;
+    background: transparent;
+    color: #3c4043;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.searchModeChip:hover {
+    background: #f1f3f4;
+    border-color: #dadce0;
+}
+
+.searchModeChip.active {
+    background: #e8f0fe;
+    border-color: transparent;
+    color: #1a73e8;
+}
+
+/* Mesh code input for building ID mode */
+.meshCodeSection {
+    padding: 0 16px 12px;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.meshCodeSection.visible {
+    opacity: 1;
+    max-height: 60px;
+}
+
+.meshCodeInput {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #202124;
+    background: #f8f9fa;
+    outline: none;
+    transition:
+        border-color 0.15s,
+        background-color 0.15s;
+}
+
+.meshCodeInput:focus {
+    border-color: #1a73e8;
+    background: #fff;
+}
+
+.meshCodeInput::placeholder {
+    color: #9aa0a6;
+}
+
+/* Search results dropdown */
 .searchResults {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    right: 0;
-    max-height: 280px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.searchResults.visible {
+    max-height: 320px;
     overflow-y: auto;
-    background-color: rgba(255, 255, 255, 0.98);
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    z-index: 1;
 }
 
 .searchResultItem {
     padding: 12px 16px;
     cursor: pointer;
-    font-size: var(--font-size-sm, 14px);
-    color: var(--text-primary, #333);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    transition: background-color 0.15s ease;
-}
-
-.searchResultItem:last-child {
-    border-bottom: none;
+    transition: background-color 0.1s;
 }
 
 .searchResultItem:hover,
 .searchResultItem.selected {
-    background-color: var(--primary-color-light, #e3f2fd);
+    background: #f1f3f4;
 }
 
 .searchResultItem:active {
-    background-color: var(--primary-color-lighter, #bbdefb);
+    background: #e8eaed;
 }
 
-/* NEW: 場所名と建物件数の表示 */
 .locationName {
-    font-weight: var(--font-weight-medium, 500);
-    font-size: var(--font-size-sm, 14px);
+    font-size: 14px;
+    font-weight: 500;
+    color: #202124;
+    line-height: 1.4;
 }
 
 .buildingCount {
-    font-size: var(--font-size-xs, 12px);
-    color: var(--text-secondary, #666);
-    margin-top: 4px;
-}
-
-.searchResultItem:hover .buildingCount {
-    color: var(--primary-color, #2196f3);
+    font-size: 12px;
+    color: #5f6368;
+    margin-top: 2px;
 }
 
 .searchError {
     padding: 16px;
     text-align: center;
-    color: var(--error-color, #f44336);
-    font-size: var(--font-size-sm, 14px);
+    color: #d93025;
+    font-size: 14px;
 }
 
+/* Hint text */
+.searchHint {
+    padding: 8px 16px 12px;
+    font-size: 12px;
+    color: #9aa0a6;
+    text-align: center;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
 @media (max-width: 600px) {
     .searchContainer {
-        width: calc(100% - 32px);
-        max-width: 320px;
+        width: calc(100% - 40px);
+        max-width: 360px;
+    }
+
+    .searchBox {
+        border-radius: 20px;
+    }
+
+    .searchInputWrapper {
+        height: 44px;
+    }
+
+    .searchInput {
+        font-size: 15px;
     }
 }

@@ -1,19 +1,19 @@
-/* Building Card - Dark theme */
+/* Building Card - Paper-CAD Design System */
 .buildingCard {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 14px;
+    background: var(--neutral-50, #1f1f1f);
+    border: 1px solid var(--border-color, #3a3a3a);
+    border-radius: var(--radius-sm, 4px);
+    padding: var(--spacing-12, 12px);
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    transition: all 0.15s;
+    gap: var(--spacing-xs, 4px);
+    transition: all var(--transition-fast);
     position: relative;
 }
 
 .buildingCard:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(138, 180, 248, 0.4);
+    border-color: var(--primary-color, #ff7744);
+    box-shadow: var(--shadow-sm);
 }
 
 .cardHeader {
@@ -24,25 +24,25 @@
 }
 
 .buildingName {
-    font-weight: 500;
-    font-size: 13px;
-    color: #e8eaed;
+    font-weight: var(--font-weight-medium, 500);
+    font-size: var(--font-size-sm, 14px);
+    color: var(--foreground-color, #f5f5f5);
     line-height: 1.4;
     flex: 1;
-    margin-right: 8px;
+    margin-right: var(--spacing-sm, 8px);
 }
 
 .removeButton {
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--neutral-500, #999);
     cursor: pointer;
-    padding: 4px;
+    padding: var(--spacing-xs, 4px);
     margin: -4px -4px 0 0;
-    border-radius: 6px;
+    border-radius: var(--radius-xs, 2px);
     font-size: 18px;
     line-height: 1;
-    transition: all 0.15s;
+    transition: all var(--transition-fast);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -51,23 +51,23 @@
 }
 
 .removeButton:hover {
-    color: #f28b82;
-    background: rgba(242, 139, 130, 0.15);
+    color: var(--danger-color, #e74c3c);
+    background: rgba(231, 76, 60, 0.15);
 }
 
 .cardDetail {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.5);
+    font-size: var(--font-size-xs, 12px);
+    color: var(--neutral-500, #999);
     display: flex;
     justify-content: space-between;
 }
 
 .cardId {
-    font-family: "SF Mono", Monaco, monospace;
+    font-family: "SF Mono", Monaco, "Consolas", monospace;
     font-size: 10px;
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--neutral-400, #666);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 4px;
+    margin-top: var(--spacing-xs, 4px);
 }

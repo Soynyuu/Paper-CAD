@@ -152,54 +152,56 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         if (!containerRef.current) return;
 
         const container = containerRef.current;
-        const rect = container.getBoundingClientRect();
-        console.log("[PlateauCesiumPickerReact] Container size:", {
-            width: rect.width,
-            height: rect.height,
-            offsetWidth: container.offsetWidth,
-            offsetHeight: container.offsetHeight,
-        });
-
-        // Wait a frame to ensure layout is complete
-        requestAnimationFrame(() => {
-            const rectAfter = container.getBoundingClientRect();
-            console.log("[PlateauCesiumPickerReact] Container size after frame:", {
-                width: rectAfter.width,
-                height: rectAfter.height,
-            });
-        });
-
-        console.log("[PlateauCesiumPickerReact] Initializing CesiumView");
-
         let mounted = true;
+        let cesiumView: CesiumView | null = null;
+        let resizeObserver: ResizeObserver | null = null;
 
-        // Create and initialize CesiumView
-        const cesiumView = new CesiumView(container);
-        cesiumView.initialize();
-        cesiumViewRef.current = cesiumView;
+        // Delay initialization to ensure container has proper size
+        const initTimeout = setTimeout(() => {
+            if (!mounted) return;
 
-        // Get viewer instance for building picker
-        const viewer = cesiumView.getViewer();
-        if (!viewer) {
-            console.error("[PlateauCesiumPickerReact] Failed to get viewer from CesiumView");
-            return;
-        }
+            const rect = container.getBoundingClientRect();
+            console.log("[PlateauCesiumPickerReact] Initializing with container size:", rect.width, "x", rect.height);
 
-        // Initialize building picker
-        buildingPickerRef.current = new CesiumBuildingPicker(viewer);
+            // Create and initialize CesiumView
+            cesiumView = new CesiumView(container);
+            cesiumView.initialize();
+            cesiumViewRef.current = cesiumView;
 
-        // Initialize tileset loader
-        tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
+            // Get viewer instance for building picker
+            const viewer = cesiumView.getViewer();
+            if (!viewer) {
+                console.error("[PlateauCesiumPickerReact] Failed to get viewer from CesiumView");
+                return;
+            }
 
-        if (mounted) {
-            setViewerReady(true);
-            console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
-        }
+            // Initialize building picker
+            buildingPickerRef.current = new CesiumBuildingPicker(viewer);
+
+            // Initialize tileset loader
+            tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
+
+            // Watch for container resize and update Cesium
+            resizeObserver = new ResizeObserver(() => {
+                if (viewer && !viewer.isDestroyed()) {
+                    viewer.resize();
+                }
+            });
+            resizeObserver.observe(container);
+
+            if (mounted) {
+                setViewerReady(true);
+                console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
+            }
+        }, 100); // Wait 100ms for layout to stabilize
 
         // Cleanup on unmount
         return () => {
             mounted = false;
+            clearTimeout(initTimeout);
             console.log("[PlateauCesiumPickerReact] Disposing CesiumView");
+
+            resizeObserver?.disconnect();
 
             if (handlerRef.current) {
                 handlerRef.current.destroy();

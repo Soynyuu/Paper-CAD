@@ -214,37 +214,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             const resizeViewer = () => {
                 if (viewer.isDestroyed()) return;
-
-                // Get actual container size in pixels
-                const rect = container.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) {
-                    // Size not determined yet, retry on next frame
-                    requestAnimationFrame(() => resizeViewer());
-                    return;
-                }
-
-                const widget = viewer.container as HTMLElement | undefined;
-                const canvas = viewer.canvas as HTMLCanvasElement | undefined;
-                if (!widget || !canvas) return;
-
-                // Set explicit pixel sizes on widget (Cesium-generated .cesium-widget div)
-                widget.style.width = `${rect.width}px`;
-                widget.style.height = `${rect.height}px`;
-
-                // Set canvas HTML attributes for proper rendering
-                // devicePixelRatio ensures high-DPI display support
-                const dpr = window.devicePixelRatio || 1;
-                canvas.width = rect.width * dpr;
-                canvas.height = rect.height * dpr;
-                canvas.style.position = "absolute";
-                canvas.style.inset = "0";
-                canvas.style.width = `${rect.width}px`;
-                canvas.style.height = `${rect.height}px`;
-                canvas.style.display = "block";
-
                 viewer.resize();
                 viewer.scene?.requestRender();
-                viewer.render();
             };
 
             // Force resize after initialization (and again after layout settles)

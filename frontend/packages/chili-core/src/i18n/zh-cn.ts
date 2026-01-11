@@ -342,6 +342,7 @@ export default {
         "toast.plateau.importSuccess:{0}": "导入了 {0} 个建筑物",
         "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}": "导入了 {0} 个建筑物（{1} 个失败: {2}）",
         "toast.plateau.importFailed:{0}": "建筑物导入失败: {0}",
+        "toast.plateau.tilesetLoadFailed:{0}": "有 {0} 个网格加载失败",
         "toast.stepUnfold.success": "展开图生成成功",
         "toast.stepUnfold.error": "展开图生成失败",
         "stepUnfold.scale": "缩放比例",

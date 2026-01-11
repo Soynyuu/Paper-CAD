@@ -1,10 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`frontend/` is a TypeScript monorepo (Rspack) with `packages/chili-*` modules; the app entry is `frontend/packages/chili-web/`, and the C++ CAD kernel lives in `frontend/cpp/` for WASM builds. `backend/` hosts the FastAPI service with the unfold pipeline in `core/`, API routes in `api/`, and services in `services/`. Tests live in `frontend/packages/*/test/` and `backend/tests/`. Operational docs are in `docs/`, and `lp/` contains landing page assets.
+`frontend/` は TypeScript の monorepo（Rspack）で、`packages/chili-*` に機能別モジュールがあります。アプリの入口は `frontend/packages/chili-web/`、UI は `chili-ui`、ドキュメント/モデルの中核は `chili-core` です。C++ の CAD カーネルは `frontend/cpp/` で WASM へビルドされます。`backend/` は FastAPI サーバーで、展開パイプラインは `core/`、API ルーティングは `api/`、外部連携は `services/` にあります。テストは `frontend/packages/*/test/` と `backend/tests/`、運用ドキュメントは `docs/`、LP 素材は `lp/` に配置されています。
 
 ## Build, Test, and Development Commands
-Run commands from the directory shown:
+以下のディレクトリで実行してください。
 ```bash
 cd backend
 conda env create -f environment.yml
@@ -22,16 +22,15 @@ npm run build:wasm         # build C++ WASM kernel
 npm test                  # Jest tests
 npm run format            # Prettier + clang-format
 ```
-Other useful commands: `npm run demo`, `npm run testc` (coverage), `npm run deploy:production` (Cloudflare Pages), and `docker compose up -d` from `backend/` for backend deployment.
 
 ## Coding Style & Naming Conventions
-TypeScript/JS/CSS/JSON/MD are formatted by Prettier (2-space indentation). C++ uses clang-format with Webkit style (`npm run format`). Python follows existing 4-space indentation and PEP8-like conventions. Packages use `chili-*` naming, components are PascalCase, and variables are camelCase. Tests are named `*.test.ts(x)` (frontend) and `test_*.py` (backend).
+TS/JS/CSS/JSON/MD は Prettier で整形（2-space）。C++ は clang-format の Webkit スタイル（`npm run format`）。Python は 4-space で PEP8 に近い既存スタイルに合わせます。パッケージ名は `chili-*`、コンポーネントは PascalCase、変数は camelCase。テストは `*.test.ts(x)`（フロント）と `test_*.py`（バックエンド）です。
 
 ## Testing Guidelines
-Frontend uses Jest; tests live under `frontend/packages/*/test/` (example: `npm test -- packages/chili-core/test/observer.test.ts`). Backend uses pytest; tests live under `backend/tests/` (example: `pytest tests/citygml/streaming/ -v`). There is no explicit coverage target, but add regression tests for geometry or export changes.
+フロントエンドは Jest を使用し、`frontend/packages/*/test/` に配置します（例: `npm test -- packages/chili-core/test/observer.test.ts`）。バックエンドは pytest で `backend/tests/` に配置します（例: `pytest tests/citygml/streaming/ -v`）。幾何・出力・PLATEAU 連携の変更は回帰テストを追加してください。
 
 ## Commit & Pull Request Guidelines
-Commit history favors conventional prefixes like `feat:`, `fix:`, and `docs:` with short, imperative summaries. Avoid `wip` commits in shared branches. PRs should include a clear summary, rationale, test results, and screenshots/GIFs for UI or SVG output changes, plus linked issues when applicable.
+コミットは `feat:`, `fix:`, `docs:` などの短い接頭辞＋命令形サマリを推奨し、`wip` は避けてください。PR には概要・背景・テスト結果を必ず書き、UI/SVG 変更時はスクリーンショットや GIF を添付し、関連 Issue をリンクしてください。
 
 ## Configuration & Environment
-Frontend build-time env vars: `STEP_UNFOLD_API_URL` (required) and `STEP_UNFOLD_WS_URL` (optional) via `.env.*`. Backend runtime env vars: `PORT`, `FRONTEND_URL`, `CORS_ALLOW_ALL` via `.env.*`. Prereqs: Node.js 18+ and Python 3.10 (Conda recommended).
+フロントのビルド時環境変数は `.env.*` で `STEP_UNFOLD_API_URL`（必須）と `STEP_UNFOLD_WS_URL`（任意）を設定します。バックエンドは `.env.*` で `PORT`, `FRONTEND_URL`, `CORS_ALLOW_ALL` を設定します。前提は Node.js 18+ と Python 3.10（Conda 推奨）。OpenCASCADE がない場合は STEP 展開系の API が 503 を返します。

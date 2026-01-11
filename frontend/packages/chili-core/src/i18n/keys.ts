@@ -323,6 +323,7 @@ const I18N_KEYS = [
     "toast.plateau.importSuccess:{0}",
     "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}",
     "toast.plateau.importFailed:{0}",
+    "toast.plateau.tilesetLoadFailed:{0}",
     "toast.stepUnfold.success",
     "toast.stepUnfold.error",
     "stepUnfold.scale",

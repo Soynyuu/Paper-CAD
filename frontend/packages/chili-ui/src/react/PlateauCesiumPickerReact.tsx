@@ -12,11 +12,7 @@ import {
     resolveMeshCodesFromCoordinates,
     type PickedBuilding,
 } from "chili-cesium";
-import {
-    selectedBuildingsAtom,
-    loadingAtom,
-    loadingMessageAtom,
-} from "./atoms/cesiumState";
+import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { Instructions } from "./components/Instructions";
@@ -30,18 +26,7 @@ const ensureCesiumRuntime = () => {
         return;
     }
 
-    interface AppConfig {
-        cesiumBaseUrl?: string;
-        cesiumIonToken?: string;
-        stepUnfoldApiUrl?: string;
-    }
-
-    interface GlobalWithConfig extends Window {
-        __APP_CONFIG__?: AppConfig;
-        CESIUM_BASE_URL?: string;
-    }
-
-    const runtime = globalThis as unknown as GlobalWithConfig;
+    const runtime = window;
     const rawBaseUrl = runtime.__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
     const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
 
@@ -193,18 +178,18 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         return () => {
             mounted = false;
             console.log("[PlateauCesiumPickerReact] Disposing CesiumView");
-            
+
             if (handlerRef.current) {
                 handlerRef.current.destroy();
                 handlerRef.current = null;
             }
-            
+
             buildingPickerRef.current = null;
             tilesetLoaderRef.current = null;
-            
+
             cesiumViewRef.current?.dispose();
             cesiumViewRef.current = null;
-            
+
             setViewerReady(false);
         };
     }, []); // Run once on mount
@@ -266,7 +251,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     }, [onClose]);
 
     // Constants for coordinate conversion
-    const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator
+    const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator (OK for small ranges)
     const DEFAULT_TOKYO_LAT = 35.681236; // Tokyo Station latitude
     const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
 
@@ -277,7 +262,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         // GML IDモードの場合、メッシュコードもチェック
         if (searchMode === "buildingId" && !meshCode.trim()) {
-            setSearchError(I18n.translate("error.plateau.emptyMeshCode") || "メッシュコードを入力してください");
+            setSearchError(
+                I18n.translate("error.plateau.emptyMeshCode") || "メッシュコードを入力してください",
+            );
             setShowResults(true);
             return;
         }
@@ -292,40 +279,35 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         abortControllerRef.current = new AbortController();
 
         try {
-            interface AppConfig {
-                stepUnfoldApiUrl?: string;
-            }
-            interface WindowWithConfig extends Window {
-                __APP_CONFIG__?: AppConfig;
-            }
-            const apiBaseUrl = (window as unknown as WindowWithConfig).__APP_CONFIG__?.stepUnfoldApiUrl ||
-                              "http://localhost:8001/api";
+            const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
             // 検索モードに応じてエンドポイント切り替え
-            const endpoint = searchMode === "buildingId"
-                ? `/plateau/search-by-id-and-mesh`
-                : `/plateau/search-by-address`;
+            const endpoint =
+                searchMode === "buildingId"
+                    ? `/plateau/search-by-id-and-mesh`
+                    : `/plateau/search-by-address`;
 
-            const requestBody = searchMode === "buildingId"
-                ? {
-                    building_id: query,
-                    mesh_code: meshCode.trim(),
-                    debug: false,
-                    merge_building_parts: false
-                  }
-                : {
-                    query,
-                    radius: searchRadius / METERS_PER_DEGREE, // Convert meters to degrees
-                    limit: 20,
-                    search_mode: searchMode === "facility" ? "hybrid" : "distance",
-                    name_filter: searchMode === "facility" ? query : undefined
-                  };
+            const requestBody =
+                searchMode === "buildingId"
+                    ? {
+                          building_id: query,
+                          mesh_code: meshCode.trim(),
+                          debug: false,
+                          merge_building_parts: false,
+                      }
+                    : {
+                          query,
+                          radius: searchRadius / METERS_PER_DEGREE, // Convert meters to degrees
+                          limit: 20,
+                          search_mode: searchMode === "facility" ? "hybrid" : "distance",
+                          name_filter: searchMode === "facility" ? query : undefined,
+                      };
 
             const response = await fetch(`${apiBaseUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(requestBody),
-                signal: abortControllerRef.current.signal
+                signal: abortControllerRef.current.signal,
             });
 
             // Check HTTP status
@@ -336,7 +318,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const data = await response.json();
 
             if (!data.success) {
-                setSearchError(data.error || I18n.translate("error.plateau.searchFailed:{0}", "Unknown error"));
+                setSearchError(
+                    data.error || I18n.translate("error.plateau.searchFailed:{0}", "Unknown error"),
+                );
                 setSearchResults([]);
                 setShowResults(true);
                 return;
@@ -357,7 +341,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     displayName: data.building.name || data.building.gml_id,
                     latitude: data.building.latitude || DEFAULT_TOKYO_LAT,
                     longitude: data.building.longitude || DEFAULT_TOKYO_LON,
-                    buildingCount: 1
+                    buildingCount: 1,
                 };
             } else {
                 // 施設名/住所検索の場合
@@ -373,16 +357,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     longitude: data.geocoding.longitude,
                     osmType: data.geocoding.osm_type,
                     osmId: data.geocoding.osm_id,
-                    buildingCount: data.buildings ? data.buildings.length : 0
+                    buildingCount: data.buildings ? data.buildings.length : 0,
                 };
             }
 
             setSearchResults([result]);
             setShowResults(true);
             setSelectedResultIndex(0);
-
         } catch (error: unknown) {
-            if (error instanceof Error && error.name === 'AbortError') return;
+            if (error instanceof Error && error.name === "AbortError") return;
             console.error("[PlateauCesiumPickerReact] Search failed:", error);
             const errorMsg = error instanceof Error ? error.message : "Unknown error";
             setSearchError(I18n.translate("error.plateau.searchFailed:{0}", errorMsg));
@@ -403,9 +386,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             setSearchError(null);
         } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
             e.preventDefault();
-            setSelectedResultIndex((prev) =>
-                prev < searchResults.length - 1 ? prev + 1 : prev
-            );
+            setSelectedResultIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
         } else if (e.key === "ArrowUp" && showResults && searchResults.length > 0) {
             e.preventDefault();
             setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
@@ -422,101 +403,102 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
-    const handleResultClick = useCallback(async (result: SearchResult) => {
-        const viewer = cesiumViewRef.current?.getViewer();
-        const loader = tilesetLoaderRef.current;
-        if (!viewer || !loader) return;
+    const handleResultClick = useCallback(
+        async (result: SearchResult) => {
+            const viewer = cesiumViewRef.current?.getViewer();
+            const loader = tilesetLoaderRef.current;
+            if (!viewer || !loader) return;
 
-        // 検索ドロップダウンを閉じる
-        setShowResults(false);
-        setSearchQuery(result.displayName);
+            // 検索ドロップダウンを閉じる
+            setShowResults(false);
+            setSearchQuery(result.displayName);
 
-        // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
-        try {
-            setLoading(true);
-            setLoadingMessage("3D Tilesを読み込み中...");
+            // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
+            try {
+                setLoading(true);
+                setLoadingMessage("3D Tilesを読み込み中...");
 
-            // Calculate mesh codes (center + surrounding)
-            const meshCodes = resolveMeshCodesFromCoordinates(
-                result.latitude,
-                result.longitude,
-                true // Include neighbors
-            );
+                // Calculate mesh codes (center + surrounding)
+                const meshCodes = resolveMeshCodesFromCoordinates(
+                    result.latitude,
+                    result.longitude,
+                    true, // Include neighbors
+                );
 
-            console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
+                console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
-            // Get API base URL
-            interface AppConfig {
-                stepUnfoldApiUrl?: string;
-            }
-            interface WindowWithConfig extends Window {
-                __APP_CONFIG__?: AppConfig;
-            }
-            const apiBaseUrl = (window as unknown as WindowWithConfig).__APP_CONFIG__?.stepUnfoldApiUrl ||
-                              "http://localhost:8001";
+                // Get API base URL
+                const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001";
 
-            // Fetch 3D Tiles URLs from backend
-            const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mesh_codes: meshCodes, lod: 1 })
-            });
+                // Fetch 3D Tiles URLs from backend
+                const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mesh_codes: meshCodes, lod: 1 }),
+                });
 
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
 
-            const data = await response.json();
-            const tilesets = data.tilesets || [];
+                const data = await response.json();
+                const tilesets = data.tilesets || [];
 
-            if (tilesets.length === 0) {
-                console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                if (tilesets.length === 0) {
+                    console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                    setLoading(false);
+                    setLoadingMessage("");
+                    return;
+                }
+
+                // Load tilesets
+                const tilesetsToLoad = tilesets.map((t: any) => ({
+                    meshCode: t.mesh_code,
+                    url: t.tileset_url,
+                }));
+
+                const { failedMeshes } = await loader.loadMultipleTilesets(tilesetsToLoad);
+                if (failedMeshes.length > 0) {
+                    PubSub.default.pub(
+                        "showToast",
+                        "toast.plateau.tilesetLoadFailed:{0}",
+                        failedMeshes.length,
+                    );
+                }
+
+                console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
+
+                // NOW move camera AFTER tiles are loaded (matching Web Components version)
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(
+                        result.longitude,
+                        result.latitude,
+                        1000, // 高度1000m（建物が見やすい高さ）
+                    ),
+                    duration: 1.5,
+                });
+
                 setLoading(false);
                 setLoadingMessage("");
-                return;
+
+                // ユーザーに建物選択を促す（カメラ移動完了後）
+                if (result.buildingCount && result.buildingCount > 0) {
+                    console.log(
+                        `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
+                    );
+                }
+            } catch (error) {
+                console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
+                setLoading(false);
+                setLoadingMessage("");
             }
-
-            // Load tilesets
-            const tilesetsToLoad = tilesets.map((t: any) => ({
-                meshCode: t.mesh_code,
-                url: t.tileset_url
-            }));
-
-            await loader.loadMultipleTilesets(tilesetsToLoad);
-
-            console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
-
-            // NOW move camera AFTER tiles are loaded (matching Web Components version)
-            viewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(
-                    result.longitude,
-                    result.latitude,
-                    1000  // 高度1000m（建物が見やすい高さ）
-                ),
-                duration: 1.5,
-            });
-
-            setLoading(false);
-            setLoadingMessage("");
-
-            // ユーザーに建物選択を促す（カメラ移動完了後）
-            if (result.buildingCount && result.buildingCount > 0) {
-                console.log(`[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`);
-            }
-
-        } catch (error) {
-            console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
-            setLoading(false);
-            setLoadingMessage("");
-        }
-    }, [setLoading, setLoadingMessage]);
+        },
+        [setLoading, setLoadingMessage],
+    );
 
     return (
         <div className={styles.dialog}>
-            <Header
-                onClose={handleClose}
-                loading={loading}
-            />
+            <Header onClose={handleClose} loading={loading} />
             <div className={styles.body}>
                 <div className={styles.mapContainer}>
                     {/* Map container for CesiumView (Web Components) */}
@@ -557,9 +539,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                 🆔 建物ID
                             </button>
                         </div>
-                        
+
                         <div className={styles.searchInputWrapper}>
-                            <span className={styles.searchIcon} aria-hidden="true">🔍</span>
+                            <span className={styles.searchIcon} aria-hidden="true">
+                                🔍
+                            </span>
                             <input
                                 type="text"
                                 className={styles.searchInput}
@@ -567,8 +551,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                     searchMode === "facility"
                                         ? "施設名を検索（例: 東京駅）"
                                         : searchMode === "address"
-                                        ? "住所を検索（例: 千代田区丸の内）"
-                                        : "建物IDを入力（例: bldg_xxx）"
+                                          ? "住所を検索（例: 千代田区丸の内）"
+                                          : "建物IDを入力（例: bldg_xxx）"
                                 }
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -578,8 +562,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                     searchMode === "facility"
                                         ? "施設名を検索"
                                         : searchMode === "address"
-                                        ? "住所を検索"
-                                        : "建物IDを検索"
+                                          ? "住所を検索"
+                                          : "建物IDを検索"
                                 }
                                 autoComplete="off"
                                 spellCheck="false"
@@ -591,11 +575,13 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                 </button>
                             )}
                         </div>
-                        
+
                         {/* Mesh code input for buildingId mode */}
                         {searchMode === "buildingId" && (
                             <div className={styles.meshCodeInputWrapper}>
-                                <span className={styles.meshCodeIcon} aria-hidden="true">🗺️</span>
+                                <span className={styles.meshCodeIcon} aria-hidden="true">
+                                    🗺️
+                                </span>
                                 <input
                                     type="text"
                                     className={styles.meshCodeInput}
@@ -612,29 +598,32 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             <div className={styles.searchResults} role="listbox">
                                 {searchError ? (
                                     <div className={styles.searchError}>⚠️ {searchError}</div>
-                                ) : searchResults.map((result, index) => (
-                                    <div
-                                        key={`${result.osmType}-${result.osmId}-${index}`}
-                                        className={`${styles.searchResultItem} ${
-                                            index === selectedResultIndex ? styles.selected : ""
-                                        }`}
-                                        onClick={() => handleResultClick(result)}
-                                        role="option"
-                                        aria-selected={index === selectedResultIndex}
-                                    >
-                                        {/* 場所情報のみ表示 */}
-                                        <div className={styles.locationName}>
-                                            📍 {result.displayName}
-                                        </div>
-
-                                        {/* 建物件数の情報のみ追加 */}
-                                        {result.buildingCount !== undefined && result.buildingCount > 0 && (
-                                            <div className={styles.buildingCount}>
-                                                周辺の建物 {result.buildingCount}件
+                                ) : (
+                                    searchResults.map((result, index) => (
+                                        <div
+                                            key={`${result.osmType}-${result.osmId}-${index}`}
+                                            className={`${styles.searchResultItem} ${
+                                                index === selectedResultIndex ? styles.selected : ""
+                                            }`}
+                                            onClick={() => handleResultClick(result)}
+                                            role="option"
+                                            aria-selected={index === selectedResultIndex}
+                                        >
+                                            {/* 場所情報のみ表示 */}
+                                            <div className={styles.locationName}>
+                                                📍 {result.displayName}
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+
+                                            {/* 建物件数の情報のみ追加 */}
+                                            {result.buildingCount !== undefined &&
+                                                result.buildingCount > 0 && (
+                                                    <div className={styles.buildingCount}>
+                                                        周辺の建物 {result.buildingCount}件
+                                                    </div>
+                                                )}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
                     </div>

@@ -32,7 +32,9 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 # PLATEAU Data Catalog API endpoint
-PLATEAU_API_URL = "https://api.plateauview.mlit.go.jp/datacatalog/plateau-datasets"
+PLATEAU_API_URL = os.getenv(
+    "PLATEAU_API_URL", "https://api.plateauview.mlit.go.jp/datacatalog/plateau-datasets"
+)
 
 # Cache for dataset catalog (refreshed periodically)
 _dataset_cache: Optional[List[Dict[str, Any]]] = None

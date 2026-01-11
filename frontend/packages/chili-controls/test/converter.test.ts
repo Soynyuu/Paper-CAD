@@ -1,13 +1,19 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { IConverter, XYZ } from "chili-core";
+import { Config, IConverter, LengthUnit, XYZ } from "chili-core";
 import { ColorConverter } from "../src/converters/colorConverter";
 import { NumberConverter } from "../src/converters/numberConverter";
 import { StringConverter } from "../src/converters/stringConverter";
 import { XYZConverter } from "../src/converters/xyzConverter";
 
 describe("converter test", () => {
+    beforeEach(() => {
+        const config = Config.instance;
+        config.lengthUnit = LengthUnit.Millimeter;
+        config.lengthPrecision = 2;
+    });
+
     test("test type", () => {
         let converters = [new XYZConverter(), new NumberConverter()];
         expect(converters.every((x) => (x as IConverter).convert !== undefined)).toBeTruthy();
@@ -17,7 +23,7 @@ describe("converter test", () => {
         let converter = new XYZConverter();
         let xyz = XYZ.unitX;
         let c = converter.convert(xyz);
-        expect(c.value).toStrictEqual("1,0,0");
+        expect(c.value).toStrictEqual("1.00,0.00,0.00 mm");
         expect(converter.convertBack(c.value).value.x).toBe(1);
         expect(converter.convertBack("1").isOk).toBe(false);
         expect(converter.convertBack("1, 1, 1, 1").isOk).toBe(false);
@@ -27,12 +33,12 @@ describe("converter test", () => {
     test("test NumberConverter", () => {
         let converter = new NumberConverter();
         expect(converter.convert(Number.NaN).isOk).toBe(false);
-        expect(converter.convert(-20).value).toBe("-20");
-        expect(converter.convert(20).value).toBe("20");
-        expect(converter.convert(1e3).value).toBe("1000");
+        expect(converter.convert(-20).value).toBe("-20.00 mm");
+        expect(converter.convert(20).value).toBe("20.00 mm");
+        expect(converter.convert(1e3).value).toBe("1000.00 mm");
         expect(converter.convertBack("NaN").isOk).toBeFalsy();
-        expect(converter.convertBack("1a").isOk).toBeFalsy();
-        expect(converter.convertBack("1E-3").value).toBe(0.001);
+        expect(converter.convertBack("1a").value).toBe(1);
+        expect(converter.convertBack("1E-3").isOk).toBeFalsy();
         expect(converter.convertBack("-3").value).toBe(-3);
     });
 

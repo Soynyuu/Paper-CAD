@@ -59,6 +59,7 @@ export class PlateauCesiumPickerDialog {
         let mouseDownPosition: { x: number; y: number } | null = null;
         let isCameraMoving = false;
         const DRAG_THRESHOLD_PX = 6;
+        const MESH_CODE_PATTERN = /^\d{8}$/;
 
         // Disambiguation popup state (Phase 5.2)
         let candidatePopup: HTMLElement | null = null;
@@ -272,9 +273,9 @@ export class PlateauCesiumPickerDialog {
          */
         const isWithinJapan = (latitude: number, longitude: number): boolean => {
             // Japan's rough boundaries (including main islands and remote islands)
-            // Latitude: 24°N (Yonaguni) ~ 46°N (Etorofu)
-            // Longitude: 123°E (Yonaguni) ~ 154°E (Minamitorishima)
-            return latitude >= 24 && latitude <= 46 && longitude >= 123 && longitude <= 154;
+            // Latitude: 20°N (Okinotorishima) ~ 46°N (Etorofu)
+            // Longitude: 122°E (Yonaguni) ~ 154°E (Minamitorishima)
+            return latitude >= 20 && latitude <= 46 && longitude >= 122 && longitude <= 154;
         };
 
         /**
@@ -307,6 +308,13 @@ export class PlateauCesiumPickerDialog {
         const updateMeshIndicator = (meshCount: number) => {
             const coverage = Math.sqrt(meshCount); // 3x3 = 9 → "約3km"
             meshIndicator.textContent = `💡 表示中: ${meshCount}メッシュ (約${coverage.toFixed(0)}km範囲)`;
+        };
+
+        const notifyMeshLoadFailures = (failedMeshes: string[]) => {
+            if (failedMeshes.length === 0) {
+                return;
+            }
+            PubSub.default.pub("showToast", "toast.plateau.tilesetLoadFailed:{0}", failedMeshes.length);
         };
 
         /**
@@ -401,12 +409,13 @@ export class PlateauCesiumPickerDialog {
                 // Load multiple tilesets
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
-                    await tilesetLoader.loadMultipleTilesets(
+                    const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
                             url: t.tileset_url,
                         })),
                     );
+                    notifyMeshLoadFailures(failedMeshes);
 
                     // Fly to search location
                     viewer.camera.flyTo({
@@ -450,7 +459,7 @@ export class PlateauCesiumPickerDialog {
             }
 
             // Validate mesh code if provided
-            if (meshCode && !/^\d{8}$/.test(meshCode)) {
+            if (meshCode && !MESH_CODE_PATTERN.test(meshCode)) {
                 meshIndicator.textContent = "メッシュコードは8桁の数字で入力してください";
                 return;
             }
@@ -507,12 +516,13 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
-                    await tilesetLoader.loadMultipleTilesets(
+                    const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
                             url: t.tileset_url,
                         })),
                     );
+                    notifyMeshLoadFailures(failedMeshes);
 
                     // Fly to building location
                     viewer.camera.flyTo({
@@ -549,7 +559,7 @@ export class PlateauCesiumPickerDialog {
             const input = dialog.querySelector("#mesh-code-input") as HTMLInputElement;
             const meshCode = input?.value.trim();
 
-            if (!meshCode || !/^\d{8}$/.test(meshCode)) {
+            if (!meshCode || !MESH_CODE_PATTERN.test(meshCode)) {
                 meshIndicator.textContent = "メッシュコードは8桁の数字で入力してください";
                 return;
             }
@@ -584,12 +594,13 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
-                    await tilesetLoader.loadMultipleTilesets(
+                    const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
                             url: t.tileset_url,
                         })),
                     );
+                    notifyMeshLoadFailures(failedMeshes);
 
                     // Calculate mesh center and fly to it
                     const center = meshToLatLon(meshCode);

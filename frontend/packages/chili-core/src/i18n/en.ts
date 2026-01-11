@@ -349,6 +349,7 @@ export default {
         "toast.plateau.importSuccess:{0}": "Imported {0} building(s)",
         "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}": "Imported {0} building(s) ({1} failed: {2})",
         "toast.plateau.importFailed:{0}": "Building import failed: {0}",
+        "toast.plateau.tilesetLoadFailed:{0}": "Failed to load {0} mesh(es)",
         "toast.stepUnfold.success": "Unfold diagram generated successfully",
         "toast.stepUnfold.error": "Failed to generate unfold diagram",
         "stepUnfold.scale": "Scale",

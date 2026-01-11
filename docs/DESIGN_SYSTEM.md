@@ -7,6 +7,7 @@
 Paper-CAD is a CAD tool for making architectural paper models. The primary artifact is not a screenshot—it is a printed sheet (SVG/PDF) that will be cut, folded, and assembled.
 
 We design like a Japanese studio shaping a German industrial tool: quiet surfaces, explicit hierarchy, obsessive consistency. The viewport is the work; the UI is the instrument.
+Everything is measured. Nothing is decorative.
 
 **Workflow:** Model → Unfold → Layout → Export → Build.
 
@@ -54,6 +55,13 @@ We design like a Japanese studio shaping a German industrial tool: quiet surface
   - Cut hints: `.cut-line`
   - Page boundaries: `.page-border` / `.page-separator`
 - Do not rename output selectors without updating exporters (e.g. multi-page detection depends on `.page-border`).
+
+### 2.4 Print Reality Checklist
+
+- Units are physical (mm). Prefer explicit units over implicit assumptions.
+- Respect margins: treat at least 10mm as non-printable safe area.
+- Assume monochrome printing is common: line meaning must survive without color.
+- Prefer warnings over surprises: if output will be clipped, scaled, or mirrored, say it before export.
 
 ## 3. Scope & Source of Truth
 

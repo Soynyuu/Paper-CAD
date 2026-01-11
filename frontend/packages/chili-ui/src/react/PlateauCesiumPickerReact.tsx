@@ -581,8 +581,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                         ? "住所を検索"
                                         : "建物IDを検索"
                                 }
-                                role="combobox"
-                                aria-expanded={showResults}
+                                autoComplete="off"
+                                spellCheck="false"
                             />
                             {isSearching && <div className={styles.searchSpinner} />}
                             {!isSearching && searchQuery && (

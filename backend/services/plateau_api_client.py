@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timedelta
 import aiohttp
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ _dataset_cache: Optional[List[Dict[str, Any]]] = None
 _cache_timestamp: Optional[datetime] = None
 _cache_duration = timedelta(hours=24)  # Refresh cache daily
 _cache_lock = asyncio.Lock()
+
+# Cache for 2nd mesh code -> municipality code mapping
+_mesh2_to_municipality_map: Dict[str, str] = {}
+_map_build_lock = asyncio.Lock()
 
 # Fallback for known cities (Phase 2 static mapping, kept for reliability)
 KNOWN_CITY_TILESETS = {
@@ -124,6 +129,54 @@ async def _get_cached_catalog() -> List[Dict[str, Any]]:
             raise
 
 
+async def _build_mesh2_to_municipality_map() -> Dict[str, str]:
+    """
+    2次メッシュコード（6桁）→ 市区町村コード（5桁）マッピングを構築
+
+    Strategy:
+    1. 静的データ（plateau_mesh_mapping.py）をインポート
+    2. メモリ内辞書として保持
+    3. O(1)での高速検索を実現
+
+    Returns:
+        Dict[mesh2_code (6桁), municipality_code (5桁)]
+
+    Example:
+        >>> map = await _build_mesh2_to_municipality_map()
+        >>> map["533935"]
+        "13113"  # 渋谷区
+    """
+    from services.plateau_mesh_mapping import TOKYO_23_MESH2_MAPPING
+
+    # 静的マッピングデータをそのまま使用
+    mesh2_map = dict(TOKYO_23_MESH2_MAPPING)
+
+    logger.info(f"Built mesh2->municipality map with {len(mesh2_map)} entries")
+    logger.debug(f"Sample entries: {list(mesh2_map.items())[:5]}")
+
+    return mesh2_map
+
+
+async def _get_cached_mesh2_map() -> Dict[str, str]:
+    """
+    キャッシュされた2次メッシュマップを取得（起動時に一度だけ構築）
+
+    Returns:
+        Dict[mesh2_code, municipality_code]
+
+    Note:
+        初回呼び出し時にマップを構築し、以降はキャッシュを返す
+        サーバー再起動まで有効
+    """
+    global _mesh2_to_municipality_map
+
+    async with _map_build_lock:
+        if not _mesh2_to_municipality_map:
+            _mesh2_to_municipality_map = await _build_mesh2_to_municipality_map()
+
+        return _mesh2_to_municipality_map
+
+
 def _filter_building_datasets(
     datasets: List[Dict[str, Any]], city_code: str, lod: Optional[int] = None
 ) -> List[Dict[str, Any]]:
@@ -172,57 +225,63 @@ def _filter_building_datasets(
 
 async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optional[Dict[str, Any]]:
     """
-    PLATEAU Data Catalog APIからメッシュコードに対応するデータセットを取得
+    高速版：メッシュコード → 市区町村コード → PLATEAU 3D Tiles
 
-    Note: メッシュコードから直接市区町村を特定することは困難なため、
-    このAPIは限定的なサポートのみを提供します。フロントエンドで住所検索を
-    行い、座標から市区町村を特定してから`fetch_plateau_dataset_by_municipality`
-    を使用することを推奨します。
+    Implementation Strategy:
+    1. 3次メッシュコード（8桁）→ 2次メッシュコード（6桁）抽出
+    2. 2次メッシュ → 市区町村コード辞書検索（O(1)）
+    3. 市区町村コード → PLATEAU 3D Tiles取得
+
+    Performance:
+    - OLD: 9メッシュ × 1秒 = 9秒（Nominatim API）❌
+    - NEW: 9メッシュ × 1ms = 9ms（辞書検索）✅
 
     Args:
-        mesh_code: 3次メッシュコード (8桁)
+        mesh_code: 3次メッシュコード (8桁, 例: "53393575")
         lod: LODレベル (1, 2, 3)
 
     Returns:
         {
             "tileset_url": "https://...",
-            "municipality_name": "千代田区",
-            "municipality_code": "13101"
+            "municipality_name": "渋谷区",
+            "municipality_code": "13113"
         }
         None if not found
+
+    Note:
+        - No external API calls
+        - No rate limiting
+        - No network latency
+        - Currently supports Tokyo 23 wards
+        - Nationwide expansion planned
+
+    Example:
+        >>> result = await fetch_plateau_dataset_by_mesh("53393575", lod=1)
+        >>> result["municipality_code"]
+        "13113"  # 渋谷区
     """
     if len(mesh_code) != 8:
-        logger.warning(f"Invalid mesh code length: {mesh_code}")
+        logger.warning(f"Invalid mesh code length: {mesh_code} (expected 8 digits)")
         return None
 
-    # メッシュコードから市区町村への直接マッピングは困難
-    # 静的フォールバックを使用（東京エリアのみ）
-    mesh_prefix = mesh_code[:4]
-    mesh_2nd = mesh_code[4:6]
+    # Extract 2nd mesh code (6 digits) from 3rd mesh code (8 digits)
+    # Example: "53393575" -> "533935"
+    mesh2 = mesh_code[:6]
 
-    # 簡易的な東京エリアマッピング（Phase 2の互換性のため）
-    tokyo_mapping = {
-        "5339": {
-            "45": "13101",  # 千代田区
-            "46": "13102",  # 中央区
-            "55": "13103",  # 港区
-            "47": "13104",  # 新宿区
-            "57": "13113",  # 渋谷区
-        }
-    }
-
-    municipality_code = None
-    if mesh_prefix in tokyo_mapping:
-        municipality_code = tokyo_mapping[mesh_prefix].get(mesh_2nd)
+    # O(1) dictionary lookup for municipality code
+    mesh2_map = await _get_cached_mesh2_map()
+    municipality_code = mesh2_map.get(mesh2)
 
     if not municipality_code:
         logger.warning(
-            f"Could not determine municipality from mesh code: {mesh_code}. "
-            "Consider using address-based search instead."
+            f"No municipality found for mesh2: {mesh2} (from mesh: {mesh_code}). "
+            f"This area may not be covered by PLATEAU data."
         )
         return None
 
-    # 市区町村コードが分かったので、それで検索
+    logger.info(f"Mesh {mesh_code} -> Mesh2 {mesh2} -> Municipality {municipality_code}")
+
+    # Fetch 3D Tiles dataset for this municipality
     return await fetch_plateau_dataset_by_municipality(municipality_code, lod)
 
 

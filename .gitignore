@@ -42,6 +42,8 @@ backend/test_*.py
 backend/*_log.txt
 backend/*_debug.txt
 backend/*_output.txt
+backend/data/n03/
+backend/.venv-n03/
 frontend/.env.demo
 # Frontend environment files
 frontend/.env.development

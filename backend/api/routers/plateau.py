@@ -1137,9 +1137,9 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
     PLATEAU Data Catalog APIを使用して、各メッシュコードに対応する
     3D Tiles tilesetのURLを取得します。
 
-    **Phase 2 Implementation Note:**
-    現在は既知の東京都のデータのみサポートしています。
-    将来的にはPLATEAU Data Catalog APIから動的に取得します。
+    **Implementation Note:**
+    事前生成した mesh2→自治体マップ（N03ベース）を使用します。
+    ランタイムは JSON を読むだけで全国対応します。
 
     ### リクエスト例
     ```json

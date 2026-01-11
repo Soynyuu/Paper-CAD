@@ -20,11 +20,14 @@ References:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Dict, Any, Optional, List, Tuple
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import aiohttp
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +41,13 @@ _cache_duration = timedelta(hours=24)  # Refresh cache daily
 _cache_lock = asyncio.Lock()
 
 # Cache for 2nd mesh code -> municipality code mapping
-_mesh2_to_municipality_map: Dict[str, str] = {}
+_mesh2_to_municipality_map: Dict[str, List[str]] = {}
 _map_build_lock = asyncio.Lock()
 
+# Default mesh2 mapping path (override with PLATEAU_MESH2_MAPPING_PATH)
+_DEFAULT_MESH2_MAPPING_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "mesh2_municipality.json"
+)
 # Fallback for known cities (Phase 2 static mapping, kept for reliability)
 KNOWN_CITY_TILESETS = {
     "13101": {  # 千代田区
@@ -129,40 +136,109 @@ async def _get_cached_catalog() -> List[Dict[str, Any]]:
             raise
 
 
-async def _build_mesh2_to_municipality_map() -> Dict[str, str]:
+def _get_mesh2_mapping_path() -> Path:
+    """Resolve mesh2 mapping file path from env or default."""
+    env_path = os.getenv("PLATEAU_MESH2_MAPPING_PATH")
+    if env_path:
+        return Path(env_path)
+    return _DEFAULT_MESH2_MAPPING_PATH
+
+
+def _normalize_mesh2_mapping(raw: Any) -> Dict[str, List[str]]:
+    """Normalize mesh2 mapping JSON into Dict[str, List[str]]."""
+    if isinstance(raw, dict) and "mesh2_to_municipalities" in raw:
+        raw = raw["mesh2_to_municipalities"]
+
+    if not isinstance(raw, dict):
+        raise ValueError("mesh2 mapping JSON must be an object")
+
+    normalized: Dict[str, List[str]] = {}
+    for mesh2, codes in raw.items():
+        mesh2_key = str(mesh2).strip()
+        if len(mesh2_key) != 6 or not mesh2_key.isdigit():
+            continue
+
+        if isinstance(codes, str):
+            codes = [codes]
+        if not isinstance(codes, list):
+            continue
+
+        normalized_codes: List[str] = []
+        for code in codes:
+            code_str = str(code).strip()
+            if len(code_str) == 5 and code_str.isdigit():
+                normalized_codes.append(code_str)
+
+        if normalized_codes:
+            normalized[mesh2_key] = sorted(set(normalized_codes))
+
+    if not normalized:
+        raise ValueError("mesh2 mapping JSON has no usable entries")
+
+    return normalized
+
+
+def _load_mesh2_mapping(path: Path) -> Dict[str, List[str]]:
+    """Load mesh2 mapping JSON from disk."""
+    with path.open("r", encoding="utf-8") as f:
+        raw = json.load(f)
+    return _normalize_mesh2_mapping(raw)
+
+
+async def _build_mesh2_to_municipality_map() -> Dict[str, List[str]]:
     """
     2次メッシュコード（6桁）→ 市区町村コード（5桁）マッピングを構築
 
     Strategy:
-    1. 静的データ（plateau_mesh_mapping.py）をインポート
+    1. 事前生成したJSON（mesh2_municipality.json）をロード
     2. メモリ内辞書として保持
     3. O(1)での高速検索を実現
 
     Returns:
-        Dict[mesh2_code (6桁), municipality_code (5桁)]
+        Dict[mesh2_code (6桁), List[municipality_code]]
 
     Example:
         >>> map = await _build_mesh2_to_municipality_map()
         >>> map["533935"]
-        "13113"  # 渋谷区
+        ["13113"]  # 渋谷区
     """
-    from services.plateau_mesh_mapping import TOKYO_23_MESH2_MAPPING
+    mapping_path = _get_mesh2_mapping_path()
 
-    # 静的マッピングデータをそのまま使用
-    mesh2_map = dict(TOKYO_23_MESH2_MAPPING)
+    if mapping_path.exists():
+        mesh2_map = _load_mesh2_mapping(mapping_path)
+        logger.info(
+            "Loaded mesh2->municipality map from %s (%d entries)",
+            mapping_path,
+            len(mesh2_map),
+        )
+        logger.debug("Sample entries: %s", list(mesh2_map.items())[:5])
+        return mesh2_map
 
-    logger.info(f"Built mesh2->municipality map with {len(mesh2_map)} entries")
-    logger.debug(f"Sample entries: {list(mesh2_map.items())[:5]}")
+    allow_fallback = os.getenv("PLATEAU_ALLOW_TOKYO_FALLBACK", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if allow_fallback:
+        from services.plateau_mesh_mapping import TOKYO_23_MESH2_MAPPING
+        logger.warning(
+            "Mesh2 mapping file not found at %s. Falling back to Tokyo-only map.",
+            mapping_path,
+        )
+        return {mesh2: [code] for mesh2, code in TOKYO_23_MESH2_MAPPING.items()}
 
-    return mesh2_map
+    raise FileNotFoundError(
+        f"Mesh2 mapping file not found: {mapping_path}. "
+        "Generate it via backend/scripts/build_mesh2_municipality_map.py."
+    )
 
 
-async def _get_cached_mesh2_map() -> Dict[str, str]:
+async def _get_cached_mesh2_map() -> Dict[str, List[str]]:
     """
     キャッシュされた2次メッシュマップを取得（起動時に一度だけ構築）
 
     Returns:
-        Dict[mesh2_code, municipality_code]
+        Dict[mesh2_code, List[municipality_code]]
 
     Note:
         初回呼び出し時にマップを構築し、以降はキャッシュを返す
@@ -223,9 +299,9 @@ def _filter_building_datasets(
     return filtered
 
 
-async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optional[Dict[str, Any]]:
+async def fetch_plateau_datasets_by_mesh(mesh_code: str, lod: int = 1) -> List[Dict[str, Any]]:
     """
-    高速版：メッシュコード → 市区町村コード → PLATEAU 3D Tiles
+    高速版：メッシュコード → 市区町村コード → PLATEAU 3D Tiles (複数対応)
 
     Implementation Strategy:
     1. 3次メッシュコード（8桁）→ 2次メッシュコード（6桁）抽出
@@ -241,28 +317,22 @@ async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optiona
         lod: LODレベル (1, 2, 3)
 
     Returns:
-        {
-            "tileset_url": "https://...",
-            "municipality_name": "渋谷区",
-            "municipality_code": "13113"
-        }
-        None if not found
+        List of dataset dicts (may be empty if not found)
 
     Note:
         - No external API calls
         - No rate limiting
         - No network latency
-        - Currently supports Tokyo 23 wards
-        - Nationwide expansion planned
+        - Requires offline mesh2 mapping JSON for nationwide support
 
     Example:
-        >>> result = await fetch_plateau_dataset_by_mesh("53393575", lod=1)
-        >>> result["municipality_code"]
+        >>> results = await fetch_plateau_datasets_by_mesh("53393575", lod=1)
+        >>> results[0]["municipality_code"]
         "13113"  # 渋谷区
     """
     if len(mesh_code) != 8:
         logger.warning(f"Invalid mesh code length: {mesh_code} (expected 8 digits)")
-        return None
+        return []
 
     # Extract 2nd mesh code (6 digits) from 3rd mesh code (8 digits)
     # Example: "53393575" -> "533935"
@@ -270,19 +340,38 @@ async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optiona
 
     # O(1) dictionary lookup for municipality code
     mesh2_map = await _get_cached_mesh2_map()
-    municipality_code = mesh2_map.get(mesh2)
+    municipality_codes = mesh2_map.get(mesh2, [])
 
-    if not municipality_code:
+    if not municipality_codes:
         logger.warning(
             f"No municipality found for mesh2: {mesh2} (from mesh: {mesh_code}). "
             f"This area may not be covered by PLATEAU data."
         )
-        return None
+        return []
 
-    logger.info(f"Mesh {mesh_code} -> Mesh2 {mesh2} -> Municipality {municipality_code}")
+    logger.info(f"Mesh {mesh_code} -> Mesh2 {mesh2} -> Municipalities {municipality_codes}")
 
-    # Fetch 3D Tiles dataset for this municipality
-    return await fetch_plateau_dataset_by_municipality(municipality_code, lod)
+    # Fetch datasets for all municipalities (parallel)
+    tasks = [fetch_plateau_dataset_by_municipality(code, lod) for code in municipality_codes]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    datasets: List[Dict[str, Any]] = []
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning(f"Error fetching dataset by municipality: {result}")
+            continue
+        if result:
+            datasets.append(result)
+
+    return datasets
+
+
+async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optional[Dict[str, Any]]:
+    """
+    Backward-compatible single-result helper.
+    """
+    results = await fetch_plateau_datasets_by_mesh(mesh_code, lod)
+    return results[0] if results else None
 
 
 async def fetch_plateau_dataset_by_municipality(
@@ -369,25 +458,67 @@ async def fetch_tilesets_for_meshes(mesh_codes: List[str], lod: int = 1) -> List
             "municipality_code": "13101"
         }
     """
-    tilesets = []
+    tilesets: List[Dict[str, Any]] = []
     seen_municipalities = set()  # Avoid duplicate URLs for same municipality
 
-    for mesh_code in mesh_codes:
-        dataset = await fetch_plateau_dataset_by_mesh(mesh_code, lod)
+    mesh2_map = await _get_cached_mesh2_map()
+    mesh_to_codes: Dict[str, List[str]] = {}
+    unique_codes: List[str] = []
+    unique_code_set = set()
 
+    for mesh_code in mesh_codes:
+        if len(mesh_code) != 8 or not mesh_code.isdigit():
+            logger.warning(f"Invalid mesh code format: {mesh_code}")
+            continue
+
+        mesh2 = mesh_code[:6]
+        codes = mesh2_map.get(mesh2, [])
+        mesh_to_codes[mesh_code] = codes
+        for code in codes:
+            if code not in unique_code_set:
+                unique_codes.append(code)
+                unique_code_set.add(code)
+
+    if not unique_codes:
+        return tilesets
+
+    concurrency = int(os.getenv("PLATEAU_DATASET_FETCH_CONCURRENCY", "8"))
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _fetch_dataset(code: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        async with semaphore:
+            dataset = await fetch_plateau_dataset_by_municipality(code, lod)
+            return code, dataset
+
+    dataset_results = await asyncio.gather(
+        *[_fetch_dataset(code) for code in unique_codes], return_exceptions=True
+    )
+
+    datasets_by_code: Dict[str, Dict[str, Any]] = {}
+    for result in dataset_results:
+        if isinstance(result, Exception):
+            logger.warning(f"Dataset fetch error: {result}")
+            continue
+        code, dataset = result
         if dataset:
-            # Only add if we haven't already added this municipality
-            municipality_code = dataset.get("municipality_code")
-            if municipality_code and municipality_code not in seen_municipalities:
-                tilesets.append(
-                    {
-                        "mesh_code": mesh_code,
-                        "tileset_url": dataset["tileset_url"],
-                        "municipality_name": dataset["municipality_name"],
-                        "municipality_code": municipality_code,
-                    }
-                )
-                seen_municipalities.add(municipality_code)
+            datasets_by_code[code] = dataset
+
+    for mesh_code, codes in mesh_to_codes.items():
+        for code in codes:
+            if code in seen_municipalities:
+                continue
+            dataset = datasets_by_code.get(code)
+            if not dataset:
+                continue
+            tilesets.append(
+                {
+                    "mesh_code": mesh_code,
+                    "tileset_url": dataset["tileset_url"],
+                    "municipality_name": dataset["municipality_name"],
+                    "municipality_code": code,
+                }
+            )
+            seen_municipalities.add(code)
 
     return tilesets
 

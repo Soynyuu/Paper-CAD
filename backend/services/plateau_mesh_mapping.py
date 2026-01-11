@@ -1,8 +1,12 @@
 """
-東京23区の2次メッシュコード → 市区町村コードマッピング
+Legacy Tokyo-only mesh2 mapping (fallback).
+
+Note:
+- Replaced by offline nationwide mapping JSON generated from N03.
+- Kept only as a fallback when PLATEAU_ALLOW_TOKYO_FALLBACK is enabled.
 
 このモジュールは、日本標準地域メッシュ（JIS X 0410）の2次メッシュコード（6桁）
-から市区町村コード（5桁）への高速マッピングを提供します。
+から市区町村コード（5桁）への高速マッピングを提供します（東京23区のみ）。
 
 データソース：
 - 国土地理院 標準地域メッシュ（JIS X 0410）

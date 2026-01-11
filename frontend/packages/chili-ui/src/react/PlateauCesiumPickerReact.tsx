@@ -127,6 +127,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
+    const preferredPickLod = 3;
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -184,6 +185,22 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         let resizeObserver: ResizeObserver | null = null;
 
         const initCesium = async () => {
+            // Wait for container size to be determined before initializing Cesium
+            // This prevents canvas height: 0 issue caused by initializing before layout is complete
+            await new Promise<void>((resolve) => {
+                const checkSize = () => {
+                    const rect = container.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        resolve();
+                    } else {
+                        requestAnimationFrame(checkSize);
+                    }
+                };
+                checkSize();
+            });
+
+            if (!mounted) return;
+
             // Create and initialize CesiumView
             const cesiumView = new CesiumView(container);
             await cesiumView.initialize();
@@ -194,6 +211,34 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             const resizeViewer = () => {
                 if (viewer.isDestroyed()) return;
+
+                // Get actual container size in pixels
+                const rect = container.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) {
+                    // Size not determined yet, retry on next frame
+                    requestAnimationFrame(() => resizeViewer());
+                    return;
+                }
+
+                const widget = viewer.container as HTMLElement | undefined;
+                const canvas = viewer.canvas as HTMLCanvasElement | undefined;
+                if (!widget || !canvas) return;
+
+                // Set explicit pixel sizes on widget (Cesium-generated .cesium-widget div)
+                widget.style.width = `${rect.width}px`;
+                widget.style.height = `${rect.height}px`;
+
+                // Set canvas HTML attributes for proper rendering
+                // devicePixelRatio ensures high-DPI display support
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                canvas.style.position = "absolute";
+                canvas.style.inset = "0";
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+                canvas.style.display = "block";
+
                 viewer.resize();
                 viewer.scene?.requestRender();
                 viewer.render();
@@ -295,7 +340,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
 
     // Search handlers
-	    const performSearch = useCallback(async () => {
+    const performSearch = useCallback(async () => {
         const query = searchQuery.trim();
         if (!query) return;
 
@@ -317,8 +362,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         }
         abortControllerRef.current = new AbortController();
 
-	        try {
-	            const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+        try {
+            const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
             // 検索モードに応じてエンドポイント切り替え
             const endpoint =
@@ -480,8 +525,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
-	    const handleResultClick = useCallback(
-	        async (result: SearchResult) => {
+    const handleResultClick = useCallback(
+        async (result: SearchResult) => {
             const viewer = cesiumViewRef.current?.getViewer();
             const loader = tilesetLoaderRef.current;
             if (!viewer || !loader) return;
@@ -505,13 +550,13 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
                 // Get API base URL
-	                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001";
+                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001";
 
                 // Fetch 3D Tiles URLs from backend
                 const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ mesh_codes: meshCodes, lod: 1 }),
+                    body: JSON.stringify({ mesh_codes: meshCodes, lod: preferredPickLod }),
                 });
 
                 if (!response.ok) {
@@ -579,7 +624,13 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 {/* Map area */}
                 <div className={styles.mapContainer}>
                     {/* Cesium container */}
-                    <div ref={containerRef} className={styles.cesiumContainer} />
+                    <div className={styles.cesiumContainer}>
+                        <div
+                            ref={containerRef}
+                            id="plateau-cesium-host"
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+                        />
+                    </div>
 
                     {/* Close button */}
                     <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">

@@ -28,8 +28,8 @@ function loadEnv() {
 
 loadEnv();
 
-// PLATEAU terrain asset ID for Cesium ion.
-const DEFAULT_TERRAIN_ASSET_ID = 770371;
+// PLATEAU-Terrain (ion asset 3258112). Override with CESIUM_TERRAIN_ASSET_ID if needed.
+const DEFAULT_TERRAIN_ASSET_ID = 3258112;
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -181,6 +181,7 @@ const config = defineConfig({
                     process.env.CESIUM_TERRAIN_ASSET_ID,
                     DEFAULT_TERRAIN_ASSET_ID,
                 ),
+                cesiumTerrainIonToken: process.env.CESIUM_TERRAIN_ION_TOKEN || "",
                 useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),

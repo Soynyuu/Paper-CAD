@@ -35,6 +35,8 @@ interface AppConfig {
     cesiumBaseUrl: string;
     cesiumIonToken: string;
     cesiumTerrainAssetId: number;
+    /** Optional dedicated token for terrain assets (e.g. PLATEAU-Terrain) */
+    cesiumTerrainIonToken?: string;
     useReactCesiumPicker: boolean;
 }
 

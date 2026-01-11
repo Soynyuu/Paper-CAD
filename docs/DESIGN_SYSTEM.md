@@ -65,6 +65,39 @@ Paper assembly is a mapping problem (“Which face is this?”). Digital should 
 - The interaction MUST be low-friction on mobile (one-handed, large targets, readable in dark mode).
 - Linking MUST degrade gracefully: if a QR cannot resolve, manual lookup still works.
 
+#### Face Identity Contract (What)
+
+To avoid “Which face is this?” the system MUST have a stable reference for a face.
+
+- A face MUST have a stable identifier (`faceId`) within a given model revision.
+- `faceId` MUST be unique within (`model`, `rev`) and MUST not be reused for a different face in the same revision.
+- `faceNumber` is a human label; it MAY change across re-unfolds. If it changes, paper → device resolution MUST still work via `faceId`.
+- Any printed reference MUST be resolvable without relying on layout order (page splitting, re-layout, sorting).
+- The system MUST define a versioned payload called **FaceRef** with the minimum fields:
+  - `v`: payload version (integer)
+  - `model`: model/document identifier
+  - `rev`: model revision identifier at export time
+  - `face`: `faceId`
+  - optional: `n` (`faceNumber`), `p` (page), `o` (orientation/mirror)
+  - All FaceRef fields MUST be URL-safe (QR/camera scan compatible).
+
+#### Paper-to-Device Link (What)
+
+- A QR/deep link MUST encode a versioned FaceRef in a single URL string.
+- The app MUST accept the link on mobile and open the face context.
+- Payloads MUST be forward-compatible (ignore unknown fields). Breaking changes MUST bump `v`.
+- If the referenced `rev` does not match the currently open model, the app MUST warn and provide a recovery path (load the referenced revision or manual lookup).
+
+#### Link Format (How, reference)
+
+- Preferred path: `/assembly?v=1&model=<modelId>&rev=<revision>&face=<faceId>&n=<faceNumber>&p=<page>`
+- If the environment requires absolute URLs (camera scan), use the deployed frontend base URL + the path above.
+
+#### QR Design (How, reference)
+
+- Minimum printed QR size SHOULD be 12mm; recommended 16mm (plus a quiet zone).
+- QR MUST be vector in exported SVG/PDF to avoid raster blur.
+
 ### 2.4 Unfold Output Semantics (SVG/PDF)
 
 - Output classes should remain stable and legible in black & white:
@@ -74,6 +107,7 @@ Paper assembly is a mapping problem (“Which face is this?”). Digital should 
   - Cut hints: `.cut-line`
   - Page boundaries: `.page-border` / `.page-separator`
 - Multi-page SVGs MUST include a `.page-border` element per page as a stable marker; treat selectors as a public contract.
+- Face geometry in SVG SHOULD carry stable data attributes (e.g. `data-face-id`, `data-face-number`) consistent with FaceRef.
 
 ### 2.5 Print Reality Checklist
 
@@ -89,6 +123,8 @@ This section defines what “print-ready” means. If export violates these, the
 #### 2.6.1 Units & Conversion
 
 - Output geometry is physical. Prefer **mm** end-to-end.
+- Print-ready SVG MUST declare physical page size on the root `<svg>` (`width`/`height` with `mm` units).
+- User units SHOULD be treated as mm for print output (geometry, stroke widths, dash patterns, and text sizes are specified in physical terms).
 - If SVG uses px-based coordinates, conversion MUST be explicit and consistent:
   - 96 DPI assumption: `1mm = 3.78px`
   - If this changes, update exporters and this document together.
@@ -114,6 +150,7 @@ The print output MUST remain understandable in pure black & white.
   - Page border (`.page-border`): 0.15mm dashed, light (not competing with geometry)
 - Strokes SHOULD use `vector-effect: non-scaling-stroke` so scaling never destroys legibility.
 - Output SHOULD avoid heavy fills; paper needs whitespace to breathe.
+- The baseline above is in mm. If output uses px-based units, convert at the export boundary (do not “eyeball” it).
 
 #### 2.6.4 Typography & Labeling in Output
 
@@ -145,6 +182,7 @@ Every exported sheet SHOULD include a minimal, quiet metadata block:
 - **Tokens:** CSS Custom Properties in `frontend/public/index.css`.
 - **Themes:** `theme="light"` / `theme="dark"` on the root element (`<html>` / `:root`).
 - **Components:** `frontend/packages/chili-ui` should consume tokens (prefer semantic tokens first).
+- **Public contracts (treat as APIs):** token names, theme attribute, output class names, and the FaceRef link format/version.
 
 ## 4. Token Rules (Non-Negotiable)
 
@@ -272,6 +310,24 @@ Example (pattern, not a global mandate):
 - Targets: 32px minimum; small icons must include padding.
 - Errors: state what happened, why, and what the user can do next.
 
+### 7.1 Interaction State Model (What)
+
+Every interactive component MUST define and visually express its states.
+
+- Required states: `default`, `hover`, `active`, `focus-visible`, `disabled`.
+- If a component can wait on work, it MUST define `loading`.
+- If a component can be invalid, it MUST define `error` (and it MUST not rely on color alone).
+- State precedence MUST be consistent across the app:
+  - `disabled` > `loading` > `error` > `focus-visible` > `active` > `hover` > `default`
+
+### 7.2 Face States (3D/2D/Assembly) (What)
+
+Faces are core interaction targets and need a consistent state language.
+
+- Faces MUST support at least: `hovered`, `selected`, `located-from-paper`.
+- `selected` and `located-from-paper` MUST be simultaneously representable (two channels), so assembly never destroys edit context.
+- The visual treatment MUST be unambiguous even for color-blind users (combine outline/shape/label, not color alone).
+
 ## 8. Implementation (CSS Modules)
 
 We use CSS Modules for component scoping.
@@ -302,6 +358,7 @@ If any item fails, the change is not done.
 - Text contrast meets WCAG AA as a baseline.
 - Labels are tool-like: no decorative emoji, no novelty copy in production UI.
 - Motion is minimal and purposeful; no infinite animations; respects `prefers-reduced-motion`.
+- Components follow the interaction state model (Section 7.1).
 
 ### 9.2 Output (SVG/PDF)
 
@@ -309,6 +366,7 @@ If any item fails, the change is not done.
 - Meaning survives monochrome printing (line style/weight + labels).
 - Face identity is stable between 3D and 2D (numbers/labels don’t reshuffle unexpectedly).
 - Export is deterministic enough to diff (no random IDs unless necessary).
+- SVG declares physical page size and follows the Print Output Specification (Section 2.6).
 
 ### 9.3 Assembly (Device Interaction)
 
@@ -316,12 +374,19 @@ If any item fails, the change is not done.
 - Cross-highlighting between 3D and 2D is consistent (no ambiguous “selected” state).
 - Works on mobile: touch targets, readable typography, no tiny hit areas.
 - Failure modes are polite: broken links show a recovery path (manual face lookup).
+- FaceRef payload is versioned and remains resolvable across layout changes (as long as the face exists in the model revision).
 
 ### 9.4 Evidence (PR)
 
 - UI changes: screenshots for light/dark.
 - Unfold/export changes: attach exported PDF/SVG (and ideally a quick photo of a real print).
 - Assembly features: short screen recording + one photo of a real build-in-progress.
+
+### 9.5 Automation (How, reference)
+
+- Add checks that block new hard-coded hex/px usage in UI where tokens exist.
+- Maintain a small set of golden SVG/PDF fixtures and diff them in CI (render-to-image if needed).
+- For assembly links, add a smoke test that parses FaceRef URLs and resolves to a face context.
 
 ## 10. Change Process
 

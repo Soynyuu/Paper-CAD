@@ -11,6 +11,8 @@ Everything is measured. Nothing is decorative.
 
 **Workflow:** Model → Unfold → Layout → Export → Build.
 
+**Keywords:** MUST / SHOULD / MAY define requirement levels in this document.
+
 ## 1. Principles (Dieter Rams, adapted)
 
 1. **Useful, not clever:** Prefer clarity and speed over novelty.
@@ -62,6 +64,63 @@ Everything is measured. Nothing is decorative.
 - Respect margins: treat at least 10mm as non-printable safe area.
 - Assume monochrome printing is common: line meaning must survive without color.
 - Prefer warnings over surprises: if output will be clipped, scaled, or mirrored, say it before export.
+
+### 2.5 Print Output Specification (Commercial Bar)
+
+This section defines what “print-ready” means. If export violates these, the UI is lying.
+
+#### 2.5.1 Units & Conversion
+
+- Output geometry is physical. Prefer **mm** end-to-end.
+- If SVG uses px-based coordinates, conversion MUST be explicit and consistent:
+  - 96 DPI assumption: `1mm = 3.78px`
+  - If this changes, update exporters and this document together.
+
+#### 2.5.2 Page, Safe Area, and Layout
+
+- Supported page formats MUST match:
+  - A4: 210×297mm, A3: 297×420mm, Letter: 216×279mm
+- Default safe margin MUST be **10mm** on all sides (printer reality).
+- Layout MUST keep critical geometry, labels, and QR codes inside the safe area.
+- If content will overflow or be scaled, the UI SHOULD show a clear warning before export.
+
+#### 2.5.3 Line System (Monochrome-First)
+
+The print output MUST remain understandable in pure black & white.
+
+- Line meaning MUST not depend on color; use a combination of **weight** and **dash pattern**.
+- Recommended baseline (mm):
+  - Face outline (`.face-polygon`): 0.35mm solid
+  - Cut line (`.cut-line`): 0.25mm solid
+  - Fold line (`.fold-line`): 0.25mm dashed (e.g. 6mm on / 3mm off)
+  - Tab outline (`.tab-polygon`): 0.20mm dashed (e.g. 3mm on / 2mm off)
+  - Page border (`.page-border`): 0.15mm dashed, light (not competing with geometry)
+- Strokes SHOULD use `vector-effect: non-scaling-stroke` so scaling never destroys legibility.
+- Output SHOULD avoid heavy fills; paper needs whitespace to breathe.
+
+#### 2.5.4 Typography & Labeling in Output
+
+- Default output font MUST use a generic, portable stack (no external font dependency).
+- Labels MUST be readable at arm’s length on A4:
+  - Minimum text size: 2.2mm (~8pt) for secondary labels
+  - Recommended: 2.8–3.2mm (~10–11pt) for primary labels
+- Face numbers MUST be legible but not aggressive; avoid bright red as the only channel.
+
+#### 2.5.5 Sheet Metadata (Quiet, Useful)
+
+Every exported sheet SHOULD include a minimal, quiet metadata block:
+
+- Model name / identifier
+- Scale (e.g. `1:1`, `1:50`)
+- Page format + orientation
+- Page number / total pages
+- Export timestamp or version (for reproducibility)
+
+#### 2.5.6 Stability & Compatibility
+
+- Output class names (`.face-polygon`, `.tab-polygon`, `.fold-line`, `.cut-line`, `.page-border`) MUST be stable.
+- Multi-page detection MUST remain robust (today it depends on `.page-border` in the SVG).
+- QR or linking graphics (if used) SHOULD be vector (paths), not raster.
 
 ## 3. Scope & Source of Truth
 
@@ -196,13 +255,37 @@ We use CSS Modules for component scoping.
 }
 ```
 
-## 9. Change Process
+## 9. Quality Gates (What “Commercial” Means)
+
+If any item fails, the change is not done.
+
+### 9.1 UI (App)
+
+- No hard-coded hex colors or arbitrary spacing in new/modified UI code.
+- Light and dark themes both acceptable; focus ring visible (`:focus-visible` + `--shadow-focus`).
+- Keyboard navigation works; no focus traps outside dialogs.
+- Text contrast meets WCAG AA as a baseline.
+- Labels are tool-like: no decorative emoji, no novelty copy in production UI.
+
+### 9.2 Output (SVG/PDF)
+
+- Page size correct; safe margin respected; no clipped geometry.
+- Meaning survives monochrome printing (line style/weight + labels).
+- Face identity is stable between 3D and 2D (numbers/labels don’t reshuffle unexpectedly).
+- Export is deterministic enough to diff (no random IDs unless necessary).
+
+### 9.3 Evidence (PR)
+
+- UI changes: screenshots for light/dark.
+- Unfold/export changes: attach exported PDF/SVG (and ideally a quick photo of a real print).
+
+## 10. Change Process
 
 1. Update tokens in `frontend/public/index.css` (both themes).
 2. Update this document when new tokens or patterns are introduced.
 3. Run formatting: `cd frontend && npm run format`.
 
-## 10. Legacy Refactor Checklist
+## 11. Legacy Refactor Checklist
 
 - Replace hardcoded spacing with `--spacing-*`.
 - Replace hardcoded borders with `--border-color`.

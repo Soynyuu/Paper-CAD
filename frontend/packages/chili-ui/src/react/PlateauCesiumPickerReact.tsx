@@ -20,18 +20,36 @@ import styles from "./PlateauCesiumPickerReact.module.css";
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
 
+const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
+    if (typeof window === "undefined") {
+        return undefined;
+    }
+
+    const runtime = window as any;
+    if (runtime.__APP_CONFIG__) {
+        return runtime.__APP_CONFIG__ as AppConfig;
+    }
+
+    if (typeof __APP_CONFIG__ !== "undefined") {
+        return __APP_CONFIG__;
+    }
+
+    return undefined;
+};
+
 const ensureCesiumRuntime = () => {
     if (typeof document === "undefined") {
         return;
     }
 
     const runtime = window;
-    const rawBaseUrl = runtime.__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
+    const appConfig = getRuntimeAppConfig();
+    const rawBaseUrl = appConfig?.cesiumBaseUrl || "/cesium/";
     const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
 
     runtime.CESIUM_BASE_URL = baseUrl;
 
-    const ionToken = runtime.__APP_CONFIG__?.cesiumIonToken;
+    const ionToken = appConfig?.cesiumIonToken;
     if (ionToken) {
         Cesium.Ion.defaultAccessToken = ionToken;
     }
@@ -277,7 +295,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
 
     // Search handlers
-    const performSearch = useCallback(async () => {
+	    const performSearch = useCallback(async () => {
         const query = searchQuery.trim();
         if (!query) return;
 
@@ -299,8 +317,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         }
         abortControllerRef.current = new AbortController();
 
-        try {
-            const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001/api";
+	        try {
+	            const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
             // 検索モードに応じてエンドポイント切り替え
             const endpoint =
@@ -462,8 +480,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
-    const handleResultClick = useCallback(
-        async (result: SearchResult) => {
+	    const handleResultClick = useCallback(
+	        async (result: SearchResult) => {
             const viewer = cesiumViewRef.current?.getViewer();
             const loader = tilesetLoaderRef.current;
             if (!viewer || !loader) return;
@@ -487,7 +505,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
                 // Get API base URL
-                const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001";
+	                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001";
 
                 // Fetch 3D Tiles URLs from backend
                 const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {

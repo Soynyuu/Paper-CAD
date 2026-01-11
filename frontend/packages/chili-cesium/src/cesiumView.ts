@@ -67,6 +67,23 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
 
+const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
+    if (typeof window === "undefined") {
+        return undefined;
+    }
+
+    const runtime = window as any;
+    if (runtime.__APP_CONFIG__) {
+        return runtime.__APP_CONFIG__ as AppConfig;
+    }
+
+    if (typeof __APP_CONFIG__ !== "undefined") {
+        return __APP_CONFIG__;
+    }
+
+    return undefined;
+};
+
 const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
     if (typeof document === "undefined") {
         return Promise.resolve();
@@ -137,15 +154,17 @@ export class CesiumView {
      * @param basemap - Initial basemap type (default: gsi-pale)
      */
     async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
+        const appConfig = getRuntimeAppConfig();
+
         // Set Cesium base URL from environment
-        const rawBaseUrl = (window as any).__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
+        const rawBaseUrl = appConfig?.cesiumBaseUrl || "/cesium/";
         const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
         (window as any).CESIUM_BASE_URL = baseUrl;
 
         await ensureCesiumWidgetCss(baseUrl);
 
         // Set Cesium Ion token if provided
-        const ionToken = (window as any).__APP_CONFIG__?.cesiumIonToken;
+        const ionToken = appConfig?.cesiumIonToken;
         if (ionToken) {
             Cesium.Ion.defaultAccessToken = ionToken;
         }
@@ -219,14 +238,23 @@ export class CesiumView {
     private async applyTerrainProvider(): Promise<void> {
         if (!this.viewer) return;
 
-        const assetId = __APP_CONFIG__.cesiumTerrainAssetId;
+        const appConfig = getRuntimeAppConfig();
+        const assetId = Number(appConfig?.cesiumTerrainAssetId);
         if (!Number.isFinite(assetId) || assetId <= 0) {
+            return;
+        }
+
+        if (!appConfig?.cesiumIonToken) {
+            console.warn(
+                "[CesiumView] cesiumIonToken is missing; skipping terrain loading (CESIUM_TERRAIN_ASSET_ID is set).",
+            );
             return;
         }
 
         try {
             const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId);
             this.viewer.terrainProvider = terrainProvider;
+            this.viewer.scene?.requestRender();
         } catch (error) {
             console.warn("[CesiumView] Failed to load PLATEAU terrain, using default terrain.", error);
         }

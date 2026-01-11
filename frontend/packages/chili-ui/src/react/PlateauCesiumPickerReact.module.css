@@ -25,12 +25,16 @@
 .body {
     display: flex;
     flex: 1;
+    min-height: 0;
+    height: 100%;
     overflow: hidden;
     position: relative;
 }
 
 .mapContainer {
     flex: 1;
+    min-width: 0;
+    height: 100%;
     position: relative;
     background-color: var(--neutral-0, #121212);
     overflow: hidden;

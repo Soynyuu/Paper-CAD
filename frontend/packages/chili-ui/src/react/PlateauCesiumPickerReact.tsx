@@ -153,70 +153,47 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         const container = containerRef.current;
         let mounted = true;
-        let cesiumView: CesiumView | null = null;
         let resizeObserver: ResizeObserver | null = null;
 
-        // Delay initialization to ensure container has proper size
-        const initTimeout = setTimeout(() => {
-            if (!mounted) return;
-
-            const rect = container.getBoundingClientRect();
-            console.log("[PlateauCesiumPickerReact] Initializing with container size:", rect.width, "x", rect.height);
-
+        const initCesium = async () => {
             // Create and initialize CesiumView
-            cesiumView = new CesiumView(container);
-            cesiumView.initialize();
+            const cesiumView = new CesiumView(container);
+            await cesiumView.initialize();
             cesiumViewRef.current = cesiumView;
 
-            // Get viewer instance for building picker
             const viewer = cesiumView.getViewer();
-            if (!viewer) {
-                console.error("[PlateauCesiumPickerReact] Failed to get viewer from CesiumView");
-                return;
-            }
+            if (!viewer || !mounted) return;
 
-            // Initialize building picker
+            // Force resize after initialization
+            viewer.resize();
+
+            // Initialize building picker and tileset loader
             buildingPickerRef.current = new CesiumBuildingPicker(viewer);
-
-            // Initialize tileset loader
             tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
 
-            // Watch for container resize and update Cesium
+            // Watch for container resize
             resizeObserver = new ResizeObserver(() => {
-                if (viewer && !viewer.isDestroyed()) {
-                    viewer.resize();
-                }
+                if (!viewer.isDestroyed()) viewer.resize();
             });
             resizeObserver.observe(container);
 
-            if (mounted) {
-                setViewerReady(true);
-                console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
-            }
-        }, 100); // Wait 100ms for layout to stabilize
+            if (mounted) setViewerReady(true);
+        };
 
-        // Cleanup on unmount
+        initCesium();
+
         return () => {
             mounted = false;
-            clearTimeout(initTimeout);
-            console.log("[PlateauCesiumPickerReact] Disposing CesiumView");
-
             resizeObserver?.disconnect();
-
-            if (handlerRef.current) {
-                handlerRef.current.destroy();
-                handlerRef.current = null;
-            }
-
+            handlerRef.current?.destroy();
+            handlerRef.current = null;
             buildingPickerRef.current = null;
             tilesetLoaderRef.current = null;
-
             cesiumViewRef.current?.dispose();
             cesiumViewRef.current = null;
-
             setViewerReady(false);
         };
-    }, []); // Run once on mount
+    }, []);
 
     // Tileset loading removed - using mesh-based dynamic loading (Issue #177)
 

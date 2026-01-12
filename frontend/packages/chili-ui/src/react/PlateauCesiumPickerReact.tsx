@@ -146,7 +146,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const isComposingRef = useRef<boolean>(false);
     const preferredPickLod = Math.min(
         3,
-        Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 3)),
+        Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)),
     );
 
     // City initialization removed - using unified search interface (Issue #177)

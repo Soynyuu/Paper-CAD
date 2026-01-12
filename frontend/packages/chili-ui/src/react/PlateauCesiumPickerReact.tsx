@@ -19,6 +19,7 @@ import { Loading } from "./components/Loading";
 import styles from "./PlateauCesiumPickerReact.module.css";
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
+const CESIUM_WIDGETS_CSS_PATH = "Widgets/widgets.css";
 
 const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
     if (typeof window === "undefined") {
@@ -58,14 +59,14 @@ const ensureCesiumRuntime = () => {
         const link = document.createElement("link");
         link.id = CESIUM_WIDGET_CSS_ID;
         link.rel = "stylesheet";
-        link.href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+        link.href = `${baseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
         document.head.appendChild(link);
         return;
     }
 
     const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;
     if (existing) {
-        const href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+        const href = `${baseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
         const resolvedHref = new URL(href, window.location.href).href;
         if (existing.href !== resolvedHref) {
             existing.href = href;

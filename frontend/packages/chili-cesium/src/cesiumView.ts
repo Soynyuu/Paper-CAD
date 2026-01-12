@@ -79,6 +79,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
 };
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
+const CESIUM_WIDGETS_CSS_PATH = "Widgets/widgets.css";
 
 const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
     if (typeof window === "undefined") {
@@ -103,7 +104,7 @@ const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
     }
 
     const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-    const href = `${normalizedBaseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
+    const href = `${normalizedBaseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
     const resolvedHref = new URL(href, window.location.href).href;
 
     const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;

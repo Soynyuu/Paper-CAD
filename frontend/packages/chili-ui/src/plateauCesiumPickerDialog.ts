@@ -375,7 +375,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: meshCodes,
-                        lod: 1,
+                        lod: 3,
                     }),
                 });
 
@@ -496,7 +496,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCodeToUse],
-                        lod: 1,
+                        lod: 3,
                     }),
                 });
 
@@ -574,7 +574,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCode],
-                        lod: 1,
+                        lod: 3,
                     }),
                 });
 

@@ -9,6 +9,11 @@ import type { CityConfig } from "./types";
  */
 export type BasemapType = "natural-earth" | "gsi-standard" | "gsi-pale" | "gsi-photo" | "plateau-ortho-2023";
 
+export interface CesiumViewInitializeOptions {
+    deferBasemap?: boolean;
+    deferTerrain?: boolean;
+}
+
 /**
  * Basemap configuration interface
  */
@@ -71,6 +76,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
+                minimumLevel: 10,
                 maximumLevel: 19,
                 credit: createPlateauCredit(),
             });
@@ -157,6 +163,12 @@ export class CesiumView {
     private viewer: Cesium.Viewer | null = null;
     private container: HTMLElement;
     private currentBasemap: BasemapType = "gsi-pale";
+    private currentBasemapLayers: Cesium.ImageryLayer[] = [];
+    private pendingBasemap: BasemapType | null = null;
+    private terrainInitialized = false;
+    private basemapInitialized = false;
+    private deferBasemap = false;
+    private deferTerrain = false;
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -167,8 +179,14 @@ export class CesiumView {
      *
      * @param basemap - Initial basemap type (default: gsi-pale)
      */
-    async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
+    async initialize(
+        basemap: BasemapType = "gsi-pale",
+        options: CesiumViewInitializeOptions = {},
+    ): Promise<void> {
         const appConfig = getRuntimeAppConfig();
+        this.pendingBasemap = basemap;
+        this.deferBasemap = Boolean(options.deferBasemap);
+        this.deferTerrain = Boolean(options.deferTerrain);
 
         // Set Cesium base URL from environment
         const rawBaseUrl = appConfig?.cesiumBaseUrl || "/cesium/";
@@ -206,23 +224,15 @@ export class CesiumView {
         });
 
         // Use PLATEAU terrain to align with Japan's geoid-based elevations
-        await this.applyTerrainProvider();
+        if (!this.deferTerrain) {
+            await this.ensureTerrainProvider();
+        }
 
-        // Initialize basemap with fallback handling
-        try {
-            const basemapConfig = BASEMAPS[basemap];
-            const provider = await basemapConfig.provider();
-            this.viewer.imageryLayers.addImageryProvider(provider);
-            this.currentBasemap = basemap;
-        } catch (error) {
-            console.warn(
-                `[CesiumView] Failed to load ${basemap} basemap, falling back to Natural Earth:`,
-                error,
-            );
-            // Fallback to Natural Earth
-            const fallbackProvider = await BASEMAPS["natural-earth"].provider();
-            this.viewer.imageryLayers.addImageryProvider(fallbackProvider);
-            this.currentBasemap = "natural-earth";
+        if (!this.deferBasemap) {
+            await this.ensureBasemap(basemap);
+        } else if (this.viewer.scene?.globe) {
+            this.viewer.scene.globe.show = false;
+            this.viewer.scene.requestRender();
         }
 
         // Configure scene for better 3D Tiles rendering
@@ -341,24 +351,7 @@ export class CesiumView {
             return; // Already using this basemap
         }
 
-        try {
-            // Remove current basemap layer (index 0)
-            const currentLayer = this.viewer.imageryLayers.get(0);
-            if (currentLayer) {
-                this.viewer.imageryLayers.remove(currentLayer);
-            }
-
-            // Add new basemap
-            const basemapConfig = BASEMAPS[basemapType];
-            const provider = await basemapConfig.provider();
-            this.viewer.imageryLayers.addImageryProvider(provider, 0); // Insert at index 0
-            this.currentBasemap = basemapType;
-
-            console.log(`[CesiumView] Switched to basemap: ${basemapConfig.name}`);
-        } catch (error) {
-            console.error(`[CesiumView] Failed to switch to ${basemapType} basemap:`, error);
-            throw error;
-        }
+        await this.ensureBasemap(basemapType);
     }
 
     /**
@@ -377,6 +370,110 @@ export class CesiumView {
      */
     getAvailableBasemaps(): BasemapType[] {
         return Object.keys(BASEMAPS) as BasemapType[];
+    }
+
+    async activateBasemap(basemapType?: BasemapType): Promise<void> {
+        if (!this.viewer) {
+            throw new Error("Viewer not initialized. Call initialize() first.");
+        }
+
+        const targetBasemap = basemapType ?? this.pendingBasemap ?? this.currentBasemap;
+
+        if (this.deferTerrain && !this.terrainInitialized) {
+            await this.ensureTerrainProvider();
+        }
+
+        if (!this.basemapInitialized || targetBasemap !== this.currentBasemap || this.deferBasemap) {
+            await this.ensureBasemap(targetBasemap);
+        }
+
+        if (this.viewer.scene?.globe) {
+            this.viewer.scene.globe.show = true;
+            this.viewer.scene.requestRender();
+        }
+    }
+
+    private clearBasemapLayers(): void {
+        if (!this.viewer) return;
+        this.currentBasemapLayers.forEach((layer) => {
+            if (this.viewer?.imageryLayers.contains(layer)) {
+                this.viewer.imageryLayers.remove(layer, false);
+            }
+        });
+        this.currentBasemapLayers = [];
+    }
+
+    private async applyBasemap(basemapType: BasemapType): Promise<void> {
+        if (!this.viewer) {
+            throw new Error("Viewer not initialized. Call initialize() first.");
+        }
+
+        this.clearBasemapLayers();
+
+        if (basemapType === "plateau-ortho-2023") {
+            try {
+                const gsiProvider = await BASEMAPS["gsi-photo"].provider();
+                const gsiLayer = this.viewer.imageryLayers.addImageryProvider(gsiProvider, 0);
+
+                const layers: Cesium.ImageryLayer[] = [gsiLayer];
+                try {
+                    const plateauProvider = await BASEMAPS["plateau-ortho-2023"].provider();
+                    const plateauLayer = this.viewer.imageryLayers.addImageryProvider(plateauProvider, 1);
+                    layers.push(plateauLayer);
+                } catch (error) {
+                    console.warn(
+                        "[CesiumView] Failed to load PLATEAU Ortho overlay; using GSI Photo only.",
+                        error,
+                    );
+                }
+
+                this.currentBasemapLayers = layers;
+                this.currentBasemap = basemapType;
+                this.basemapInitialized = true;
+                this.deferBasemap = false;
+                console.log("[CesiumView] Switched to basemap: PLATEAU Ortho 2023 + GSI Photo");
+                return;
+            } catch (error) {
+                console.warn(
+                    "[CesiumView] Failed to load PLATEAU basemap; falling back to Natural Earth:",
+                    error,
+                );
+            }
+        }
+
+        try {
+            const basemapConfig = BASEMAPS[basemapType];
+            const provider = await basemapConfig.provider();
+            const layer = this.viewer.imageryLayers.addImageryProvider(provider, 0);
+            this.currentBasemapLayers = [layer];
+            this.currentBasemap = basemapType;
+            this.basemapInitialized = true;
+            this.deferBasemap = false;
+            console.log(`[CesiumView] Switched to basemap: ${basemapConfig.name}`);
+        } catch (error) {
+            console.warn(
+                `[CesiumView] Failed to load ${basemapType} basemap, falling back to Natural Earth:`,
+                error,
+            );
+            const fallbackProvider = await BASEMAPS["natural-earth"].provider();
+            const fallbackLayer = this.viewer.imageryLayers.addImageryProvider(fallbackProvider, 0);
+            this.currentBasemapLayers = [fallbackLayer];
+            this.currentBasemap = "natural-earth";
+            this.basemapInitialized = true;
+            this.deferBasemap = false;
+        }
+    }
+
+    private async ensureBasemap(basemapType: BasemapType): Promise<void> {
+        this.pendingBasemap = basemapType;
+        await this.applyBasemap(basemapType);
+    }
+
+    private async ensureTerrainProvider(): Promise<void> {
+        if (this.terrainInitialized) return;
+        await this.applyTerrainProvider();
+        this.terrainInitialized = true;
+        this.deferTerrain = false;
     }
 
     /**

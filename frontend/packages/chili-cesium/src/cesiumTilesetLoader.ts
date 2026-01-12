@@ -171,8 +171,9 @@ export class CesiumTilesetLoader {
      */
     async loadMultipleTilesets(
         tilesets: Array<{ meshCode: string; url: string }>,
-    ): Promise<{ failedMeshes: string[] }> {
+    ): Promise<{ failedMeshes: string[]; loadedTilesets: Cesium.Cesium3DTileset[] }> {
         const failedMeshes: string[] = [];
+        const loadedTilesets: Cesium.Cesium3DTileset[] = [];
         const loadPromises = tilesets.map(async ({ meshCode, url }) => {
             // Skip if already loaded, but update access time
             if (this.loadedTilesets.has(meshCode)) {
@@ -195,6 +196,7 @@ export class CesiumTilesetLoader {
                 // Add to scene
                 this.viewer.scene.primitives.add(tileset);
                 this.loadedTilesets.set(meshCode, tileset);
+                loadedTilesets.push(tileset);
 
                 // Track in LRU order
                 this.meshLoadOrder.push(meshCode);
@@ -212,7 +214,7 @@ export class CesiumTilesetLoader {
         await Promise.all(loadPromises);
 
         console.log(`[CesiumTilesetLoader] Loaded ${this.loadedTilesets.size} tilesets total`);
-        return { failedMeshes };
+        return { failedMeshes, loadedTilesets };
     }
 
     /**

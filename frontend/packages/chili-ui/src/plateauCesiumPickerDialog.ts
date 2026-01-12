@@ -278,6 +278,14 @@ export class PlateauCesiumPickerDialog {
             return latitude >= 20 && latitude <= 46 && longitude >= 122 && longitude <= 154;
         };
 
+        const MUNICIPALITY_CODE_PATTERN = /^(\d{5})/;
+
+        const extractMunicipalityCode = (buildingId?: string | null) => {
+            if (!buildingId) return undefined;
+            const match = buildingId.match(MUNICIPALITY_CODE_PATTERN);
+            return match?.[1];
+        };
+
         /**
          * Switch search tab
          */
@@ -368,15 +376,20 @@ export class PlateauCesiumPickerDialog {
                 );
 
                 console.log(`[Search] Found ${meshCodes.length} mesh codes:`, meshCodes);
+                const municipalityCode = extractMunicipalityCode(result.value.buildings?.[0]?.building_id);
+                const requestBody: Record<string, unknown> = {
+                    mesh_codes: meshCodes,
+                    lod: 2,
+                };
+                if (municipalityCode) {
+                    requestBody["municipality_code"] = municipalityCode;
+                }
 
                 // Fetch 3D Tiles URLs for mesh codes
                 const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        mesh_codes: meshCodes,
-                        lod: 1,
-                    }),
+                    body: JSON.stringify(requestBody),
                 });
 
                 if (!response.ok) {
@@ -409,6 +422,7 @@ export class PlateauCesiumPickerDialog {
                 // Load multiple tilesets
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -489,15 +503,20 @@ export class PlateauCesiumPickerDialog {
 
                 // Calculate mesh code from coordinates if not provided
                 const meshCodeToUse = meshCode || latLonToMesh3rd(building.latitude, building.longitude);
+                const municipalityCode = extractMunicipalityCode(building.building_id || buildingId);
+                const requestBody: Record<string, unknown> = {
+                    mesh_codes: [meshCodeToUse],
+                    lod: 2,
+                };
+                if (municipalityCode) {
+                    requestBody["municipality_code"] = municipalityCode;
+                }
 
                 // Fetch 3D Tiles for the mesh
                 const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        mesh_codes: [meshCodeToUse],
-                        lod: 1,
-                    }),
+                    body: JSON.stringify(requestBody),
                 });
 
                 if (!response.ok) {
@@ -516,6 +535,7 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -574,7 +594,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCode],
-                        lod: 1,
+                        lod: 2,
                     }),
                 });
 
@@ -594,6 +614,7 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,

@@ -576,6 +576,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             const targetLatitude = result.targetLatitude ?? result.latitude;
             const targetLongitude = result.targetLongitude ?? result.longitude;
+            const municipalityCode = result.municipalityCode;
 
             // 検索ドロップダウンを閉じる
             setShowResults(false);
@@ -597,10 +598,18 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
                 const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
+                    const requestBody: Record<string, unknown> = {
+                        mesh_codes: meshCodes,
+                        lod: preferredPickLod,
+                    };
+                    if (municipalityCode) {
+                        requestBody.municipality_code = municipalityCode;
+                    }
+
                     const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ mesh_codes: meshCodes, lod: preferredPickLod }),
+                        body: JSON.stringify(requestBody),
                     });
 
                     if (!response.ok) {

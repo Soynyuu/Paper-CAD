@@ -1,7 +1,7 @@
-# Paper-CAD Design System
+# Paper-CAD Design System (UI + Output Contract)
 
 **Status:** Draft  
-**Version:** 1.0  
+**Version:** 1.1  
 **Principle:** Less, but better. Honest to paper.
 
 Paper-CAD is a CAD tool for making architectural paper models. The final artifact is a physical model. The printed sheet (SVG/PDF) is not the end—it is an interface to a build process that the app must actively support.
@@ -9,11 +9,25 @@ Paper-CAD is a CAD tool for making architectural paper models. The final artifac
 Digital is not decoration here. Digital is leverage: instant feedback, reversible decisions, and continuity across 3D ↔ 2D ↔ paper. The goal is a new assembly experience where the sheet can “talk back” through a device.
 
 We design like a Japanese studio shaping a German industrial tool: quiet surfaces, explicit hierarchy, obsessive consistency. The viewport is the work; the UI is the instrument.
-Everything is measured. Nothing is decorative.
+Everything is measured. Nothing is decorative without a job.
 
 **Workflow:** Model → Unfold → Layout → Export → Build.
 
 **Keywords:** MUST / SHOULD / MAY define requirement levels in this document.
+
+## 0. What This Document Is (and Isn’t)
+
+This is the “design system” for Paper-CAD in the practical sense: a shared set of decisions that keeps **both** the in-app UI and the exported sheet consistent and trustworthy.
+
+Because Paper-CAD’s “UI” continues on paper, this document has two scopes:
+
+- **App UI system:** tokens, components, interaction states.
+- **Output contract:** SVG/PDF semantics and print constraints (what the user can trust).
+
+Non-goals:
+
+- A complete algorithm spec for CAD/unfolding.
+- A marketing/brand identity guide.
 
 ## 1. Principles (Dieter Rams, adapted)
 
@@ -149,7 +163,7 @@ The print output MUST remain understandable in pure black & white.
   - Tab outline (`.tab-polygon`): 0.20mm dashed (e.g. 3mm on / 2mm off)
   - Page border (`.page-border`): 0.15mm dashed, light (not competing with geometry)
 - Strokes SHOULD use `vector-effect: non-scaling-stroke` so scaling never destroys legibility.
-- Output SHOULD avoid heavy fills; paper needs whitespace to breathe.
+- Output SHOULD avoid heavy fills by default; if textures/patterns are enabled, they MUST stay subordinate to cut/fold cues and labels (see Section 2.7).
 - The baseline above is in mm. If output uses px-based units, convert at the export boundary (do not “eyeball” it).
 
 #### 2.6.4 Typography & Labeling in Output
@@ -177,12 +191,50 @@ Every exported sheet SHOULD include a minimal, quiet metadata block:
 - QR or linking graphics (if used) SHOULD be vector (paths), not raster.
 - If QR/deep links are included, placement MUST avoid tabs and fold/cut lines; for tiny faces, prefer a per-page index panel.
 
+### 2.7 Textures & Patterns (Print-First)
+
+Textures are not “decoration” in Paper-CAD. They are optional **surface information** (material/facade cues) for architectural models. They MUST never compromise assembly cues.
+
+#### 2.7.1 Intent (When)
+
+- Textures MAY be used to convey facade/material detail (brick, windows, cladding) that would otherwise be lost at paper scale.
+- Textures MUST remain subordinate to cut/fold/tab/label systems.
+- Users SHOULD be able to export with textures **on/off** (structure-only vs detailed).
+
+#### 2.7.2 Output Rules (SVG/PDF)
+
+- Texture fills MUST not hide line semantics; cut/fold/tab/face outlines MUST remain on top of texture fills.
+- Textures SHOULD use a “low-ink” treatment (desaturation and/or opacity) so outlines and labels remain primary.
+- Texture meaning MUST survive monochrome printing:
+  - Prefer patterns that still read as tone/hatching in grayscale.
+  - Avoid relying on hue differences between adjacent faces as the only separator.
+- Prefer repeatable patterns over large photographic images to keep files small and printing reliable.
+
+#### 2.7.3 Data Contract (Stability)
+
+If a face has a texture, the exported SVG SHOULD carry stable attributes on the face element:
+
+- `data-texture-id` (pattern/material identifier)
+- optional: `data-texture-rotation` (degrees)
+- Texture mappings SHOULD reference `faceId` whenever available; `faceNumber` is a display label and MAY change (see Face Identity Contract).
+
+Pattern definitions in SVG SHOULD use stable IDs:
+
+- `id="texture-pattern-<patternId>"`
+
+#### 2.7.4 Asset Source of Truth (How)
+
+- Pattern metadata lives in `frontend/public/textures/patterns.json`.
+- Pattern images live in `frontend/public/textures/` and MUST be tileable if used as a repeatable fill.
+- Pattern IDs MUST be stable; treat them as part of the export contract (changing an ID breaks saved layouts/mappings).
+
 ## 3. Scope & Source of Truth
 
 - **Tokens:** CSS Custom Properties in `frontend/public/index.css`.
 - **Themes:** `theme="light"` / `theme="dark"` on the root element (`<html>` / `:root`).
 - **Components:** `frontend/packages/chili-ui` should consume tokens (prefer semantic tokens first).
-- **Public contracts (treat as APIs):** token names, theme attribute, output class names, and the FaceRef link format/version.
+- **Textures:** pattern IDs and assets in `frontend/public/textures/` (treat IDs and SVG data attributes as a contract).
+- **Public contracts (treat as APIs):** token names, theme attribute, output class names, FaceRef link format/version, and texture pattern IDs.
 
 ## 4. Token Rules (Non-Negotiable)
 
@@ -367,6 +419,7 @@ If any item fails, the change is not done.
 - Face identity is stable between 3D and 2D (numbers/labels don’t reshuffle unexpectedly).
 - Export is deterministic enough to diff (no random IDs unless necessary).
 - SVG declares physical page size and follows the Print Output Specification (Section 2.6).
+- If textures/patterns are enabled, the export SHOULD remain legible in monochrome and SHOULD not ship with broken image references.
 
 ### 9.3 Assembly (Device Interaction)
 
@@ -400,3 +453,5 @@ If any item fails, the change is not done.
 - Replace hardcoded borders with `--border-color`.
 - Prefer semantic tokens over palette tokens.
 - Verify light/dark themes and all interaction states.
+- Replace decorative emoji in production UI surfaces (use the icon system instead).
+- Key persisted texture mappings by `faceId` (not `faceNumber`) for stability across re-unfolds.

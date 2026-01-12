@@ -324,6 +324,17 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         onClose(DialogResult.cancel);
     }, [onClose]);
 
+    const handleDialogKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLDivElement>) => {
+            e.stopPropagation();
+            if (e.key === "Escape") {
+                e.preventDefault();
+                handleClose();
+            }
+        },
+        [handleClose],
+    );
+
     // Constants for coordinate conversion
     const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator (OK for small ranges)
     const DEFAULT_TOKYO_LAT = 35.681236; // Tokyo Station latitude
@@ -628,7 +639,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     );
 
     return (
-        <div className={styles.dialog}>
+        <div className={styles.dialog} onKeyDown={handleDialogKeyDown}>
             <div className={styles.body}>
                 {/* Map area */}
                 <div className={styles.mapContainer}>

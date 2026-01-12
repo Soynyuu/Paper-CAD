@@ -1,0 +1,6 @@
+# Ignore all cached CityGML data
+*
+
+# Keep .gitignore and README
+!.gitignore
+!README.md

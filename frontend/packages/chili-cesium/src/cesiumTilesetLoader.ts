@@ -25,9 +25,8 @@ export class CesiumTilesetLoader {
     private currentTileset: Cesium.Cesium3DTileset | null = null;
     private loadedTilesets: Map<string, Cesium.Cesium3DTileset> = new Map();
     private meshLoadOrder: string[] = []; // LRU tracking
-    // Limit based on memory profiling: ~500MB for 25 meshes (LOD1)
-    // 3x3 search grid + buffer meshes for smooth panning.
-    private readonly MAX_LOADED_MESHES = 25;
+    // Keep the cache small for picker use to reduce memory pressure.
+    private readonly MAX_LOADED_MESHES = 12;
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
@@ -41,18 +40,23 @@ export class CesiumTilesetLoader {
             debugShowGeometricError: false,
 
             // Performance settings
-            maximumScreenSpaceError: 16,
+            maximumScreenSpaceError: 24,
+            cacheBytes: 128 * 1024 * 1024,
+            maximumCacheOverflowBytes: 64 * 1024 * 1024,
+            cullRequestsWhileMoving: true,
+            cullRequestsWhileMovingMultiplier: 80,
 
             // Skip LOD levels for faster loading
             skipLevelOfDetail: true,
             baseScreenSpaceError: 1024,
             skipScreenSpaceErrorFactor: 16,
             skipLevels: 1,
+            loadSiblings: false,
 
-            // Preload ancestors for better picking
-            preloadWhenHidden: true,
+            // Avoid eager preloading to keep memory use down.
+            preloadWhenHidden: false,
             preloadFlightDestinations: false,
-            preferLeaves: true,
+            preferLeaves: false,
 
             // Enable dynamic screen space error for LOD
             dynamicScreenSpaceError: true,

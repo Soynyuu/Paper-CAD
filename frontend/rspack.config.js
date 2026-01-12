@@ -30,7 +30,7 @@ loadEnv();
 
 // PLATEAU-Terrain (ion asset 3258112). Override with CESIUM_TERRAIN_ASSET_ID if needed.
 const DEFAULT_TERRAIN_ASSET_ID = 3258112;
-const DEFAULT_PICK_LOD = 3;
+const DEFAULT_PICK_LOD = 2;
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;

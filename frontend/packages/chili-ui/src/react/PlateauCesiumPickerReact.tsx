@@ -145,7 +145,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
     const preferredPickLod = Math.min(
-        3,
+        2,
         Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)),
     );
 
@@ -569,6 +569,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 }
 
                 setLoadingMessage("3D Tilesを読み込み中...");
+                loader.clearAll();
 
                 // Get API base URL
                 const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";

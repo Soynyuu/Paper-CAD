@@ -375,7 +375,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: meshCodes,
-                        lod: 3,
+                        lod: 2,
                     }),
                 });
 
@@ -409,6 +409,7 @@ export class PlateauCesiumPickerDialog {
                 // Load multiple tilesets
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -496,7 +497,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCodeToUse],
-                        lod: 3,
+                        lod: 2,
                     }),
                 });
 
@@ -516,6 +517,7 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,
@@ -574,7 +576,7 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCode],
-                        lod: 3,
+                        lod: 2,
                     }),
                 });
 
@@ -594,6 +596,7 @@ export class PlateauCesiumPickerDialog {
                 // Load tileset
                 const viewer = cesiumView?.getViewer();
                 if (tilesetLoader && viewer) {
+                    tilesetLoader.clearAll();
                     const { failedMeshes } = await tilesetLoader.loadMultipleTilesets(
                         data.tilesets.map((t: any) => ({
                             meshCode: t.mesh_code,

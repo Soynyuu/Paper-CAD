@@ -25,25 +25,6 @@ const DefaultKeyMap: HotkeyMap = {
     "ctrl+y": "edit.redo",
 };
 
-const isEditableTarget = (target: EventTarget | null): boolean => {
-    if (!target || !(target instanceof Element)) return false;
-    const editable = target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']");
-    if (!editable) return false;
-    if (editable instanceof HTMLInputElement) {
-        return !editable.readOnly && !editable.disabled;
-    }
-    if (editable instanceof HTMLTextAreaElement) {
-        return !editable.readOnly && !editable.disabled;
-    }
-    if (editable instanceof HTMLSelectElement) {
-        return !editable.disabled;
-    }
-    if (editable instanceof HTMLElement) {
-        return editable.isContentEditable;
-    }
-    return false;
-};
-
 export class HotkeyService implements IService {
     private app?: IApplication;
     private readonly _keyMap = new Map<string, CommandKeys>();
@@ -89,7 +70,6 @@ export class HotkeyService implements IService {
     }
 
     private readonly eventHandlerKeyDown = (e: KeyboardEvent) => {
-        if (this.shouldIgnoreKeyEvent(e)) return;
         e.preventDefault();
         let visual = this.app?.activeView?.document?.visual;
         let view = this.app?.activeView;
@@ -101,7 +81,6 @@ export class HotkeyService implements IService {
     };
 
     private readonly commandKeyDown = (e: KeyboardEvent) => {
-        if (this.shouldIgnoreKeyEvent(e)) return;
         e.preventDefault();
         let command = this.getCommand(e);
         if (command !== undefined) {
@@ -132,13 +111,6 @@ export class HotkeyService implements IService {
         keys.forEach((key) => {
             this._keyMap.set(key, map[key]);
         });
-    }
-
-    private shouldIgnoreKeyEvent(e: KeyboardEvent): boolean {
-        if (e.isComposing || e.key === "Process") return true;
-        if (isEditableTarget(e.target)) return true;
-        if (typeof document !== "undefined" && isEditableTarget(document.activeElement)) return true;
-        return false;
     }
 
     /**

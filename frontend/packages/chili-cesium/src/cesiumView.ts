@@ -7,12 +7,7 @@ import type { CityConfig } from "./types";
 /**
  * Basemap types supported by CesiumView
  */
-export type BasemapType = "natural-earth" | "gsi-standard" | "gsi-pale" | "gsi-photo" | "plateau-ortho-2023";
-
-export interface CesiumViewInitializeOptions {
-    deferBasemap?: boolean;
-    deferTerrain?: boolean;
-}
+export type BasemapType = "natural-earth" | "gsi-standard" | "gsi-pale" | "gsi-photo";
 
 /**
  * Basemap configuration interface
@@ -25,9 +20,6 @@ interface BasemapConfig {
 const GSI_CREDIT_HTML =
     '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>';
 const createGsiCredit = () => new Cesium.Credit(GSI_CREDIT_HTML, true);
-const PLATEAU_CREDIT_HTML =
-    '<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">Project PLATEAU</a>';
-const createPlateauCredit = () => new Cesium.Credit(PLATEAU_CREDIT_HTML, true);
 
 /**
  * Basemap registry with GSI (Geospatial Information Authority of Japan) layers
@@ -66,81 +58,21 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
-                minimumLevel: 2,
                 maximumLevel: 18,
                 credit: createGsiCredit(),
             });
         },
     },
-    "plateau-ortho-2023": {
-        name: "PLATEAU Ortho 2023",
-        provider: async () => {
-            return new Cesium.UrlTemplateImageryProvider({
-                url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
-                minimumLevel: 10,
-                maximumLevel: 19,
-                credit: createPlateauCredit(),
-            });
-        },
-    },
 };
 
-const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
-const CESIUM_WIDGETS_CSS_PATH = "Widgets/widgets.css";
-
-const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
-    if (typeof window === "undefined") {
-        return undefined;
-    }
-
-    const runtime = window as any;
-    if (runtime.__APP_CONFIG__) {
-        return runtime.__APP_CONFIG__ as AppConfig;
-    }
-
-    if (typeof __APP_CONFIG__ !== "undefined") {
-        return __APP_CONFIG__;
-    }
-
-    return undefined;
-};
-
-const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
-    if (typeof document === "undefined") {
-        return Promise.resolve();
-    }
-
-    const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-    const href = `${normalizedBaseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
-    const resolvedHref = new URL(href, window.location.href).href;
-
-    const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;
-    if (existing) {
-        if (existing.href !== resolvedHref) {
-            existing.href = href;
-        }
-
-        if (existing.sheet) {
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve) => {
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => resolve(), { once: true });
-        });
-    }
-
+// Load Cesium CSS dynamically
+if (typeof document !== "undefined" && !document.getElementById("cesium-widget-css")) {
     const link = document.createElement("link");
-    link.id = CESIUM_WIDGET_CSS_ID;
+    link.id = "cesium-widget-css";
     link.rel = "stylesheet";
-    link.href = href;
+    link.href = "/cesium/Widgets/CesiumWidget/CesiumWidget.css";
     document.head.appendChild(link);
-
-    return new Promise((resolve) => {
-        link.addEventListener("load", () => resolve(), { once: true });
-        link.addEventListener("error", () => resolve(), { once: true });
-    });
-};
+}
 
 /**
  * CesiumView
@@ -164,13 +96,6 @@ export class CesiumView {
     private viewer: Cesium.Viewer | null = null;
     private container: HTMLElement;
     private currentBasemap: BasemapType = "gsi-pale";
-    private currentBasemapLayers: Cesium.ImageryLayer[] = [];
-    private pendingBasemap: BasemapType | null = null;
-    private terrainInitialized = false;
-    private basemapInitialized = false;
-    private deferBasemap = false;
-    private deferTerrain = false;
-    private interactionCleanup: Array<() => void> = [];
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -181,24 +106,13 @@ export class CesiumView {
      *
      * @param basemap - Initial basemap type (default: gsi-pale)
      */
-    async initialize(
-        basemap: BasemapType = "gsi-pale",
-        options: CesiumViewInitializeOptions = {},
-    ): Promise<void> {
-        const appConfig = getRuntimeAppConfig();
-        this.pendingBasemap = basemap;
-        this.deferBasemap = Boolean(options.deferBasemap);
-        this.deferTerrain = Boolean(options.deferTerrain);
-
+    async initialize(basemap: BasemapType = "gsi-pale"): Promise<void> {
         // Set Cesium base URL from environment
-        const rawBaseUrl = appConfig?.cesiumBaseUrl || "/cesium/";
-        const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
-        (window as any).CESIUM_BASE_URL = baseUrl;
-
-        await ensureCesiumWidgetCss(baseUrl);
+        const cesiumBaseUrl = (window as any).__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
+        (window as any).CESIUM_BASE_URL = cesiumBaseUrl;
 
         // Set Cesium Ion token if provided
-        const ionToken = appConfig?.cesiumIonToken || appConfig?.cesiumTerrainIonToken;
+        const ionToken = (window as any).__APP_CONFIG__?.cesiumIonToken;
         if (ionToken) {
             Cesium.Ion.defaultAccessToken = ionToken;
         }
@@ -221,24 +135,28 @@ export class CesiumView {
             requestRenderMode: true,
             maximumRenderTimeChange: Infinity,
 
-            // Use configured basemap with Natural Earth fallback
+            // Use GSI basemap with Natural Earth fallback
             baseLayer: false, // Will be added manually after viewer creation
         });
 
-        if (this.viewer?.canvas) {
-            this.enableTrackpadPinchZoom(this.viewer.canvas);
-        }
-
         // Use PLATEAU terrain to align with Japan's geoid-based elevations
-        if (!this.deferTerrain) {
-            await this.ensureTerrainProvider();
-        }
+        await this.applyTerrainProvider();
 
-        if (!this.deferBasemap) {
-            await this.ensureBasemap(basemap);
-        } else if (this.viewer.scene?.globe) {
-            this.viewer.scene.globe.show = false;
-            this.viewer.scene.requestRender();
+        // Initialize basemap with fallback handling
+        try {
+            const basemapConfig = BASEMAPS[basemap];
+            const provider = await basemapConfig.provider();
+            this.viewer.imageryLayers.addImageryProvider(provider);
+            this.currentBasemap = basemap;
+        } catch (error) {
+            console.warn(
+                `[CesiumView] Failed to load ${basemap} basemap, falling back to Natural Earth:`,
+                error,
+            );
+            // Fallback to Natural Earth
+            const fallbackProvider = await BASEMAPS["natural-earth"].provider();
+            this.viewer.imageryLayers.addImageryProvider(fallbackProvider);
+            this.currentBasemap = "natural-earth";
         }
 
         // Configure scene for better 3D Tiles rendering
@@ -268,42 +186,16 @@ export class CesiumView {
     private async applyTerrainProvider(): Promise<void> {
         if (!this.viewer) return;
 
-        const appConfig = getRuntimeAppConfig();
-        const assetId = Number(appConfig?.cesiumTerrainAssetId);
+        const assetId = __APP_CONFIG__.cesiumTerrainAssetId;
         if (!Number.isFinite(assetId) || assetId <= 0) {
             return;
         }
 
-        const terrainIonToken = appConfig?.cesiumTerrainIonToken || appConfig?.cesiumIonToken;
-        if (!terrainIonToken) {
-            console.warn(
-                "[CesiumView] Terrain ion access token is missing; skipping terrain loading (CESIUM_TERRAIN_ASSET_ID is set).",
-            );
-            return;
-        }
-
         try {
-            const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId, {
-                accessToken: terrainIonToken,
-            } as any);
+            const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId);
             this.viewer.terrainProvider = terrainProvider;
-            this.viewer.scene?.requestRender();
         } catch (error) {
-            console.warn(
-                `[CesiumView] Failed to load terrain from ion asset ${assetId}. Falling back to Cesium World Terrain.`,
-                error,
-            );
-
-            try {
-                const fallbackTerrain = await Cesium.createWorldTerrainAsync();
-                this.viewer.terrainProvider = fallbackTerrain;
-                this.viewer.scene?.requestRender();
-            } catch (fallbackError) {
-                console.warn(
-                    "[CesiumView] Failed to load Cesium World Terrain, using default terrain.",
-                    fallbackError,
-                );
-            }
+            console.warn("[CesiumView] Failed to load PLATEAU terrain, using default terrain.", error);
         }
     }
 
@@ -357,7 +249,24 @@ export class CesiumView {
             return; // Already using this basemap
         }
 
-        await this.ensureBasemap(basemapType);
+        try {
+            // Remove current basemap layer (index 0)
+            const currentLayer = this.viewer.imageryLayers.get(0);
+            if (currentLayer) {
+                this.viewer.imageryLayers.remove(currentLayer);
+            }
+
+            // Add new basemap
+            const basemapConfig = BASEMAPS[basemapType];
+            const provider = await basemapConfig.provider();
+            this.viewer.imageryLayers.addImageryProvider(provider, 0); // Insert at index 0
+            this.currentBasemap = basemapType;
+
+            console.log(`[CesiumView] Switched to basemap: ${basemapConfig.name}`);
+        } catch (error) {
+            console.error(`[CesiumView] Failed to switch to ${basemapType} basemap:`, error);
+            throw error;
+        }
     }
 
     /**
@@ -378,149 +287,13 @@ export class CesiumView {
         return Object.keys(BASEMAPS) as BasemapType[];
     }
 
-    async activateBasemap(
-        basemapType?: BasemapType,
-        options: { includeTerrain?: boolean } = {},
-    ): Promise<void> {
-        if (!this.viewer) {
-            throw new Error("Viewer not initialized. Call initialize() first.");
-        }
-
-        const targetBasemap = basemapType ?? this.pendingBasemap ?? this.currentBasemap;
-
-        const includeTerrain = options.includeTerrain !== false;
-        if (includeTerrain && this.deferTerrain && !this.terrainInitialized) {
-            await this.ensureTerrainProvider();
-        }
-
-        if (!this.basemapInitialized || targetBasemap !== this.currentBasemap || this.deferBasemap) {
-            await this.ensureBasemap(targetBasemap);
-        }
-
-        if (this.viewer.scene?.globe) {
-            this.viewer.scene.globe.show = true;
-            this.viewer.scene.requestRender();
-        }
-    }
-
-    private clearBasemapLayers(): void {
-        if (!this.viewer) return;
-        this.currentBasemapLayers.forEach((layer) => {
-            if (this.viewer?.imageryLayers.contains(layer)) {
-                this.viewer.imageryLayers.remove(layer, false);
-            }
-        });
-        this.currentBasemapLayers = [];
-    }
-
-    private async applyBasemap(basemapType: BasemapType): Promise<void> {
-        if (!this.viewer) {
-            throw new Error("Viewer not initialized. Call initialize() first.");
-        }
-
-        this.clearBasemapLayers();
-
-        if (basemapType === "plateau-ortho-2023") {
-            try {
-                const gsiProvider = await BASEMAPS["gsi-photo"].provider();
-                const gsiLayer = this.viewer.imageryLayers.addImageryProvider(gsiProvider, 0);
-
-                const layers: Cesium.ImageryLayer[] = [gsiLayer];
-                try {
-                    const plateauProvider = await BASEMAPS["plateau-ortho-2023"].provider();
-                    const plateauLayer = this.viewer.imageryLayers.addImageryProvider(plateauProvider, 1);
-                    layers.push(plateauLayer);
-                } catch (error) {
-                    console.warn(
-                        "[CesiumView] Failed to load PLATEAU Ortho overlay; using GSI Photo only.",
-                        error,
-                    );
-                }
-
-                this.currentBasemapLayers = layers;
-                this.currentBasemap = basemapType;
-                this.basemapInitialized = true;
-                this.deferBasemap = false;
-                console.log("[CesiumView] Switched to basemap: PLATEAU Ortho 2023 + GSI Photo");
-                return;
-            } catch (error) {
-                console.warn(
-                    "[CesiumView] Failed to load PLATEAU basemap; falling back to Natural Earth:",
-                    error,
-                );
-            }
-        }
-
-        try {
-            const basemapConfig = BASEMAPS[basemapType];
-            const provider = await basemapConfig.provider();
-            const layer = this.viewer.imageryLayers.addImageryProvider(provider, 0);
-            this.currentBasemapLayers = [layer];
-            this.currentBasemap = basemapType;
-            this.basemapInitialized = true;
-            this.deferBasemap = false;
-            console.log(`[CesiumView] Switched to basemap: ${basemapConfig.name}`);
-        } catch (error) {
-            console.warn(
-                `[CesiumView] Failed to load ${basemapType} basemap, falling back to Natural Earth:`,
-                error,
-            );
-            const fallbackProvider = await BASEMAPS["natural-earth"].provider();
-            const fallbackLayer = this.viewer.imageryLayers.addImageryProvider(fallbackProvider, 0);
-            this.currentBasemapLayers = [fallbackLayer];
-            this.currentBasemap = "natural-earth";
-            this.basemapInitialized = true;
-            this.deferBasemap = false;
-        }
-    }
-
-    private async ensureBasemap(basemapType: BasemapType): Promise<void> {
-        this.pendingBasemap = basemapType;
-        await this.applyBasemap(basemapType);
-    }
-
-    private async ensureTerrainProvider(): Promise<void> {
-        if (this.terrainInitialized) return;
-        await this.applyTerrainProvider();
-        this.terrainInitialized = true;
-        this.deferTerrain = false;
-    }
-
     /**
      * Dispose viewer and cleanup resources
      */
     dispose(): void {
         if (this.viewer) {
-            this.interactionCleanup.forEach((cleanup) => cleanup());
-            this.interactionCleanup = [];
             this.viewer.destroy();
             this.viewer = null;
         }
-    }
-
-    private enableTrackpadPinchZoom(canvas: HTMLCanvasElement): void {
-        const wheelHandler = (event: WheelEvent) => {
-            if (event.ctrlKey) {
-                // Prevent browser zoom on macOS trackpad pinch.
-                event.preventDefault();
-            }
-        };
-
-        const gestureHandler = (event: Event) => {
-            event.preventDefault();
-        };
-
-        const passiveFalse: AddEventListenerOptions = { passive: false };
-        canvas.addEventListener("wheel", wheelHandler, passiveFalse);
-        canvas.addEventListener("gesturestart", gestureHandler, passiveFalse);
-        canvas.addEventListener("gesturechange", gestureHandler, passiveFalse);
-        canvas.addEventListener("gestureend", gestureHandler, passiveFalse);
-
-        this.interactionCleanup.push(() => {
-            canvas.removeEventListener("wheel", wheelHandler);
-            canvas.removeEventListener("gesturestart", gestureHandler);
-            canvas.removeEventListener("gesturechange", gestureHandler);
-            canvas.removeEventListener("gestureend", gestureHandler);
-        });
     }
 }

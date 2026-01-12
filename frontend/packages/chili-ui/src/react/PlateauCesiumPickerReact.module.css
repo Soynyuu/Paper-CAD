@@ -1,171 +1,204 @@
-/* ============================================
-   PlateauCesiumPickerReact - Full Screen Mode
-   Unified with Paper-CAD Design System
-   ============================================ */
-
 .dialog {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 90vw;
+    height: 85vh;
+    max-width: 100vw;
+    max-height: 100vh;
     padding: 0;
-    margin: 0;
     border: none;
-    border-radius: 0;
-    background-color: var(--neutral-0, #121212);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    background-color: var(--panel-background-color);
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     overflow: hidden;
-    z-index: var(--z-modal, 5001);
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
 }
 
+/* Main Body: Map + Sidebar */
 .body {
     display: flex;
-    flex-direction: row;
-    flex: 1 1 0%;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    min-width: 0;
+    flex: 1;
     overflow: hidden;
+    position: relative;
 }
 
 .mapContainer {
-    flex: 1 1 0%;
+    flex: 1;
     position: relative;
-    min-width: 0;
-    min-height: 0;
-    background-color: #000;
+    background-color: #1a1a1a;
     overflow: hidden;
 }
 
-.cesiumContainer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
-}
-
-/* ============================================
-   Search Container
-   ============================================ */
+/* Search container (top-left overlay) */
 .searchContainer {
     position: absolute;
-    top: var(--spacing-lg, 24px);
-    left: var(--spacing-lg, 24px);
-    width: 400px;
-    z-index: var(--z-dropdown, 100);
+    top: 16px;
+    left: 16px;
+    width: 360px;
+    z-index: 200;
     pointer-events: auto;
 }
 
-.searchBox {
-    background: var(--neutral-100, #2a2a2a);
-    border-radius: var(--radius-lg, 12px);
-    border: 1px solid var(--border-color, #3a3a3a);
-    box-shadow: var(--shadow-lg);
-    transition: all var(--transition-base);
-    overflow: hidden;
-}
-
-.searchBox:hover,
-.searchBox:focus-within {
-    border-color: var(--primary-color, #ff7744);
-    box-shadow: var(--shadow-focus);
-}
-
-.searchBox.expanded {
+/* Search mode tabs */
+.searchModeTabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    background-color: rgba(255, 255, 255, 0.95);
     border-radius: var(--radius-md, 8px);
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Search input wrapper */
+.searchModeTab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary, #666);
+    font-size: var(--font-size-xs, 12px);
+    font-weight: var(--font-weight-medium, 500);
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.searchModeTab:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary, #333);
+}
+
+.searchModeTab.active {
+    background-color: var(--primary-color, #2196f3);
+    color: white;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+}
+
+.searchModeTab.active:hover {
+    background-color: var(--primary-color-dark, #1976d2);
+}
+
+/* Mesh code input wrapper */
+.meshCodeInputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease;
+    margin-top: 8px;
+}
+
+.meshCodeInputWrapper:focus-within {
+    border-color: var(--primary-color, #2196f3);
+}
+
+.meshCodeIcon {
+    position: absolute;
+    left: 12px;
+    font-size: 16px;
+    color: var(--text-secondary, #666);
+    pointer-events: none;
+}
+
+.meshCodeInput {
+    flex: 1;
+    padding: 10px 12px 10px 40px;
+    border: none;
+    background: transparent;
+    font-size: var(--font-size-sm, 14px);
+    outline: none;
+    color: var(--text-primary, #333);
+}
+
+.meshCodeInput::placeholder {
+    color: var(--text-secondary, #999);
+}
+
+.meshCodeInput:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
 .searchInputWrapper {
     position: relative;
     display: flex;
     align-items: center;
-    height: 52px;
-    padding: 0 var(--spacing-md, 16px);
-    gap: var(--spacing-sm, 8px);
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.searchInputWrapper:focus-within {
+    border-color: var(--primary-color, #2196f3);
 }
 
 .searchIcon {
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    color: var(--neutral-500, #999);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.searchIcon svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-    stroke-width: 2;
-    fill: none;
+    position: absolute;
+    left: 12px;
+    font-size: 16px;
+    color: var(--text-secondary, #666);
+    pointer-events: none;
 }
 
 .searchInput {
     flex: 1;
-    height: 100%;
-    padding: 0;
+    padding: 12px 40px 12px 40px;
     border: none;
     background: transparent;
     font-size: var(--font-size-sm, 14px);
-    font-weight: var(--font-weight-regular, 400);
-    font-family: inherit;
-    color: var(--foreground-color, #f5f5f5);
     outline: none;
-    caret-color: var(--primary-color, #ff7744);
+    color: var(--text-primary, #333);
 }
 
 .searchInput::placeholder {
-    color: var(--neutral-500, #999);
+    color: var(--text-secondary, #999);
 }
 
 .searchInput:disabled {
     cursor: not-allowed;
-    opacity: var(--opacity-disabled, 0.5);
+    opacity: 0.6;
 }
 
-/* Clear button */
 .searchClearButton {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+    position: absolute;
+    right: 12px;
+    background: none;
     border: none;
-    background: transparent;
-    color: var(--neutral-500, #999);
+    font-size: 24px;
+    color: var(--text-secondary, #666);
     cursor: pointer;
-    border-radius: var(--radius-sm, 4px);
+    padding: 0;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all var(--transition-fast);
+    transition: color 0.2s ease;
 }
 
 .searchClearButton:hover {
-    background: var(--hover-background-color);
-    color: var(--foreground-color, #f5f5f5);
+    color: var(--text-primary, #333);
 }
 
-.searchClearButton svg {
+.searchSpinner {
+    position: absolute;
+    right: 12px;
     width: 16px;
     height: 16px;
-}
-
-/* Loading spinner */
-.searchSpinner {
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    border: 2px solid var(--neutral-300, #4d4d4d);
-    border-top-color: var(--primary-color, #ff7744);
+    border: 2px solid var(--primary-color, #2196f3);
+    border-top-color: transparent;
     border-radius: 50%;
-    animation: spin 0.7s linear infinite;
+    animation: spin 0.6s linear infinite;
 }
 
 @keyframes spin {
@@ -174,200 +207,67 @@
     }
 }
 
-/* Divider */
-.searchDivider {
-    height: 1px;
-    background: var(--border-color, #3a3a3a);
-    margin: 0 var(--spacing-md, 16px);
-}
-
-/* Mode chips */
-.searchModes {
-    display: flex;
-    padding: 0 var(--spacing-md, 16px);
-    gap: var(--spacing-sm, 8px);
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: all var(--transition-base);
-}
-
-.searchModes.visible {
-    opacity: 1;
-    max-height: 56px;
-    padding: var(--spacing-sm, 8px) var(--spacing-md, 16px) var(--spacing-12, 12px);
-}
-
-.searchModeChip {
-    padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
-    border: 1px solid var(--border-color, #3a3a3a);
-    border-radius: var(--radius-full, 9999px);
-    background: transparent;
-    color: var(--neutral-600, #ccc);
-    font-size: var(--font-size-xs, 12px);
-    font-weight: var(--font-weight-medium, 500);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-}
-
-.searchModeChip:hover {
-    background: var(--hover-background-color);
-    border-color: var(--primary-color, #ff7744);
-    color: var(--foreground-color, #f5f5f5);
-}
-
-.searchModeChip.active {
-    background: var(--checked-color);
-    border-color: var(--primary-color, #ff7744);
-    color: var(--primary-color, #ff7744);
-}
-
-/* Mesh code section */
-.meshCodeSection {
-    padding: 0 var(--spacing-md, 16px);
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: all var(--transition-base);
-}
-
-.meshCodeSection.visible {
-    opacity: 1;
-    max-height: 60px;
-    padding: 0 var(--spacing-md, 16px) var(--spacing-12, 12px);
-}
-
-.meshCodeInput {
-    width: 100%;
-    height: 40px;
-    padding: 0 var(--spacing-12, 12px);
-    border: 1px solid var(--border-color, #3a3a3a);
-    border-radius: var(--radius-sm, 4px);
-    font-size: var(--font-size-sm, 14px);
-    font-family: inherit;
-    color: var(--foreground-color, #f5f5f5);
-    background: var(--neutral-50, #1f1f1f);
-    outline: none;
-    transition: all var(--transition-fast);
-}
-
-.meshCodeInput:focus {
-    border-color: var(--primary-color, #ff7744);
-    box-shadow: var(--shadow-focus);
-}
-
-.meshCodeInput::placeholder {
-    color: var(--neutral-500, #999);
-}
-
-/* Search results */
 .searchResults {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height var(--transition-base);
-}
-
-.searchResults.visible {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
     max-height: 280px;
     overflow-y: auto;
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    z-index: 1;
 }
 
 .searchResultItem {
-    padding: var(--spacing-12, 12px) var(--spacing-md, 16px);
+    padding: 12px 16px;
     cursor: pointer;
-    transition: background-color var(--transition-fast);
+    font-size: var(--font-size-sm, 14px);
+    color: var(--text-primary, #333);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: background-color 0.15s ease;
+}
+
+.searchResultItem:last-child {
+    border-bottom: none;
 }
 
 .searchResultItem:hover,
 .searchResultItem.selected {
-    background: var(--hover-background-color);
+    background-color: var(--primary-color-light, #e3f2fd);
 }
 
 .searchResultItem:active {
-    background: var(--active-background-color);
+    background-color: var(--primary-color-lighter, #bbdefb);
 }
 
+/* NEW: 場所名と建物件数の表示 */
 .locationName {
-    font-size: var(--font-size-sm, 14px);
     font-weight: var(--font-weight-medium, 500);
-    color: var(--foreground-color, #f5f5f5);
-    line-height: 1.4;
+    font-size: var(--font-size-sm, 14px);
 }
 
 .buildingCount {
     font-size: var(--font-size-xs, 12px);
-    color: var(--neutral-500, #999);
-    margin-top: 2px;
+    color: var(--text-secondary, #666);
+    margin-top: 4px;
+}
+
+.searchResultItem:hover .buildingCount {
+    color: var(--primary-color, #2196f3);
 }
 
 .searchError {
-    padding: var(--spacing-md, 16px);
+    padding: 16px;
     text-align: center;
-    color: var(--danger-color, #e74c3c);
+    color: var(--error-color, #f44336);
     font-size: var(--font-size-sm, 14px);
 }
 
-/* Hint text */
-.searchHint {
-    padding: var(--spacing-sm, 8px) var(--spacing-md, 16px) var(--spacing-12, 12px);
-    font-size: var(--font-size-xs, 12px);
-    color: var(--neutral-500, #999);
-    text-align: center;
-}
-
-/* Close button */
-.closeButton {
-    position: absolute;
-    top: var(--spacing-lg, 24px);
-    right: var(--spacing-lg, 24px);
-    width: 44px;
-    height: 44px;
-    border: none;
-    border-radius: var(--radius-md, 8px);
-    background: var(--neutral-100, #2a2a2a);
-    color: var(--neutral-600, #ccc);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: var(--z-dropdown, 100);
-    transition: all var(--transition-fast);
-    border: 1px solid var(--border-color, #3a3a3a);
-}
-
-.closeButton:hover {
-    background: var(--hover-background-color);
-    border-color: var(--primary-color, #ff7744);
-    color: var(--foreground-color, #f5f5f5);
-}
-
-.closeButton svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-    stroke-width: 2;
-}
-
-/* ============================================
-   Responsive
-   ============================================ */
 @media (max-width: 600px) {
     .searchContainer {
-        top: var(--spacing-md, 16px);
-        left: var(--spacing-md, 16px);
-        right: var(--spacing-md, 16px);
-        width: auto;
-    }
-
-    .searchInputWrapper {
-        height: 48px;
-    }
-
-    .closeButton {
-        top: var(--spacing-md, 16px);
-        right: var(--spacing-md, 16px);
-        width: 40px;
-        height: 40px;
+        width: calc(100% - 32px);
+        max-width: 320px;
     }
 }

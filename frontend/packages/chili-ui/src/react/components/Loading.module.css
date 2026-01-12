@@ -3,27 +3,28 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: rgba(0, 0, 0, 0.85);
-    color: white;
-    padding: 16px 32px;
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-medium);
-    z-index: 200;
+    background: var(--neutral-100, #2a2a2a);
+    color: var(--foreground-color, #f5f5f5);
+    padding: var(--spacing-md, 16px) var(--spacing-lg, 24px);
+    border-radius: var(--radius-full, 9999px);
+    font-size: var(--font-size-sm, 14px);
+    font-weight: var(--font-weight-medium, 500);
+    z-index: var(--z-popover, 10000);
     display: flex;
     align-items: center;
-    gap: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    gap: var(--spacing-12, 12px);
+    border: 1px solid var(--border-color, #3a3a3a);
+    box-shadow: var(--shadow-lg);
 }
 
 .loading::before {
     content: "";
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--neutral-300, #4d4d4d);
+    border-top-color: var(--primary-color, #ff7744);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {

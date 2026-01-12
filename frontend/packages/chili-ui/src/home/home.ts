@@ -173,9 +173,12 @@ export class Home extends HTMLElement {
             // Card 2: Map (Primary)
             div(
                 {
-                    className: `${style.heroCard} ${style.primary}`, // .primary style added in CSS
-                    style: { borderColor: "var(--primary-color)", backgroundColor: "var(--neutral-0)" }, // Inline override just in case
-                    onclick: () => PubSub.default.pub("executeCommand", "file.importPlateauBuilding"),
+                    className: style.heroCard,
+                    style: { borderColor: "var(--primary-color)", backgroundColor: "var(--neutral-0)" },
+                    onclick: () => {
+                        console.log("[Home] PLATEAU button clicked");
+                        PubSub.default.pub("executeCommand", "file.importPlateauBuilding");
+                    },
                 },
                 svg({ icon: "icon-position", className: style.heroIcon }),
                 div({

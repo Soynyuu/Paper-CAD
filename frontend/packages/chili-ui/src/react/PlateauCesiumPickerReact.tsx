@@ -84,6 +84,9 @@ interface SearchResult {
     displayName: string;
     latitude: number;
     longitude: number;
+    targetLatitude?: number;
+    targetLongitude?: number;
+    municipalityCode?: string;
     osmType?: string;
     osmId?: number;
     buildingCount?: number; // NEW: 周辺の建物件数
@@ -343,6 +346,13 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator (OK for small ranges)
     const DEFAULT_TOKYO_LAT = 35.681236; // Tokyo Station latitude
     const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
+    const MUNICIPALITY_CODE_PATTERN = /^(\d{5})/;
+
+    const getMunicipalityCodeFromBuildingId = (buildingId?: string | null) => {
+        if (!buildingId) return undefined;
+        const match = buildingId.match(MUNICIPALITY_CODE_PATTERN);
+        return match?.[1];
+    };
 
     // Search handlers
     const performSearch = useCallback(async () => {
@@ -434,10 +444,14 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     setShowResults(true);
                     return;
                 }
+                const municipalityCode = getMunicipalityCodeFromBuildingId(data.building.building_id);
                 result = {
                     displayName: data.building.name || data.building.gml_id,
                     latitude: data.building.latitude || DEFAULT_TOKYO_LAT,
                     longitude: data.building.longitude || DEFAULT_TOKYO_LON,
+                    targetLatitude: data.building.latitude,
+                    targetLongitude: data.building.longitude,
+                    municipalityCode,
                     buildingCount: 1,
                 };
             } else {
@@ -448,10 +462,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     setShowResults(true);
                     return;
                 }
+                const primaryBuilding = data.buildings?.[0];
+                const municipalityCode = getMunicipalityCodeFromBuildingId(primaryBuilding?.building_id);
                 result = {
                     displayName: data.geocoding.display_name,
                     latitude: data.geocoding.latitude,
                     longitude: data.geocoding.longitude,
+                    targetLatitude: primaryBuilding?.latitude,
+                    targetLongitude: primaryBuilding?.longitude,
+                    municipalityCode,
                     osmType: data.geocoding.osm_type,
                     osmId: data.geocoding.osm_id,
                     buildingCount: data.buildings ? data.buildings.length : 0,
@@ -555,6 +574,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const loader = tilesetLoaderRef.current;
             if (!viewer || !loader) return;
 
+            const targetLatitude = result.targetLatitude ?? result.latitude;
+            const targetLongitude = result.targetLongitude ?? result.longitude;
+
             // 検索ドロップダウンを閉じる
             setShowResults(false);
             setSearchQuery(result.displayName);
@@ -590,8 +612,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
                 // Start with center mesh only; fallback to neighbors if nothing is found.
                 const centerMeshCodes = resolveMeshCodesFromCoordinates(
-                    result.latitude,
-                    result.longitude,
+                    targetLatitude,
+                    targetLongitude,
                     false,
                 );
                 console.log(
@@ -603,8 +625,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
                 if (tilesets.length === 0) {
                     const neighborMeshCodes = resolveMeshCodesFromCoordinates(
-                        result.latitude,
-                        result.longitude,
+                        targetLatitude,
+                        targetLongitude,
                         true,
                     );
                     console.log(
@@ -614,6 +636,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     tilesets = data.tilesets || [];
                 }
 
+                if (result.municipalityCode) {
+                    const filtered = tilesets.filter(
+                        (tileset: any) => tileset.municipality_code === result.municipalityCode,
+                    );
+                    if (filtered.length > 0) {
+                        tilesets = filtered;
+                    }
+                }
+
                 if (tilesets.length === 0) {
                     console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
                     setLoading(false);
@@ -621,28 +652,58 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     return;
                 }
 
-                // Load tilesets
-                const tilesetsToLoad = tilesets.map((t: any) => ({
-                    meshCode: t.mesh_code,
-                    url: t.tileset_url,
-                }));
+                const MAX_TILESETS_TO_LOAD = 12;
+                const PRIMARY_TILESETS_TO_LOAD = 2;
+                const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
+                const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
+                const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
 
-                const { failedMeshes } = await loader.loadMultipleTilesets(tilesetsToLoad);
-                if (failedMeshes.length > 0) {
+                const primaryLoad = await loader.loadMultipleTilesets(
+                    primaryTilesets.map((t: any) => ({
+                        meshCode: t.mesh_code,
+                        url: t.tileset_url,
+                    })),
+                );
+                if (primaryLoad.failedMeshes.length > 0) {
                     PubSub.default.pub(
                         "showToast",
                         "toast.plateau.tilesetLoadFailed:{0}",
-                        failedMeshes.length,
+                        primaryLoad.failedMeshes.length,
                     );
                 }
 
-                console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
+                if (backgroundTilesets.length > 0) {
+                    void loader
+                        .loadMultipleTilesets(
+                            backgroundTilesets.map((t: any) => ({
+                                meshCode: t.mesh_code,
+                                url: t.tileset_url,
+                            })),
+                        )
+                        .then(({ failedMeshes }) => {
+                            if (failedMeshes.length > 0) {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.tilesetLoadFailed:{0}",
+                                    failedMeshes.length,
+                                );
+                            }
+                        })
+                        .catch((error) => {
+                            console.warn(
+                                "[PlateauCesiumPicker] Background tileset load failed:",
+                                error,
+                            );
+                        });
+                }
+
+                console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
 
                 // NOW move camera AFTER tiles are loaded (matching Web Components version)
                 viewer.camera.flyTo({
                     destination: Cesium.Cartesian3.fromDegrees(
-                        result.longitude,
-                        result.latitude,
+                        targetLongitude,
+                        targetLatitude,
                         1000, // 高度1000m（建物が見やすい高さ）
                     ),
                     duration: 1.5,

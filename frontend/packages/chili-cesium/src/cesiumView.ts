@@ -169,6 +169,7 @@ export class CesiumView {
     private basemapInitialized = false;
     private deferBasemap = false;
     private deferTerrain = false;
+    private interactionCleanup: Array<() => void> = [];
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -222,6 +223,10 @@ export class CesiumView {
             // Use configured basemap with Natural Earth fallback
             baseLayer: false, // Will be added manually after viewer creation
         });
+
+        if (this.viewer?.canvas) {
+            this.enableTrackpadPinchZoom(this.viewer.canvas);
+        }
 
         // Use PLATEAU terrain to align with Japan's geoid-based elevations
         if (!this.deferTerrain) {
@@ -481,8 +486,36 @@ export class CesiumView {
      */
     dispose(): void {
         if (this.viewer) {
+            this.interactionCleanup.forEach((cleanup) => cleanup());
+            this.interactionCleanup = [];
             this.viewer.destroy();
             this.viewer = null;
         }
+    }
+
+    private enableTrackpadPinchZoom(canvas: HTMLCanvasElement): void {
+        const wheelHandler = (event: WheelEvent) => {
+            if (event.ctrlKey) {
+                // Prevent browser zoom on macOS trackpad pinch.
+                event.preventDefault();
+            }
+        };
+
+        const gestureHandler = (event: Event) => {
+            event.preventDefault();
+        };
+
+        const passiveFalse: AddEventListenerOptions = { passive: false };
+        canvas.addEventListener("wheel", wheelHandler, passiveFalse);
+        canvas.addEventListener("gesturestart", gestureHandler, passiveFalse);
+        canvas.addEventListener("gesturechange", gestureHandler, passiveFalse);
+        canvas.addEventListener("gestureend", gestureHandler, passiveFalse);
+
+        this.interactionCleanup.push(() => {
+            canvas.removeEventListener("wheel", wheelHandler);
+            canvas.removeEventListener("gesturestart", gestureHandler);
+            canvas.removeEventListener("gesturechange", gestureHandler);
+            canvas.removeEventListener("gestureend", gestureHandler);
+        });
     }
 }

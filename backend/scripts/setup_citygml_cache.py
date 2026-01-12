@@ -30,7 +30,10 @@ from tqdm import tqdm
 
 def check_disk_space(cache_dir: Path, required_gb: float = 5.0) -> bool:
     """Check if there's enough disk space available."""
-    stat = shutil.disk_usage(cache_dir.parent)
+    check_path = cache_dir.parent
+    while not check_path.exists() and check_path != check_path.parent:
+        check_path = check_path.parent
+    stat = shutil.disk_usage(check_path)
     available_gb = stat.free / (1024 ** 3)
 
     print(f"Checking disk space...")

@@ -68,6 +68,7 @@ const config = defineConfig({
         devMiddleware: {
             writeToDisk: true, // Write CopyRspackPlugin output to disk for SVG-Edit assets
         },
+        static: false,
     },
     experiments: {
         css: true,

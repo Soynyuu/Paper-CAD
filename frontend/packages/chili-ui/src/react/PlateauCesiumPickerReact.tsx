@@ -147,10 +147,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
-    const preferredPickLod = Math.min(
-        2,
-        Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)),
-    );
+    const preferredPickLod = Math.min(2, Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)));
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -582,15 +579,19 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             setShowResults(false);
             setSearchQuery(result.displayName);
 
-            // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
-            try {
-                setLoading(true);
-                setLoadingMessage("地図を準備中...");
+            setLoading(true);
+            setLoadingMessage("地図を準備中...");
 
-                if (cesiumViewRef.current) {
-                    await cesiumViewRef.current.activateBasemap();
-                }
+            if (cesiumViewRef.current) {
+                void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
+            }
 
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(targetLongitude, targetLatitude, 1200),
+            });
+            viewer.scene.requestRender();
+
+            const loadTilesets = async () => {
                 setLoadingMessage("3D Tilesを読み込み中...");
                 loader.clearAll();
 
@@ -603,7 +604,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         lod: preferredPickLod,
                     };
                     if (municipalityCode) {
-                        requestBody.municipality_code = municipalityCode;
+                        requestBody["municipality_code"] = municipalityCode;
                     }
 
                     const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
@@ -656,13 +657,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
                 if (tilesets.length === 0) {
                     console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
-                    setLoading(false);
-                    setLoadingMessage("");
                     return;
                 }
 
                 const MAX_TILESETS_TO_LOAD = 12;
-                const PRIMARY_TILESETS_TO_LOAD = 2;
+                const PRIMARY_TILESETS_TO_LOAD = 1;
                 const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
                 const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
                 const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
@@ -679,6 +678,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         "toast.plateau.tilesetLoadFailed:{0}",
                         primaryLoad.failedMeshes.length,
                     );
+                }
+
+                if (cesiumViewRef.current) {
+                    void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
                 }
 
                 if (backgroundTilesets.length > 0) {
@@ -699,27 +702,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             }
                         })
                         .catch((error) => {
-                            console.warn(
-                                "[PlateauCesiumPicker] Background tileset load failed:",
-                                error,
-                            );
+                            console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
                         });
                 }
 
                 console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
-
-                // NOW move camera AFTER tiles are loaded (matching Web Components version)
-                viewer.camera.flyTo({
-                    destination: Cesium.Cartesian3.fromDegrees(
-                        targetLongitude,
-                        targetLatitude,
-                        1000, // 高度1000m（建物が見やすい高さ）
-                    ),
-                    duration: 1.5,
-                });
-
-                setLoading(false);
-                setLoadingMessage("");
 
                 // ユーザーに建物選択を促す（カメラ移動完了後）
                 if (result.buildingCount && result.buildingCount > 0) {
@@ -727,11 +714,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
                     );
                 }
-            } catch (error) {
-                console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
-                setLoading(false);
-                setLoadingMessage("");
-            }
+            };
+
+            void loadTilesets()
+                .catch((error) => {
+                    console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
+                })
+                .finally(() => {
+                    setLoading(false);
+                    setLoadingMessage("");
+                });
         },
         [setLoading, setLoadingMessage],
     );

@@ -66,6 +66,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
+                minimumLevel: 2,
                 maximumLevel: 18,
                 credit: createGsiCredit(),
             });
@@ -377,14 +378,18 @@ export class CesiumView {
         return Object.keys(BASEMAPS) as BasemapType[];
     }
 
-    async activateBasemap(basemapType?: BasemapType): Promise<void> {
+    async activateBasemap(
+        basemapType?: BasemapType,
+        options: { includeTerrain?: boolean } = {},
+    ): Promise<void> {
         if (!this.viewer) {
             throw new Error("Viewer not initialized. Call initialize() first.");
         }
 
         const targetBasemap = basemapType ?? this.pendingBasemap ?? this.currentBasemap;
 
-        if (this.deferTerrain && !this.terrainInitialized) {
+        const includeTerrain = options.includeTerrain !== false;
+        if (includeTerrain && this.deferTerrain && !this.terrainInitialized) {
             await this.ensureTerrainProvider();
         }
 

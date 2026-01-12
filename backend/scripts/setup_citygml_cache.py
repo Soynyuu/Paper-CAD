@@ -145,8 +145,16 @@ def extract_and_analyze_ward(
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(extract_dir)
 
-    # Find GML files
+    # Find GML files (building data only)
     gml_files = list(extract_dir.rglob('udx/bldg/*.gml'))
+
+    # Remove non-building data to save disk space
+    udx_dir = extract_dir / "udx"
+    if udx_dir.exists():
+        for subdir in udx_dir.iterdir():
+            if subdir.is_dir() and subdir.name != "bldg":
+                shutil.rmtree(subdir)
+                print(f"  Removed udx/{subdir.name}/ (not needed)")
 
     # Extract mesh codes from filenames
     # Format: {mesh_code}_bldg_*.gml (e.g., "53393580_bldg_6697_op.gml")
@@ -291,8 +299,8 @@ def main():
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="backend/data/citygml_cache",
-        help="Cache directory path (default: backend/data/citygml_cache)"
+        default="data/citygml_cache",
+        help="Cache directory path (default: data/citygml_cache)"
     )
     parser.add_argument(
         "--datasets-json",

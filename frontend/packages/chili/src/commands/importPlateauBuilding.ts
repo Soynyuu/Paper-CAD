@@ -11,7 +11,7 @@ import {
     PubSub,
     Transaction,
 } from "chili-core";
-import { type PlateauCesiumPickerResult, renderReactDialog, PlateauCesiumPickerReact } from "chili-ui";
+import type { PlateauCesiumPickerResult } from "chili-ui/src/plateauCesiumPickerDialog";
 
 @command({
     key: "file.importPlateauBuilding",
@@ -156,6 +156,10 @@ export class ImportPlateauBuilding implements ICommand {
         };
 
         // Use React-based unified search + Cesium picker dialog
+        const [{ renderReactDialog }, { PlateauCesiumPickerReact }] = await Promise.all([
+            import("chili-ui/src/react/renderReactDialog"),
+            import("chili-ui/src/react/PlateauCesiumPickerReact"),
+        ]);
         cleanup = renderReactDialog(PlateauCesiumPickerReact, { onClose: handleDialogResult });
     }
 }

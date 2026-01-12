@@ -2,7 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import { command, IApplication, ICommand } from "chili-core";
-import { UnitSettings } from "chili-ui";
+import { UnitSettings } from "chili-ui/src/property/unitSettings";
 
 @command({
     key: "settings.units",

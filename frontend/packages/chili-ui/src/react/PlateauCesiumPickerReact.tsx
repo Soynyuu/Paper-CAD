@@ -223,7 +223,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             // Create and initialize CesiumView
             const cesiumView = new CesiumView(container);
-            await cesiumView.initialize();
+            await cesiumView.initialize("plateau-ortho-2023", {
+                deferBasemap: true,
+                deferTerrain: true,
+            });
             cesiumViewRef.current = cesiumView;
 
             const viewer = cesiumView.getViewer();
@@ -559,33 +562,56 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
             try {
                 setLoading(true);
+                setLoadingMessage("地図を準備中...");
+
+                if (cesiumViewRef.current) {
+                    await cesiumViewRef.current.activateBasemap();
+                }
+
                 setLoadingMessage("3D Tilesを読み込み中...");
-
-                // Calculate mesh codes (center + surrounding)
-                const meshCodes = resolveMeshCodesFromCoordinates(
-                    result.latitude,
-                    result.longitude,
-                    true, // Include neighbors
-                );
-
-                console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
                 // Get API base URL
                 const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
-                // Fetch 3D Tiles URLs from backend
-                const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ mesh_codes: meshCodes, lod: preferredPickLod }),
-                });
+                const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
+                    const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ mesh_codes: meshCodes, lod: preferredPickLod }),
+                    });
 
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status}`);
+                    if (!response.ok) {
+                        throw new Error(`API error: ${response.status}`);
+                    }
+
+                    return response.json();
+                };
+
+                // Start with center mesh only; fallback to neighbors if nothing is found.
+                const centerMeshCodes = resolveMeshCodesFromCoordinates(
+                    result.latitude,
+                    result.longitude,
+                    false,
+                );
+                console.log(
+                    `[PlateauCesiumPicker] Loading 3D Tiles for ${centerMeshCodes.length} mesh codes`,
+                );
+
+                let data = await fetchTilesetsForMeshes(centerMeshCodes);
+                let tilesets = data.tilesets || [];
+
+                if (tilesets.length === 0) {
+                    const neighborMeshCodes = resolveMeshCodesFromCoordinates(
+                        result.latitude,
+                        result.longitude,
+                        true,
+                    );
+                    console.log(
+                        `[PlateauCesiumPicker] No tilesets found for center mesh; retrying with ${neighborMeshCodes.length} meshes`,
+                    );
+                    data = await fetchTilesetsForMeshes(neighborMeshCodes);
+                    tilesets = data.tilesets || [];
                 }
-
-                const data = await response.json();
-                const tilesets = data.tilesets || [];
 
                 if (tilesets.length === 0) {
                     console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");

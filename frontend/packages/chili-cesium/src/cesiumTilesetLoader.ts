@@ -124,13 +124,8 @@ export class CesiumTilesetLoader {
      */
     private setDefaultStyle(tileset: Cesium.Cesium3DTileset): void {
         tileset.style = new Cesium.Cesium3DTileStyle({
-            color: {
-                conditions: [
-                    ["${feature_type} === 'bldg:Building'", "color('white', 1.0)"],
-                    ["true", "color('lightgray', 1.0)"],
-                ],
-            },
-            show: "${feature_type} === 'bldg:Building'", // Only show buildings
+            // Preserve original materials/textures; do not override color.
+            show: "true",
         });
     }
 

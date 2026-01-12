@@ -382,7 +382,7 @@ export class PlateauCesiumPickerDialog {
                     lod: 2,
                 };
                 if (municipalityCode) {
-                    requestBody.municipality_code = municipalityCode;
+                    requestBody["municipality_code"] = municipalityCode;
                 }
 
                 // Fetch 3D Tiles URLs for mesh codes
@@ -509,7 +509,7 @@ export class PlateauCesiumPickerDialog {
                     lod: 2,
                 };
                 if (municipalityCode) {
-                    requestBody.municipality_code = municipalityCode;
+                    requestBody["municipality_code"] = municipalityCode;
                 }
 
                 // Fetch 3D Tiles for the mesh

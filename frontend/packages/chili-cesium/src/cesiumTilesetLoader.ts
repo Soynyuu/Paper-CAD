@@ -40,9 +40,9 @@ export class CesiumTilesetLoader {
             debugShowGeometricError: false,
 
             // Performance settings
-            maximumScreenSpaceError: 48,
-            cacheBytes: 64 * 1024 * 1024,
-            maximumCacheOverflowBytes: 32 * 1024 * 1024,
+            maximumScreenSpaceError: 64,
+            cacheBytes: 48 * 1024 * 1024,
+            maximumCacheOverflowBytes: 16 * 1024 * 1024,
             cullRequestsWhileMoving: true,
             cullRequestsWhileMovingMultiplier: 80,
 
@@ -63,7 +63,7 @@ export class CesiumTilesetLoader {
             dynamicScreenSpaceErrorDensity: 0.00278,
             dynamicScreenSpaceErrorFactor: 32.0,
             dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            progressiveResolutionHeightFraction: 0.5,
+            progressiveResolutionHeightFraction: 0.3,
             foveatedMinimumScreenSpaceErrorRelaxation: 2.0,
             foveatedTimeDelay: 0.4,
         };

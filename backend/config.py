@@ -74,6 +74,10 @@ except ImportError:
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3001")
 CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
+# CityGML Cache Configuration (Optional, for Tokyo 23 wards)
+CITYGML_CACHE_ENABLED = os.getenv("CITYGML_CACHE_ENABLED", "false").lower() == "true"
+CITYGML_CACHE_DIR = os.getenv("CITYGML_CACHE_DIR", "backend/data/citygml_cache")
+
 # アプリケーション設定
 APP_CONFIG = {
     "title": "Paper-CAD Backend API",

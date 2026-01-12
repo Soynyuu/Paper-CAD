@@ -13,30 +13,13 @@ import {
     type PickedBuilding,
 } from "chili-cesium";
 import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
+import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
 import styles from "./PlateauCesiumPickerReact.module.css";
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
-const CESIUM_WIDGETS_CSS_PATH = "Widgets/widgets.css";
-
-const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
-    if (typeof window === "undefined") {
-        return undefined;
-    }
-
-    const runtime = window as any;
-    if (runtime.__APP_CONFIG__) {
-        return runtime.__APP_CONFIG__ as AppConfig;
-    }
-
-    if (typeof __APP_CONFIG__ !== "undefined") {
-        return __APP_CONFIG__;
-    }
-
-    return undefined;
-};
 
 const ensureCesiumRuntime = () => {
     if (typeof document === "undefined") {
@@ -44,13 +27,12 @@ const ensureCesiumRuntime = () => {
     }
 
     const runtime = window;
-    const appConfig = getRuntimeAppConfig();
-    const rawBaseUrl = appConfig?.cesiumBaseUrl || "/cesium/";
+    const rawBaseUrl = runtime.__APP_CONFIG__?.cesiumBaseUrl || "/cesium/";
     const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
 
     runtime.CESIUM_BASE_URL = baseUrl;
 
-    const ionToken = appConfig?.cesiumIonToken;
+    const ionToken = runtime.__APP_CONFIG__?.cesiumIonToken;
     if (ionToken) {
         Cesium.Ion.defaultAccessToken = ionToken;
     }
@@ -59,18 +41,8 @@ const ensureCesiumRuntime = () => {
         const link = document.createElement("link");
         link.id = CESIUM_WIDGET_CSS_ID;
         link.rel = "stylesheet";
-        link.href = `${baseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
+        link.href = `${baseUrl}Widgets/CesiumWidget/CesiumWidget.css`;
         document.head.appendChild(link);
-        return;
-    }
-
-    const existing = document.getElementById(CESIUM_WIDGET_CSS_ID) as HTMLLinkElement | null;
-    if (existing) {
-        const href = `${baseUrl}${CESIUM_WIDGETS_CSS_PATH}`;
-        const resolvedHref = new URL(href, window.location.href).href;
-        if (existing.href !== resolvedHref) {
-            existing.href = href;
-        }
     }
 };
 
@@ -84,9 +56,6 @@ interface SearchResult {
     displayName: string;
     latitude: number;
     longitude: number;
-    targetLatitude?: number;
-    targetLongitude?: number;
-    municipalityCode?: string;
     osmType?: string;
     osmId?: number;
     buildingCount?: number; // NEW: 周辺の建物件数
@@ -118,36 +87,14 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [isSearching, setIsSearching] = useState<boolean>(false);
     const [searchError, setSearchError] = useState<string | null>(null);
     const [showResults, setShowResults] = useState<boolean>(false);
-
-    // Debug: monitor component mount/unmount
-    useEffect(() => {
-        console.log("[Debug] Component MOUNTED");
-        return () => console.log("[Debug] Component UNMOUNTED");
-    }, []);
-
-    // Debug: monitor searchQuery changes
-    useEffect(() => {
-        console.log("[Debug] searchQuery changed to:", searchQuery);
-    }, [searchQuery]);
-
-    // Debug: monitor showResults changes
-    useEffect(() => {
-        console.log("[Debug] showResults changed to:", showResults, "searchResults:", searchResults);
-    }, [showResults, searchResults]);
     const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
-    const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-    // Search mode state
+    // Search mode state (NEW)
     const [searchMode, setSearchMode] = useState<"facility" | "address" | "buildingId">("facility");
     const [searchRadius, setSearchRadius] = useState<number>(100); // meters
     const [meshCode, setMeshCode] = useState<string>("");
-
-    // UI state for Google-style progressive disclosure
-    const [isExpanded, setIsExpanded] = useState<boolean>(false);
-    const isComposingRef = useRef<boolean>(false);
-    const preferredPickLod = Math.min(2, Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)));
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -200,93 +147,68 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     useEffect(() => {
         if (!containerRef.current) return;
 
-        const container = containerRef.current;
+        console.log("[PlateauCesiumPickerReact] Initializing CesiumView");
+
         let mounted = true;
-        let resizeObserver: ResizeObserver | null = null;
 
-        const initCesium = async () => {
-            // Wait for container size to be determined before initializing Cesium
-            // This prevents canvas height: 0 issue caused by initializing before layout is complete
-            await new Promise<void>((resolve) => {
-                const checkSize = () => {
-                    const rect = container.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) {
-                        resolve();
-                    } else {
-                        requestAnimationFrame(checkSize);
-                    }
-                };
-                checkSize();
-            });
+        // Create and initialize CesiumView
+        const cesiumView = new CesiumView(containerRef.current);
+        cesiumView.initialize();
+        cesiumViewRef.current = cesiumView;
 
-            if (!mounted) return;
+        // Get viewer instance for building picker
+        const viewer = cesiumView.getViewer();
+        if (!viewer) {
+            console.error("[PlateauCesiumPickerReact] Failed to get viewer from CesiumView");
+            return;
+        }
 
-            // Create and initialize CesiumView
-            const cesiumView = new CesiumView(container);
-            await cesiumView.initialize("plateau-ortho-2023", {
-                deferBasemap: true,
-                deferTerrain: true,
-            });
-            cesiumViewRef.current = cesiumView;
+        // Initialize building picker
+        buildingPickerRef.current = new CesiumBuildingPicker(viewer);
 
-            const viewer = cesiumView.getViewer();
-            if (!viewer || !mounted) return;
+        // Initialize tileset loader
+        tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
 
-            const resizeViewer = () => {
-                if (viewer.isDestroyed()) return;
-                viewer.resize();
-                viewer.scene?.requestRender();
-            };
+        if (mounted) {
+            setViewerReady(true);
+            console.log("[PlateauCesiumPickerReact] CesiumView initialized successfully");
+        }
 
-            // Force resize after initialization (and again after layout settles)
-            resizeViewer();
-            requestAnimationFrame(() => resizeViewer());
-            requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer()));
-
-            // Initialize building picker and tileset loader
-            buildingPickerRef.current = new CesiumBuildingPicker(viewer);
-            tilesetLoaderRef.current = new CesiumTilesetLoader(viewer);
-
-            // Watch for container resize
-            resizeObserver = new ResizeObserver(() => {
-                resizeViewer();
-            });
-            resizeObserver.observe(container);
-
-            if (mounted) setViewerReady(true);
-        };
-
-        initCesium();
-
+        // Cleanup on unmount
         return () => {
             mounted = false;
-            resizeObserver?.disconnect();
-            handlerRef.current?.destroy();
-            handlerRef.current = null;
+            console.log("[PlateauCesiumPickerReact] Disposing CesiumView");
+
+            if (handlerRef.current) {
+                handlerRef.current.destroy();
+                handlerRef.current = null;
+            }
+
             buildingPickerRef.current = null;
             tilesetLoaderRef.current = null;
+
             cesiumViewRef.current?.dispose();
             cesiumViewRef.current = null;
+
             setViewerReady(false);
         };
-    }, []);
+    }, []); // Run once on mount
 
     // Tileset loading removed - using mesh-based dynamic loading (Issue #177)
 
-    // Close search results and collapse when clicking outside
+    // Close search results when clicking outside
     useEffect(() => {
+        if (!showResults) return;
+
         const handleClickOutside = (e: MouseEvent) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
                 setShowResults(false);
-                if (!searchQuery.trim()) {
-                    setIsExpanded(false);
-                }
             }
         };
 
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [searchQuery]);
+    }, [showResults]);
 
     // handleCityChange removed - using mesh-based dynamic loading (Issue #177)
 
@@ -328,37 +250,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         onClose(DialogResult.cancel);
     }, [onClose]);
 
-    const handleDialogKeyDown = useCallback(
-        (e: React.KeyboardEvent<HTMLDivElement>) => {
-            e.stopPropagation();
-            if (e.key === "Escape") {
-                e.preventDefault();
-                handleClose();
-            }
-        },
-        [handleClose],
-    );
-
     // Constants for coordinate conversion
     const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator (OK for small ranges)
     const DEFAULT_TOKYO_LAT = 35.681236; // Tokyo Station latitude
     const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
-    const MUNICIPALITY_CODE_PATTERN = /^(\d{5})/;
-
-    const getMunicipalityCodeFromBuildingId = (buildingId?: string | null) => {
-        if (!buildingId) return undefined;
-        const match = buildingId.match(MUNICIPALITY_CODE_PATTERN);
-        return match?.[1];
-    };
 
     // Search handlers
     const performSearch = useCallback(async () => {
-        console.log("[Search] performSearch called, searchQuery:", searchQuery);
         const query = searchQuery.trim();
-        if (!query) {
-            console.log("[Search] Empty query, returning");
-            return;
-        }
+        if (!query) return;
 
         // GML IDモードの場合、メッシュコードもチェック
         if (searchMode === "buildingId" && !meshCode.trim()) {
@@ -379,7 +279,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         abortControllerRef.current = new AbortController();
 
         try {
-            const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+            const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
             // 検索モードに応じてエンドポイント切り替え
             const endpoint =
@@ -403,7 +303,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                           name_filter: searchMode === "facility" ? query : undefined,
                       };
 
-            console.log("[Search] Fetching:", `${apiBaseUrl}${endpoint}`, requestBody);
             const response = await fetch(`${apiBaseUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -411,15 +310,12 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 signal: abortControllerRef.current.signal,
             });
 
-            console.log("[Search] Response status:", response.status);
-
             // Check HTTP status
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
             const data = await response.json();
-            console.log("[Search] Response data:", JSON.stringify(data, null, 2));
 
             if (!data.success) {
                 setSearchError(
@@ -441,14 +337,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     setShowResults(true);
                     return;
                 }
-                const municipalityCode = getMunicipalityCodeFromBuildingId(data.building.building_id);
                 result = {
                     displayName: data.building.name || data.building.gml_id,
                     latitude: data.building.latitude || DEFAULT_TOKYO_LAT,
                     longitude: data.building.longitude || DEFAULT_TOKYO_LON,
-                    targetLatitude: data.building.latitude,
-                    targetLongitude: data.building.longitude,
-                    municipalityCode,
                     buildingCount: 1,
                 };
             } else {
@@ -459,26 +351,19 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     setShowResults(true);
                     return;
                 }
-                const primaryBuilding = data.buildings?.[0];
-                const municipalityCode = getMunicipalityCodeFromBuildingId(primaryBuilding?.building_id);
                 result = {
                     displayName: data.geocoding.display_name,
                     latitude: data.geocoding.latitude,
                     longitude: data.geocoding.longitude,
-                    targetLatitude: primaryBuilding?.latitude,
-                    targetLongitude: primaryBuilding?.longitude,
-                    municipalityCode,
                     osmType: data.geocoding.osm_type,
                     osmId: data.geocoding.osm_id,
                     buildingCount: data.buildings ? data.buildings.length : 0,
                 };
             }
 
-            console.log("[Search] Setting result:", result);
             setSearchResults([result]);
             setShowResults(true);
             setSelectedResultIndex(0);
-            console.log("[Search] Results set, showResults should be true now");
         } catch (error: unknown) {
             if (error instanceof Error && error.name === "AbortError") return;
             console.error("[PlateauCesiumPickerReact] Search failed:", error);
@@ -490,78 +375,31 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         }
     }, [searchQuery, searchMode, searchRadius, meshCode]);
 
-    // IME composition handlers for proper Japanese input support
-    const handleCompositionStart = useCallback(() => {
-        isComposingRef.current = true;
-    }, []);
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.nativeEvent.isComposing) return;
 
-    const handleCompositionEnd = useCallback(() => {
-        // Delay to ensure composition is fully complete
-        setTimeout(() => {
-            isComposingRef.current = false;
-        }, 10);
-    }, []);
+        if (e.key === "Enter") {
+            e.preventDefault();
+            performSearch();
+        } else if (e.key === "Escape") {
+            setShowResults(false);
+            setSearchError(null);
+        } else if (e.key === "ArrowDown" && showResults && searchResults.length > 0) {
+            e.preventDefault();
+            setSelectedResultIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
+        } else if (e.key === "ArrowUp" && showResults && searchResults.length > 0) {
+            e.preventDefault();
+            setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        }
+    };
 
-    const handleSearchKeyDown = useCallback(
-        (e: React.KeyboardEvent<HTMLInputElement>) => {
-            // For Enter key, only check nativeEvent.isComposing to allow search after IME confirmation
-            if (e.key === "Enter") {
-                // If IME is actively composing (e.g., showing candidates), don't trigger search
-                if (e.nativeEvent.isComposing) {
-                    console.log("[KeyDown] Enter blocked - IME composing");
-                    return;
-                }
-                console.log("[KeyDown] Enter pressed, calling performSearch");
-                e.preventDefault();
-                performSearch();
-                return;
-            }
-
-            // For other keys, block during active IME composition
-            if (isComposingRef.current || e.nativeEvent.isComposing) {
-                return;
-            }
-
-            switch (e.key) {
-                case "Escape":
-                    setShowResults(false);
-                    setSearchError(null);
-                    if (!searchQuery.trim()) {
-                        setIsExpanded(false);
-                        searchInputRef.current?.blur();
-                    }
-                    break;
-                case "ArrowDown":
-                    if (showResults && searchResults.length > 0) {
-                        e.preventDefault();
-                        setSelectedResultIndex((prev) =>
-                            prev < searchResults.length - 1 ? prev + 1 : prev,
-                        );
-                    }
-                    break;
-                case "ArrowUp":
-                    if (showResults && searchResults.length > 0) {
-                        e.preventDefault();
-                        setSelectedResultIndex((prev) => (prev > 0 ? prev - 1 : 0));
-                    }
-                    break;
-            }
-        },
-        [performSearch, searchQuery, showResults, searchResults.length],
-    );
-
-    const handleSearchFocus = useCallback(() => {
-        setIsExpanded(true);
-    }, []);
-
-    const handleSearchClear = useCallback(() => {
+    const handleSearchClear = () => {
         setSearchQuery("");
         setSearchResults([]);
         setShowResults(false);
         setSearchError(null);
         setSelectedResultIndex(-1);
-        searchInputRef.current?.focus();
-    }, []);
+    };
 
     // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
 
@@ -571,142 +409,77 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const loader = tilesetLoaderRef.current;
             if (!viewer || !loader) return;
 
-            const targetLatitude = result.targetLatitude ?? result.latitude;
-            const targetLongitude = result.targetLongitude ?? result.longitude;
-            const municipalityCode = result.municipalityCode;
-
             // 検索ドロップダウンを閉じる
             setShowResults(false);
             setSearchQuery(result.displayName);
 
-            setLoading(true);
-            setLoadingMessage("地図を準備中...");
-
-            if (cesiumViewRef.current) {
-                void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
-            }
-
-            viewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(targetLongitude, targetLatitude, 1200),
-            });
-            viewer.scene.requestRender();
-
-            const loadTilesets = async () => {
+            // Load 3D Tiles FIRST, then move camera (Issue #177 - mesh-based dynamic loading)
+            try {
+                setLoading(true);
                 setLoadingMessage("3D Tilesを読み込み中...");
-                loader.clearAll();
+
+                // Calculate mesh codes (center + surrounding)
+                const meshCodes = resolveMeshCodesFromCoordinates(
+                    result.latitude,
+                    result.longitude,
+                    true, // Include neighbors
+                );
+
+                console.log(`[PlateauCesiumPicker] Loading 3D Tiles for ${meshCodes.length} mesh codes`);
 
                 // Get API base URL
-                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+                const apiBaseUrl = window.__APP_CONFIG__?.stepUnfoldApiUrl || "http://localhost:8001";
 
-                const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
-                    const requestBody: Record<string, unknown> = {
-                        mesh_codes: meshCodes,
-                        lod: preferredPickLod,
-                    };
-                    if (municipalityCode) {
-                        requestBody["municipality_code"] = municipalityCode;
-                    }
+                // Fetch 3D Tiles URLs from backend
+                const response = await fetch(`${apiBaseUrl}/api/plateau/mesh-to-tilesets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mesh_codes: meshCodes, lod: 1 }),
+                });
 
-                    const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(requestBody),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`API error: ${response.status}`);
-                    }
-
-                    return response.json();
-                };
-
-                // Start with center mesh only; fallback to neighbors if nothing is found.
-                const centerMeshCodes = resolveMeshCodesFromCoordinates(
-                    targetLatitude,
-                    targetLongitude,
-                    false,
-                );
-                console.log(
-                    `[PlateauCesiumPicker] Loading 3D Tiles for ${centerMeshCodes.length} mesh codes`,
-                );
-
-                let data = await fetchTilesetsForMeshes(centerMeshCodes);
-                let tilesets = data.tilesets || [];
-
-                if (tilesets.length === 0) {
-                    const neighborMeshCodes = resolveMeshCodesFromCoordinates(
-                        targetLatitude,
-                        targetLongitude,
-                        true,
-                    );
-                    console.log(
-                        `[PlateauCesiumPicker] No tilesets found for center mesh; retrying with ${neighborMeshCodes.length} meshes`,
-                    );
-                    data = await fetchTilesetsForMeshes(neighborMeshCodes);
-                    tilesets = data.tilesets || [];
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
                 }
 
-                if (result.municipalityCode) {
-                    const filtered = tilesets.filter(
-                        (tileset: any) => tileset.municipality_code === result.municipalityCode,
-                    );
-                    if (filtered.length > 0) {
-                        tilesets = filtered;
-                    }
-                }
+                const data = await response.json();
+                const tilesets = data.tilesets || [];
 
                 if (tilesets.length === 0) {
                     console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                    setLoading(false);
+                    setLoadingMessage("");
                     return;
                 }
 
-                const MAX_TILESETS_TO_LOAD = 12;
-                const PRIMARY_TILESETS_TO_LOAD = 1;
-                const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
-                const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
-                const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
+                // Load tilesets
+                const tilesetsToLoad = tilesets.map((t: any) => ({
+                    meshCode: t.mesh_code,
+                    url: t.tileset_url,
+                }));
 
-                const primaryLoad = await loader.loadMultipleTilesets(
-                    primaryTilesets.map((t: any) => ({
-                        meshCode: t.mesh_code,
-                        url: t.tileset_url,
-                    })),
-                );
-                if (primaryLoad.failedMeshes.length > 0) {
+                const { failedMeshes } = await loader.loadMultipleTilesets(tilesetsToLoad);
+                if (failedMeshes.length > 0) {
                     PubSub.default.pub(
                         "showToast",
                         "toast.plateau.tilesetLoadFailed:{0}",
-                        primaryLoad.failedMeshes.length,
+                        failedMeshes.length,
                     );
                 }
 
-                if (cesiumViewRef.current) {
-                    void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                }
+                console.log(`[PlateauCesiumPicker] Loaded ${tilesets.length} tilesets successfully`);
 
-                if (backgroundTilesets.length > 0) {
-                    void loader
-                        .loadMultipleTilesets(
-                            backgroundTilesets.map((t: any) => ({
-                                meshCode: t.mesh_code,
-                                url: t.tileset_url,
-                            })),
-                        )
-                        .then(({ failedMeshes }) => {
-                            if (failedMeshes.length > 0) {
-                                PubSub.default.pub(
-                                    "showToast",
-                                    "toast.plateau.tilesetLoadFailed:{0}",
-                                    failedMeshes.length,
-                                );
-                            }
-                        })
-                        .catch((error) => {
-                            console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
-                        });
-                }
+                // NOW move camera AFTER tiles are loaded (matching Web Components version)
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(
+                        result.longitude,
+                        result.latitude,
+                        1000, // 高度1000m（建物が見やすい高さ）
+                    ),
+                    duration: 1.5,
+                });
 
-                console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
+                setLoading(false);
+                setLoadingMessage("");
 
                 // ユーザーに建物選択を促す（カメラ移動完了後）
                 if (result.buildingCount && result.buildingCount > 0) {
@@ -714,130 +487,117 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
                     );
                 }
-            };
-
-            void loadTilesets()
-                .catch((error) => {
-                    console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
-                })
-                .finally(() => {
-                    setLoading(false);
-                    setLoadingMessage("");
-                });
+            } catch (error) {
+                console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
+                setLoading(false);
+                setLoadingMessage("");
+            }
         },
         [setLoading, setLoadingMessage],
     );
 
     return (
-        <div className={styles.dialog} onKeyDown={handleDialogKeyDown}>
+        <div className={styles.dialog}>
+            <Header onClose={handleClose} loading={loading} />
             <div className={styles.body}>
-                {/* Map area */}
                 <div className={styles.mapContainer}>
-                    {/* Cesium container */}
-                    <div className={styles.cesiumContainer}>
-                        <div
-                            ref={containerRef}
-                            id="plateau-cesium-host"
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-                        />
-                    </div>
-
-                    {/* Close button */}
-                    <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
-                        <svg viewBox="0 0 24 24" fill="none">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
-
-                    {/* Search box */}
+                    {/* Map container for CesiumView (Web Components) */}
+                    <div
+                        ref={containerRef}
+                        style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            overflow: "hidden",
+                        }}
+                    />
+                    {/* Google Earth-style search box (top-left overlay) */}
                     <div ref={searchContainerRef} className={styles.searchContainer}>
-                        <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
-                            <div className={styles.searchInputWrapper}>
-                                <span className={styles.searchIcon}>
-                                    <svg viewBox="0 0 24 24">
-                                        <circle cx="11" cy="11" r="7" />
-                                        <path d="M21 21l-4.35-4.35" />
-                                    </svg>
+                        {/* Search mode tabs */}
+                        <div className={styles.searchModeTabs}>
+                            <button
+                                className={`${styles.searchModeTab} ${searchMode === "facility" ? styles.active : ""}`}
+                                onClick={() => setSearchMode("facility")}
+                                aria-label="施設名で検索"
+                            >
+                                🏢 施設名
+                            </button>
+                            <button
+                                className={`${styles.searchModeTab} ${searchMode === "address" ? styles.active : ""}`}
+                                onClick={() => setSearchMode("address")}
+                                aria-label="住所で検索"
+                            >
+                                📍 住所
+                            </button>
+                            <button
+                                className={`${styles.searchModeTab} ${searchMode === "buildingId" ? styles.active : ""}`}
+                                onClick={() => setSearchMode("buildingId")}
+                                aria-label="建物IDで検索"
+                            >
+                                🆔 建物ID
+                            </button>
+                        </div>
+
+                        <div className={styles.searchInputWrapper}>
+                            <span className={styles.searchIcon} aria-hidden="true">
+                                🔍
+                            </span>
+                            <input
+                                type="text"
+                                className={styles.searchInput}
+                                placeholder={
+                                    searchMode === "facility"
+                                        ? "施設名を検索（例: 東京駅）"
+                                        : searchMode === "address"
+                                          ? "住所を検索（例: 千代田区丸の内）"
+                                          : "建物IDを入力（例: bldg_xxx）"
+                                }
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleSearchKeyDown}
+                                disabled={isSearching}
+                                aria-label={
+                                    searchMode === "facility"
+                                        ? "施設名を検索"
+                                        : searchMode === "address"
+                                          ? "住所を検索"
+                                          : "建物IDを検索"
+                                }
+                                autoComplete="off"
+                                spellCheck="false"
+                            />
+                            {isSearching && <div className={styles.searchSpinner} />}
+                            {!isSearching && searchQuery && (
+                                <button className={styles.searchClearButton} onClick={handleSearchClear}>
+                                    ×
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Mesh code input for buildingId mode */}
+                        {searchMode === "buildingId" && (
+                            <div className={styles.meshCodeInputWrapper}>
+                                <span className={styles.meshCodeIcon} aria-hidden="true">
+                                    🗺️
                                 </span>
                                 <input
-                                    ref={searchInputRef}
                                     type="text"
-                                    className={styles.searchInput}
-                                    placeholder="場所や施設を検索"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onFocus={handleSearchFocus}
-                                    onKeyDown={handleSearchKeyDown}
-                                    onCompositionStart={handleCompositionStart}
-                                    onCompositionEnd={handleCompositionEnd}
+                                    className={styles.meshCodeInput}
+                                    placeholder="メッシュコード（例: 53394511）"
+                                    value={meshCode}
+                                    onChange={(e) => setMeshCode(e.target.value)}
                                     disabled={isSearching}
-                                    autoComplete="off"
+                                    aria-label="メッシュコードを入力"
                                 />
-                                {isSearching && <div className={styles.searchSpinner} />}
-                                {!isSearching && searchQuery && (
-                                    <button
-                                        className={styles.searchClearButton}
-                                        onClick={handleSearchClear}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        type="button"
-                                    >
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M18 6L6 18M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                )}
                             </div>
+                        )}
 
-                            <div className={`${styles.searchModes} ${isExpanded ? styles.visible : ""}`}>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("facility")}
-                                >
-                                    施設名
-                                </button>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("address")}
-                                >
-                                    住所
-                                </button>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("buildingId")}
-                                >
-                                    建物ID
-                                </button>
-                            </div>
-
-                            {isExpanded && searchMode === "buildingId" && (
-                                <div
-                                    className={styles.meshCodeSection}
-                                    style={{ opacity: 1, maxHeight: 60, padding: "0 16px 12px" }}
-                                >
-                                    <input
-                                        type="text"
-                                        className={styles.meshCodeInput}
-                                        placeholder="メッシュコード（例: 53394511）"
-                                        value={meshCode}
-                                        onChange={(e) => setMeshCode(e.target.value)}
-                                        disabled={isSearching}
-                                    />
-                                </div>
-                            )}
-
-                            {showResults && <div className={styles.searchDivider} />}
-
-                            <div
-                                className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
-                                role="listbox"
-                            >
+                        {showResults && (
+                            <div className={styles.searchResults} role="listbox">
                                 {searchError ? (
-                                    <div className={styles.searchError}>{searchError}</div>
+                                    <div className={styles.searchError}>⚠️ {searchError}</div>
                                 ) : (
                                     searchResults.map((result, index) => (
                                         <div
@@ -849,29 +609,27 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                             role="option"
                                             aria-selected={index === selectedResultIndex}
                                         >
-                                            <div className={styles.locationName}>{result.displayName}</div>
+                                            {/* 場所情報のみ表示 */}
+                                            <div className={styles.locationName}>
+                                                📍 {result.displayName}
+                                            </div>
+
+                                            {/* 建物件数の情報のみ追加 */}
                                             {result.buildingCount !== undefined &&
                                                 result.buildingCount > 0 && (
                                                     <div className={styles.buildingCount}>
-                                                        {result.buildingCount}件の建物
+                                                        周辺の建物 {result.buildingCount}件
                                                     </div>
                                                 )}
                                         </div>
                                     ))
                                 )}
                             </div>
-
-                            {isExpanded && !showResults && !searchQuery && (
-                                <div className={styles.searchHint}>Enter で検索</div>
-                            )}
-                        </div>
+                        )}
                     </div>
-
                     <Instructions />
                     {loading && <Loading message={loadingMessage} />}
                 </div>
-
-                {/* Sidebar */}
                 <Sidebar
                     selectedBuildings={selectedBuildings}
                     onRemove={handleRemoveBuilding}

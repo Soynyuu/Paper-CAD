@@ -412,19 +412,8 @@ async def fetch_plateau_dataset_by_municipality(
                 "lod": dataset.get("lod", lod),
             }
 
-        # If no match for specific LOD, try fallback strategy
-        if lod == 3:
-            logger.info(f"LOD3 not found for {municipality_code}, trying LOD2")
-            datasets = _filter_building_datasets(catalog, municipality_code, 2)
-            if datasets:
-                dataset = datasets[0]
-                return {
-                    "tileset_url": dataset["url"],
-                    "municipality_name": dataset.get("name", "Unknown"),
-                    "municipality_code": municipality_code,
-                    "lod": 2,
-                }
-        elif lod != 1:
+        # If no match for specific LOD, try LOD1 as fallback
+        if lod != 1:
             logger.info(f"LOD{lod} not found for {municipality_code}, trying LOD1")
             datasets = _filter_building_datasets(catalog, municipality_code, 1)
             if datasets:
@@ -443,21 +432,13 @@ async def fetch_plateau_dataset_by_municipality(
         if municipality_code in KNOWN_CITY_TILESETS:
             logger.info(f"Using fallback tileset for {municipality_code}")
             city_data = KNOWN_CITY_TILESETS[municipality_code]
-            if lod == 3:
-                preferred_keys = ["lod3", "lod2"]
-            elif lod == 2:
-                preferred_keys = ["lod2", "lod1"]
-            else:
-                preferred_keys = ["lod1"]
-
-            for key in preferred_keys:
-                if key in city_data:
-                    return {
-                        "tileset_url": city_data[key],
-                        "municipality_name": city_data["name"],
-                        "municipality_code": municipality_code,
-                        "lod": int(key.replace("lod", "")),
-                    }
+            lod_key = f"lod{lod}" if f"lod{lod}" in city_data else "lod1"
+            return {
+                "tileset_url": city_data[lod_key],
+                "municipality_name": city_data["name"],
+                "municipality_code": municipality_code,
+                "lod": lod,
+            }
 
     logger.warning(f"No tileset found for municipality {municipality_code} LOD{lod}")
     return None

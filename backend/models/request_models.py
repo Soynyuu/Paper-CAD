@@ -341,12 +341,6 @@ class MeshToTilesetsRequest(BaseModel):
         le=3,
         example=1
     )
-    municipality_code: Optional[str] = Field(
-        default=None,
-        description="市区町村コード（5桁） / Municipality code (5 digits, optional)",
-        pattern="^[0-9]{5}$",
-        example="13101"
-    )
 
 
 class TilesetInfo(BaseModel):

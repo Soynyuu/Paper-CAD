@@ -25,8 +25,9 @@ export class CesiumTilesetLoader {
     private currentTileset: Cesium.Cesium3DTileset | null = null;
     private loadedTilesets: Map<string, Cesium.Cesium3DTileset> = new Map();
     private meshLoadOrder: string[] = []; // LRU tracking
-    // Keep the cache small for picker use to reduce memory pressure.
-    private readonly MAX_LOADED_MESHES = 12;
+    // Limit based on memory profiling: ~500MB for 25 meshes (LOD1)
+    // 3x3 search grid + buffer meshes for smooth panning.
+    private readonly MAX_LOADED_MESHES = 25;
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
@@ -40,32 +41,24 @@ export class CesiumTilesetLoader {
             debugShowGeometricError: false,
 
             // Performance settings
-            maximumScreenSpaceError: 64,
-            cacheBytes: 48 * 1024 * 1024,
-            maximumCacheOverflowBytes: 16 * 1024 * 1024,
-            cullRequestsWhileMoving: true,
-            cullRequestsWhileMovingMultiplier: 80,
+            maximumScreenSpaceError: 16,
 
             // Skip LOD levels for faster loading
             skipLevelOfDetail: true,
             baseScreenSpaceError: 1024,
-            skipScreenSpaceErrorFactor: 32,
-            skipLevels: 2,
-            loadSiblings: false,
+            skipScreenSpaceErrorFactor: 16,
+            skipLevels: 1,
 
-            // Avoid eager preloading to keep memory use down.
-            preloadWhenHidden: false,
+            // Preload ancestors for better picking
+            preloadWhenHidden: true,
             preloadFlightDestinations: false,
-            preferLeaves: false,
+            preferLeaves: true,
 
             // Enable dynamic screen space error for LOD
             dynamicScreenSpaceError: true,
             dynamicScreenSpaceErrorDensity: 0.00278,
-            dynamicScreenSpaceErrorFactor: 32.0,
+            dynamicScreenSpaceErrorFactor: 4.0,
             dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            progressiveResolutionHeightFraction: 0.3,
-            foveatedMinimumScreenSpaceErrorRelaxation: 2.0,
-            foveatedTimeDelay: 0.4,
         };
     }
 
@@ -131,8 +124,13 @@ export class CesiumTilesetLoader {
      */
     private setDefaultStyle(tileset: Cesium.Cesium3DTileset): void {
         tileset.style = new Cesium.Cesium3DTileStyle({
-            // Preserve original materials/textures; do not override color.
-            show: "true",
+            color: {
+                conditions: [
+                    ["${feature_type} === 'bldg:Building'", "color('white', 1.0)"],
+                    ["true", "color('lightgray', 1.0)"],
+                ],
+            },
+            show: "${feature_type} === 'bldg:Building'", // Only show buildings
         });
     }
 

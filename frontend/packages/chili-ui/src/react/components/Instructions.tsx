@@ -8,18 +8,27 @@ import styles from "./Instructions.module.css";
 /**
  * Instructions - Overlay showing interaction instructions
  *
- * Displayed in the bottom-left corner of the map.
+ * Displayed in the top-left corner of the map.
  * Provides guidance on how to select buildings.
  */
 export function Instructions() {
     return (
         <div className={styles.instructions}>
             <div className={styles.instructionsTitle}>
-                <span className={styles.statusDot} />
+                <div
+                    style={{
+                        display: "inline-block",
+                        width: "8px",
+                        height: "8px",
+                        backgroundColor: "#4CAF50",
+                        borderRadius: "50%",
+                    }}
+                />
                 {I18n.translate("plateau.cesium.clickToSelect")}
             </div>
             <div>{I18n.translate("plateau.cesium.instructions.click")}</div>
             <div>{I18n.translate("plateau.cesium.instructions.ctrlClick")}</div>
+            <div>{I18n.translate("plateau.cesium.instructions.clearArea")}</div>
         </div>
     );
 }

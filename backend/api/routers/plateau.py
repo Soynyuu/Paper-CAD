@@ -24,7 +24,7 @@ from models.request_models import (
     TilesetInfo,
 )
 from services.citygml import export_step_from_citygml
-from services.plateau_api_client import fetch_plateau_dataset_by_municipality, fetch_tilesets_for_meshes
+from services.plateau_api_client import fetch_tilesets_for_meshes
 from services.plateau_fetcher import (
     search_building_by_id,
     search_building_by_id_and_mesh,
@@ -1181,39 +1181,6 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
         print(f"[API] Mesh Codes: {request.mesh_codes}")
         print(f"[API] LOD: {request.lod}")
         print(f"{'='*60}\n")
-
-        if request.municipality_code:
-            dataset = await fetch_plateau_dataset_by_municipality(request.municipality_code, request.lod)
-            if dataset:
-                mesh_code = request.mesh_codes[0] if request.mesh_codes else request.municipality_code
-                tilesets = [
-                    TilesetInfo(
-                        mesh_code=mesh_code,
-                        tileset_url=dataset["tileset_url"],
-                        municipality_name=dataset.get("municipality_name"),
-                        municipality_code=request.municipality_code
-                    )
-                ]
-                total_requested = len(request.mesh_codes)
-                total_found = len(tilesets)
-                total_not_found = total_requested - total_found
-
-                print(
-                    f"[API] Using municipality filter {request.municipality_code}: "
-                    f"Found {total_found}/{total_requested} tilesets"
-                )
-
-                return MeshToTilesetsResponse(
-                    tilesets=tilesets,
-                    total_requested=total_requested,
-                    total_found=total_found,
-                    total_not_found=total_not_found
-                )
-
-            print(
-                f"[API] Municipality {request.municipality_code} not found for LOD{request.lod}, "
-                "falling back to mesh lookup"
-            )
 
         # Fetch 3D Tiles URLs for mesh codes
         tilesets_data = await fetch_tilesets_for_meshes(

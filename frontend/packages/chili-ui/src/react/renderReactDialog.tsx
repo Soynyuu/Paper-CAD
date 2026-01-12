@@ -31,17 +31,26 @@ export function renderReactDialog<P extends object>(
     Component: React.ComponentType<P>,
     props: P,
 ): () => void {
-    // Create container for React component (full screen, no backdrop centering)
-    const container = document.createElement("div");
-    container.style.cssText = `
+    // Create backdrop
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
         width: 100vw;
         height: 100vh;
-        z-index: var(--z-tooltip, 10001);
+        background-color: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(4px);
+        z-index: 9998;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     `;
-    document.body.appendChild(container);
+    document.body.appendChild(backdrop);
+
+    // Create container for React component
+    const container = document.createElement("div");
+    backdrop.appendChild(container);
 
     // Render React component with Jotai provider
     const root: Root = createRoot(container);
@@ -54,6 +63,6 @@ export function renderReactDialog<P extends object>(
     // Cleanup function
     return () => {
         root.unmount();
-        container.remove();
+        backdrop.remove();
     };
 }

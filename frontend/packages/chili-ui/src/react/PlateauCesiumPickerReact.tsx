@@ -38,6 +38,11 @@ const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
     return undefined;
 };
 
+const clampResolutionScale = (value: number, fallback: number): number => {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(Math.max(value, 0.5), 2);
+};
+
 const ensureCesiumRuntime = () => {
     if (typeof document === "undefined") {
         return;
@@ -122,21 +127,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [searchError, setSearchError] = useState<string | null>(null);
     const [showResults, setShowResults] = useState<boolean>(false);
 
-    // Debug: monitor component mount/unmount
-    useEffect(() => {
-        console.log("[Debug] Component MOUNTED");
-        return () => console.log("[Debug] Component UNMOUNTED");
-    }, []);
-
-    // Debug: monitor searchQuery changes
-    useEffect(() => {
-        console.log("[Debug] searchQuery changed to:", searchQuery);
-    }, [searchQuery]);
-
-    // Debug: monitor showResults changes
-    useEffect(() => {
-        console.log("[Debug] showResults changed to:", showResults, "searchResults:", searchResults);
-    }, [showResults, searchResults]);
     const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
@@ -150,17 +140,23 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
-    const preferredPickLod = Math.min(3, Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)));
+    const appConfig = getRuntimeAppConfig();
+    const preferredPickLod = Math.min(3, Math.max(1, Number(appConfig?.cesiumPickLod ?? 2)));
+    const preferredResolutionScale = clampResolutionScale(appConfig?.cesiumResolutionScale ?? 0.6, 0.6);
+    const preferNoTexture = Boolean(appConfig?.cesiumPreferNoTexture);
 
     const applyPerformanceMode = (viewer: Cesium.Viewer) => {
         if (!perfDefaultsRef.current) {
             perfDefaultsRef.current = {
-                resolutionScale: viewer.resolutionScale ?? 1,
+                resolutionScale: viewer.resolutionScale ?? preferredResolutionScale,
                 globeMaxSSE: viewer.scene?.globe?.maximumScreenSpaceError ?? null,
             };
         }
 
-        viewer.resolutionScale = Math.min(viewer.resolutionScale ?? 1, 0.75);
+        viewer.resolutionScale = Math.min(
+            viewer.resolutionScale ?? preferredResolutionScale,
+            preferredResolutionScale,
+        );
         if (viewer.scene?.globe) {
             const current = viewer.scene.globe.maximumScreenSpaceError;
             viewer.scene.globe.maximumScreenSpaceError = Math.max(current, 8);
@@ -253,7 +249,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             // Create and initialize CesiumView
             const cesiumView = new CesiumView(container);
-            await cesiumView.initialize("plateau-ortho-2023", {
+            await cesiumView.initialize("gsi-pale", {
                 deferBasemap: true,
                 deferTerrain: true,
             });
@@ -630,6 +626,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             mesh_codes: meshCodes,
                             lod: preferredPickLod,
                         };
+                        if (preferNoTexture) {
+                            requestBody["prefer_no_texture"] = true;
+                        }
                         if (municipalityCode) {
                             requestBody["municipality_code"] = municipalityCode;
                         }
@@ -687,7 +686,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         return;
                     }
 
-                    const MAX_TILESETS_TO_LOAD = 4;
+                    const MAX_TILESETS_TO_LOAD = 2;
                     const PRIMARY_TILESETS_TO_LOAD = 1;
                     const BACKGROUND_BATCH_SIZE = 1;
                     const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);

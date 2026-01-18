@@ -31,9 +31,19 @@ loadEnv();
 // PLATEAU-Terrain (ion asset 3258112). Override with CESIUM_TERRAIN_ASSET_ID if needed.
 const DEFAULT_TERRAIN_ASSET_ID = 3258112;
 const DEFAULT_PICK_LOD = 2;
+const DEFAULT_RESOLUTION_SCALE = 0.6;
+const DEFAULT_PREFER_NO_TEXTURE = true;
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+};
+const parseBoolean = (value, fallback = false) => {
+    if (value === undefined) return fallback;
+    if (typeof value === "boolean") return value;
+    const normalized = String(value).toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+    return fallback;
 };
 
 const isDev = process.env.NODE_ENV === "development";
@@ -185,6 +195,14 @@ const config = defineConfig({
                 ),
                 cesiumTerrainIonToken: process.env.CESIUM_TERRAIN_ION_TOKEN || "",
                 cesiumPickLod: parseNumber(process.env.CESIUM_PICK_LOD, DEFAULT_PICK_LOD),
+                cesiumResolutionScale: parseNumber(
+                    process.env.CESIUM_RESOLUTION_SCALE,
+                    DEFAULT_RESOLUTION_SCALE,
+                ),
+                cesiumPreferNoTexture: parseBoolean(
+                    process.env.CESIUM_PREFER_NO_TEXTURE,
+                    DEFAULT_PREFER_NO_TEXTURE,
+                ),
                 useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),

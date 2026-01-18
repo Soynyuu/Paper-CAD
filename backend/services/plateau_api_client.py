@@ -301,7 +301,28 @@ def _filter_building_datasets(
     return filtered
 
 
-async def fetch_plateau_datasets_by_mesh(mesh_code: str, lod: int = 1) -> List[Dict[str, Any]]:
+def _is_no_texture_dataset(dataset: Dict[str, Any]) -> bool:
+    dataset_id = dataset.get("id") or ""
+    dataset_url = dataset.get("url") or ""
+    return "no_texture" in dataset_id or "no_texture" in dataset_url
+
+
+def _prefer_no_texture(
+    datasets: List[Dict[str, Any]], prefer_no_texture: bool
+) -> List[Dict[str, Any]]:
+    if not prefer_no_texture:
+        return datasets
+
+    no_texture = [dataset for dataset in datasets if _is_no_texture_dataset(dataset)]
+    if not no_texture:
+        return datasets
+
+    return no_texture + [dataset for dataset in datasets if not _is_no_texture_dataset(dataset)]
+
+
+async def fetch_plateau_datasets_by_mesh(
+    mesh_code: str, lod: int = 1, prefer_no_texture: bool = False
+) -> List[Dict[str, Any]]:
     """
     高速版：メッシュコード → 市区町村コード → PLATEAU 3D Tiles (複数対応)
 
@@ -317,6 +338,7 @@ async def fetch_plateau_datasets_by_mesh(mesh_code: str, lod: int = 1) -> List[D
     Args:
         mesh_code: 3次メッシュコード (8桁, 例: "53393575")
         lod: LODレベル (1, 2, 3)
+        prefer_no_texture: Prefer no-texture tilesets when available
 
     Returns:
         List of dataset dicts (may be empty if not found)
@@ -354,7 +376,10 @@ async def fetch_plateau_datasets_by_mesh(mesh_code: str, lod: int = 1) -> List[D
     logger.info(f"Mesh {mesh_code} -> Mesh2 {mesh2} -> Municipalities {municipality_codes}")
 
     # Fetch datasets for all municipalities (parallel)
-    tasks = [fetch_plateau_dataset_by_municipality(code, lod) for code in municipality_codes]
+    tasks = [
+        fetch_plateau_dataset_by_municipality(code, lod, prefer_no_texture)
+        for code in municipality_codes
+    ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     datasets: List[Dict[str, Any]] = []
@@ -368,16 +393,23 @@ async def fetch_plateau_datasets_by_mesh(mesh_code: str, lod: int = 1) -> List[D
     return datasets
 
 
-async def fetch_plateau_dataset_by_mesh(mesh_code: str, lod: int = 1) -> Optional[Dict[str, Any]]:
+async def fetch_plateau_dataset_by_mesh(
+    mesh_code: str, lod: int = 1, prefer_no_texture: bool = False
+) -> Optional[Dict[str, Any]]:
     """
     Backward-compatible single-result helper.
+
+    Args:
+        mesh_code: 3次メッシュコード (8桁)
+        lod: LODレベル (1, 2, 3)
+        prefer_no_texture: Prefer no-texture tilesets when available
     """
-    results = await fetch_plateau_datasets_by_mesh(mesh_code, lod)
+    results = await fetch_plateau_datasets_by_mesh(mesh_code, lod, prefer_no_texture)
     return results[0] if results else None
 
 
 async def fetch_plateau_dataset_by_municipality(
-    municipality_code: str, lod: int = 1
+    municipality_code: str, lod: int = 1, prefer_no_texture: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     市区町村コードからPLATEAU 3D Tilesデータセットを取得
@@ -385,6 +417,7 @@ async def fetch_plateau_dataset_by_municipality(
     Args:
         municipality_code: 5桁の市区町村コード (例: "13101" for 千代田区)
         lod: LODレベル (1, 2, 3)
+        prefer_no_texture: Prefer no-texture tilesets when available
 
     Returns:
         {
@@ -401,6 +434,7 @@ async def fetch_plateau_dataset_by_municipality(
 
         # Filter for this municipality and LOD
         datasets = _filter_building_datasets(catalog, municipality_code, lod)
+        datasets = _prefer_no_texture(datasets, prefer_no_texture)
 
         if datasets:
             # Return first matching dataset
@@ -416,6 +450,7 @@ async def fetch_plateau_dataset_by_municipality(
         if lod == 3:
             logger.info(f"LOD3 not found for {municipality_code}, trying LOD2")
             datasets = _filter_building_datasets(catalog, municipality_code, 2)
+            datasets = _prefer_no_texture(datasets, prefer_no_texture)
             if datasets:
                 dataset = datasets[0]
                 return {
@@ -427,6 +462,7 @@ async def fetch_plateau_dataset_by_municipality(
         elif lod != 1:
             logger.info(f"LOD{lod} not found for {municipality_code}, trying LOD1")
             datasets = _filter_building_datasets(catalog, municipality_code, 1)
+            datasets = _prefer_no_texture(datasets, prefer_no_texture)
             if datasets:
                 dataset = datasets[0]
                 return {
@@ -463,13 +499,16 @@ async def fetch_plateau_dataset_by_municipality(
     return None
 
 
-async def fetch_tilesets_for_meshes(mesh_codes: List[str], lod: int = 1) -> List[Dict[str, Any]]:
+async def fetch_tilesets_for_meshes(
+    mesh_codes: List[str], lod: int = 1, prefer_no_texture: bool = False
+) -> List[Dict[str, Any]]:
     """
     複数のメッシュコードに対して3D Tiles URLを取得
 
     Args:
         mesh_codes: メッシュコードのリスト
         lod: LODレベル
+        prefer_no_texture: Prefer no-texture tilesets when available
 
     Returns:
         List of {
@@ -508,7 +547,7 @@ async def fetch_tilesets_for_meshes(mesh_codes: List[str], lod: int = 1) -> List
 
     async def _fetch_dataset(code: str) -> Tuple[str, Optional[Dict[str, Any]]]:
         async with semaphore:
-            dataset = await fetch_plateau_dataset_by_municipality(code, lod)
+            dataset = await fetch_plateau_dataset_by_municipality(code, lod, prefer_no_texture)
             return code, dataset
 
     dataset_results = await asyncio.gather(

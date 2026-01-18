@@ -46,7 +46,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
-                maximumLevel: 18,
+                maximumLevel: 17,
                 credit: createGsiCredit(),
             });
         },
@@ -56,7 +56,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-                maximumLevel: 18,
+                maximumLevel: 17,
                 credit: createGsiCredit(),
             });
         },
@@ -78,7 +78,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
                 minimumLevel: 10,
-                maximumLevel: 19,
+                maximumLevel: 17,
                 credit: createPlateauCredit(),
             });
         },
@@ -196,6 +196,16 @@ export class CesiumView {
         (window as any).CESIUM_BASE_URL = baseUrl;
 
         await ensureCesiumWidgetCss(baseUrl);
+
+        if (
+            Cesium.RequestScheduler &&
+            typeof Cesium.RequestScheduler.maximumRequestsPerServer === "number"
+        ) {
+            Cesium.RequestScheduler.maximumRequestsPerServer = Math.min(
+                Cesium.RequestScheduler.maximumRequestsPerServer,
+                4,
+            );
+        }
 
         // Set Cesium Ion token if provided
         const ionToken = appConfig?.cesiumIonToken || appConfig?.cesiumTerrainIonToken;

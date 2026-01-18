@@ -106,6 +106,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
     const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
     const tilesetLoaderRef = useRef<CesiumTilesetLoader | null>(null);
+    const perfDefaultsRef = useRef<{ resolutionScale: number; globeMaxSSE: number | null } | null>(
+        null,
+    );
 
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
     const [loading, setLoading] = useAtom(loadingAtom);
@@ -148,6 +151,33 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
     const preferredPickLod = Math.min(3, Math.max(1, Number(getRuntimeAppConfig()?.cesiumPickLod ?? 2)));
+
+    const applyPerformanceMode = (viewer: Cesium.Viewer) => {
+        if (!perfDefaultsRef.current) {
+            perfDefaultsRef.current = {
+                resolutionScale: viewer.resolutionScale ?? 1,
+                globeMaxSSE: viewer.scene?.globe?.maximumScreenSpaceError ?? null,
+            };
+        }
+
+        viewer.resolutionScale = Math.min(viewer.resolutionScale ?? 1, 0.75);
+        if (viewer.scene?.globe) {
+            const current = viewer.scene.globe.maximumScreenSpaceError;
+            viewer.scene.globe.maximumScreenSpaceError = Math.max(current, 8);
+        }
+    };
+
+    const restorePerformanceMode = (viewer: Cesium.Viewer) => {
+        const defaults = perfDefaultsRef.current;
+        if (!defaults) return;
+
+        viewer.resolutionScale = defaults.resolutionScale;
+        if (viewer.scene?.globe && defaults.globeMaxSSE !== null) {
+            viewer.scene.globe.maximumScreenSpaceError = defaults.globeMaxSSE;
+        }
+        perfDefaultsRef.current = null;
+        viewer.scene?.requestRender();
+    };
 
     // City initialization removed - using unified search interface (Issue #177)
 
@@ -589,157 +619,169 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             const loadTilesets = async () => {
                 setLoadingMessage("3D Tilesを読み込み中...");
+                applyPerformanceMode(viewer);
+                let restoreOnFinish = true;
+                try {
+                    // Get API base URL
+                    const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
 
-                // Get API base URL
-                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+                    const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
+                        const requestBody: Record<string, unknown> = {
+                            mesh_codes: meshCodes,
+                            lod: preferredPickLod,
+                        };
+                        if (municipalityCode) {
+                            requestBody["municipality_code"] = municipalityCode;
+                        }
 
-                const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
-                    const requestBody: Record<string, unknown> = {
-                        mesh_codes: meshCodes,
-                        lod: preferredPickLod,
-                    };
-                    if (municipalityCode) {
-                        requestBody["municipality_code"] = municipalityCode;
-                    }
-
-                    const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(requestBody),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`API error: ${response.status}`);
-                    }
-
-                    return response.json();
-                };
-
-                // Start with center mesh only; fallback to neighbors if nothing is found.
-                const centerMeshCodes = resolveMeshCodesFromCoordinates(
-                    targetLatitude,
-                    targetLongitude,
-                    false,
-                );
-                console.log(
-                    `[PlateauCesiumPicker] Loading 3D Tiles for ${centerMeshCodes.length} mesh codes`,
-                );
-
-                let data = await fetchTilesetsForMeshes(centerMeshCodes);
-                let tilesets = data.tilesets || [];
-
-                if (tilesets.length === 0) {
-                    const neighborMeshCodes = resolveMeshCodesFromCoordinates(
-                        targetLatitude,
-                        targetLongitude,
-                        true,
-                    );
-                    console.log(
-                        `[PlateauCesiumPicker] No tilesets found for center mesh; retrying with ${neighborMeshCodes.length} meshes`,
-                    );
-                    data = await fetchTilesetsForMeshes(neighborMeshCodes);
-                    tilesets = data.tilesets || [];
-                }
-
-                if (result.municipalityCode) {
-                    const filtered = tilesets.filter(
-                        (tileset: any) => tileset.municipality_code === result.municipalityCode,
-                    );
-                    if (filtered.length > 0) {
-                        tilesets = filtered;
-                    }
-                }
-
-                if (tilesets.length === 0) {
-                    console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
-                    return;
-                }
-
-                const MAX_TILESETS_TO_LOAD = 6;
-                const PRIMARY_TILESETS_TO_LOAD = 1;
-                const BACKGROUND_BATCH_SIZE = 2;
-                const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
-                const meshCodesToLoad = tilesetsToLoad.map((t: any) => t.mesh_code);
-                loader.retainMeshes(meshCodesToLoad);
-                const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
-                const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
-
-                const primaryLoad = await loader.loadMultipleTilesets(
-                    primaryTilesets.map((t: any) => ({
-                        meshCode: t.mesh_code,
-                        url: t.tileset_url,
-                    })),
-                );
-                let failedMeshCount = primaryLoad.failedMeshes.length;
-
-                if (cesiumViewRef.current) {
-                    setLoadingMessage("地図タイルを読み込み中...");
-                    await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
-                }
-
-                if (backgroundTilesets.length > 0) {
-                    const yieldToBrowser = () =>
-                        new Promise<void>((resolve) => {
-                            if (typeof requestAnimationFrame === "function") {
-                                requestAnimationFrame(() => resolve());
-                            } else {
-                                setTimeout(resolve, 0);
-                            }
+                        const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(requestBody),
                         });
 
-                    const loadBackgroundTilesets = async () => {
-                        for (let i = 0; i < backgroundTilesets.length; i += BACKGROUND_BATCH_SIZE) {
-                            const batch = backgroundTilesets.slice(i, i + BACKGROUND_BATCH_SIZE);
-                            const loadResult = await loader.loadMultipleTilesets(
-                                batch.map((t: any) => ({
-                                    meshCode: t.mesh_code,
-                                    url: t.tileset_url,
-                                })),
-                            );
-                            failedMeshCount += loadResult.failedMeshes.length;
-                            await yieldToBrowser();
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status}`);
                         }
 
-                        if (failedMeshCount > 0) {
-                            PubSub.default.pub(
-                                "showToast",
-                                "toast.plateau.tilesetLoadFailed:{0}",
-                                failedMeshCount,
-                            );
-                        }
-
-                        if (cesiumViewRef.current) {
-                            void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                        }
+                        return response.json();
                     };
 
-                    void loadBackgroundTilesets().catch((error) => {
-                        console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
-                        if (failedMeshCount > 0) {
-                            PubSub.default.pub(
-                                "showToast",
-                                "toast.plateau.tilesetLoadFailed:{0}",
-                                failedMeshCount,
-                            );
-                        }
-                    });
-                } else if (failedMeshCount > 0) {
-                    PubSub.default.pub(
-                        "showToast",
-                        "toast.plateau.tilesetLoadFailed:{0}",
-                        failedMeshCount,
+                    // Start with center mesh only; fallback to neighbors if nothing is found.
+                    const centerMeshCodes = resolveMeshCodesFromCoordinates(
+                        targetLatitude,
+                        targetLongitude,
+                        false,
                     );
-                } else if (cesiumViewRef.current) {
-                    void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                }
-
-                console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
-
-                // ユーザーに建物選択を促す（カメラ移動完了後）
-                if (result.buildingCount && result.buildingCount > 0) {
                     console.log(
-                        `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
+                        `[PlateauCesiumPicker] Loading 3D Tiles for ${centerMeshCodes.length} mesh codes`,
                     );
+
+                    let data = await fetchTilesetsForMeshes(centerMeshCodes);
+                    let tilesets = data.tilesets || [];
+
+                    if (tilesets.length === 0) {
+                        const neighborMeshCodes = resolveMeshCodesFromCoordinates(
+                            targetLatitude,
+                            targetLongitude,
+                            true,
+                        );
+                        console.log(
+                            `[PlateauCesiumPicker] No tilesets found for center mesh; retrying with ${neighborMeshCodes.length} meshes`,
+                        );
+                        data = await fetchTilesetsForMeshes(neighborMeshCodes);
+                        tilesets = data.tilesets || [];
+                    }
+
+                    if (result.municipalityCode) {
+                        const filtered = tilesets.filter(
+                            (tileset: any) => tileset.municipality_code === result.municipalityCode,
+                        );
+                        if (filtered.length > 0) {
+                            tilesets = filtered;
+                        }
+                    }
+
+                    if (tilesets.length === 0) {
+                        console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                        return;
+                    }
+
+                    const MAX_TILESETS_TO_LOAD = 4;
+                    const PRIMARY_TILESETS_TO_LOAD = 1;
+                    const BACKGROUND_BATCH_SIZE = 1;
+                    const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
+                    const meshCodesToLoad = tilesetsToLoad.map((t: any) => t.mesh_code);
+                    loader.retainMeshes(meshCodesToLoad);
+                    const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
+                    const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
+
+                    const primaryLoad = await loader.loadMultipleTilesets(
+                        primaryTilesets.map((t: any) => ({
+                            meshCode: t.mesh_code,
+                            url: t.tileset_url,
+                        })),
+                    );
+                    let failedMeshCount = primaryLoad.failedMeshes.length;
+
+                    if (cesiumViewRef.current) {
+                        setLoadingMessage("地図タイルを読み込み中...");
+                        await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
+                    }
+
+                    if (backgroundTilesets.length > 0) {
+                        restoreOnFinish = false;
+                        const yieldToBrowser = () =>
+                            new Promise<void>((resolve) => {
+                                if (typeof requestAnimationFrame === "function") {
+                                    requestAnimationFrame(() => resolve());
+                                } else {
+                                    setTimeout(resolve, 0);
+                                }
+                            });
+
+                        const loadBackgroundTilesets = async () => {
+                            for (let i = 0; i < backgroundTilesets.length; i += BACKGROUND_BATCH_SIZE) {
+                                const batch = backgroundTilesets.slice(i, i + BACKGROUND_BATCH_SIZE);
+                                const loadResult = await loader.loadMultipleTilesets(
+                                    batch.map((t: any) => ({
+                                        meshCode: t.mesh_code,
+                                        url: t.tileset_url,
+                                    })),
+                                );
+                                failedMeshCount += loadResult.failedMeshes.length;
+                                await yieldToBrowser();
+                            }
+
+                            if (failedMeshCount > 0) {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.tilesetLoadFailed:{0}",
+                                    failedMeshCount,
+                                );
+                            }
+
+                            if (cesiumViewRef.current) {
+                                void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
+                            }
+                        };
+
+                        void loadBackgroundTilesets()
+                            .catch((error) => {
+                                console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
+                                if (failedMeshCount > 0) {
+                                    PubSub.default.pub(
+                                        "showToast",
+                                        "toast.plateau.tilesetLoadFailed:{0}",
+                                        failedMeshCount,
+                                    );
+                                }
+                            })
+                            .finally(() => {
+                                restorePerformanceMode(viewer);
+                            });
+                    } else if (failedMeshCount > 0) {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.tilesetLoadFailed:{0}",
+                            failedMeshCount,
+                        );
+                    } else if (cesiumViewRef.current) {
+                        void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
+                    }
+
+                    console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
+
+                    // ユーザーに建物選択を促す（カメラ移動完了後）
+                    if (result.buildingCount && result.buildingCount > 0) {
+                        console.log(
+                            `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
+                        );
+                    }
+                } finally {
+                    if (restoreOnFinish) {
+                        restorePerformanceMode(viewer);
+                    }
                 }
             };
 

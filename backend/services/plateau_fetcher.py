@@ -147,6 +147,42 @@ def _get_ward_from_mesh(mesh_code: str) -> Optional[str]:
     return ward
 
 
+def _get_wards_from_mesh(mesh_code: str) -> List[str]:
+    """Get all ward area codes for a mesh code."""
+    mesh_index = _load_mesh_index()
+    ward = mesh_index.get(mesh_code)
+
+    if ward is None:
+        return []
+
+    if isinstance(ward, list):
+        return [w for w in ward if w]
+
+    return [ward]
+
+
+def _find_cached_gml_files(cache_dir: Path, area_code: str, mesh_code: str) -> List[Path]:
+    """Find cached GML files for a mesh code within a ward directory."""
+    # Find ward directory: {area_code}_*
+    ward_dirs = list(cache_dir.glob(f"{area_code}_*"))
+    if not ward_dirs:
+        print(f"[CACHE] No ward directory found for area code: {area_code}")
+        return []
+
+    ward_dir = ward_dirs[0]
+
+    # Find GML files matching the mesh code: {mesh_code}_bldg_*.gml
+    gml_pattern = str(ward_dir / "udx" / "bldg" / f"{mesh_code}_bldg_*.gml")
+    gml_files = [Path(p) for p in glob.glob(gml_pattern)]
+
+    if not gml_files:
+        print(f"[CACHE] No GML files found for mesh {mesh_code} in {ward_dir.name}")
+        return []
+
+    print(f"[CACHE] Found {len(gml_files)} GML file(s) for mesh {mesh_code} in {ward_dir.name}")
+    return gml_files
+
+
 def _load_gml_from_cache(mesh_code: str, area_code: str) -> Optional[str]:
     """Load CityGML content from cache for a specific mesh code.
 
@@ -160,23 +196,9 @@ def _load_gml_from_cache(mesh_code: str, area_code: str) -> Optional[str]:
     config = _get_cache_config()
     cache_dir = config["cache_dir"]
 
-    # Find ward directory: {area_code}_*
-    ward_dirs = list(cache_dir.glob(f"{area_code}_*"))
-    if not ward_dirs:
-        print(f"[CACHE] No ward directory found for area code: {area_code}")
-        return None
-
-    ward_dir = ward_dirs[0]
-
-    # Find GML files matching the mesh code: {mesh_code}_bldg_*.gml
-    gml_pattern = str(ward_dir / "udx" / "bldg" / f"{mesh_code}_bldg_*.gml")
-    gml_files = glob.glob(gml_pattern)
-
+    gml_files = _find_cached_gml_files(cache_dir, area_code, mesh_code)
     if not gml_files:
-        print(f"[CACHE] No GML files found for mesh {mesh_code} in {ward_dir.name}")
         return None
-
-    print(f"[CACHE] Found {len(gml_files)} GML file(s) for mesh {mesh_code}")
 
     # Single file: read directly
     if len(gml_files) == 1:
@@ -189,7 +211,45 @@ def _load_gml_from_cache(mesh_code: str, area_code: str) -> Optional[str]:
 
     # Multiple files: combine them
     try:
-        return _combine_gml_files([Path(f) for f in gml_files])
+        return _combine_gml_files(gml_files)
+    except Exception as e:
+        print(f"[CACHE] Failed to combine GML files: {e}")
+        return None
+
+
+def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optional[str]:
+    """Load CityGML content from cache across multiple ward directories."""
+    config = _get_cache_config()
+    cache_dir = config["cache_dir"]
+
+    all_files: List[Path] = []
+    for area_code in area_codes:
+        all_files.extend(_find_cached_gml_files(cache_dir, area_code, mesh_code))
+
+    if not all_files:
+        return None
+
+    seen: Set[str] = set()
+    unique_files: List[Path] = []
+    for path in all_files:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_files.append(path)
+
+    print(f"[CACHE] Found {len(unique_files)} GML file(s) across wards for mesh {mesh_code}")
+
+    if len(unique_files) == 1:
+        try:
+            with open(unique_files[0], 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            print(f"[CACHE] Failed to read GML file: {e}")
+            return None
+
+    try:
+        return _combine_gml_files(unique_files)
     except Exception as e:
         print(f"[CACHE] Failed to combine GML files: {e}")
         return None
@@ -623,14 +683,21 @@ def fetch_citygml_from_plateau(
     config = _get_cache_config()
     if config["enabled"]:
         try:
-            area_code = _get_ward_from_mesh(center_mesh)
-            if area_code:
-                cached_xml = _load_gml_from_cache(center_mesh, area_code)
-                if cached_xml:
-                    print(f"[PLATEAU] ✓ Cache HIT: mesh={center_mesh}, ward={area_code}")
-                    return cached_xml
+            area_codes = _get_wards_from_mesh(center_mesh)
+            if area_codes:
+                if len(area_codes) > 1:
+                    print(f"[CACHE] Mesh {center_mesh} spans multiple wards: {area_codes}")
+                    cached_xml = _load_gml_from_cache_multi(center_mesh, area_codes)
                 else:
-                    print(f"[PLATEAU] Cache MISS: mesh={center_mesh}, ward={area_code}")
+                    cached_xml = _load_gml_from_cache(center_mesh, area_codes[0])
+
+                if cached_xml:
+                    ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                    print(f"[PLATEAU] ✓ Cache HIT: mesh={center_mesh}, wards={ward_label}")
+                    return cached_xml
+
+                ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                print(f"[PLATEAU] Cache MISS: mesh={center_mesh}, wards={ward_label}")
         except Exception as e:
             print(f"[PLATEAU] Cache error (falling back to API): {e}")
 
@@ -1760,14 +1827,21 @@ def fetch_citygml_by_mesh_code(
     config = _get_cache_config()
     if config["enabled"]:
         try:
-            area_code = _get_ward_from_mesh(mesh_code)
-            if area_code:
-                cached_xml = _load_gml_from_cache(mesh_code, area_code)
-                if cached_xml:
-                    print(f"[PLATEAU] ✓ Cache HIT: mesh={mesh_code}, ward={area_code}")
-                    return cached_xml
+            area_codes = _get_wards_from_mesh(mesh_code)
+            if area_codes:
+                if len(area_codes) > 1:
+                    print(f"[CACHE] Mesh {mesh_code} spans multiple wards: {area_codes}")
+                    cached_xml = _load_gml_from_cache_multi(mesh_code, area_codes)
                 else:
-                    print(f"[PLATEAU] Cache MISS: mesh={mesh_code}, ward={area_code}")
+                    cached_xml = _load_gml_from_cache(mesh_code, area_codes[0])
+
+                if cached_xml:
+                    ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                    print(f"[PLATEAU] ✓ Cache HIT: mesh={mesh_code}, wards={ward_label}")
+                    return cached_xml
+
+                ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                print(f"[PLATEAU] Cache MISS: mesh={mesh_code}, wards={ward_label}")
         except Exception as e:
             print(f"[PLATEAU] Cache error (falling back to API): {e}")
 

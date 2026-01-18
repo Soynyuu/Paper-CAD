@@ -73,7 +73,8 @@ def _get_cache_config() -> Dict[str, Any]:
         - cache_dir: Path - Cache directory path
         - mesh_index_path: Path - Path to mesh_to_ward_index.json
     """
-    cache_dir_str = os.getenv("CITYGML_CACHE_DIR", "backend/data/citygml_cache")
+    default_cache_dir = Path(__file__).resolve().parent.parent / "data" / "citygml_cache"
+    cache_dir_str = os.getenv("CITYGML_CACHE_DIR", str(default_cache_dir))
     cache_dir = Path(cache_dir_str)
 
     return {

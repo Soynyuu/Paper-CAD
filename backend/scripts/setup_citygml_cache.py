@@ -296,11 +296,12 @@ def main():
         action="store_true",
         help="Skip wards that already have cache directories"
     )
+    default_cache_dir = Path(__file__).resolve().parent.parent / "data" / "citygml_cache"
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="data/citygml_cache",
-        help="Cache directory path (default: data/citygml_cache)"
+        default=str(default_cache_dir),
+        help="Cache directory path (default: backend/data/citygml_cache)"
     )
     parser.add_argument(
         "--datasets-json",

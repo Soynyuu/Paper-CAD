@@ -161,7 +161,7 @@ Total size: 2.47 GB
 `backend/.env.development`を編集:
 ```bash
 CITYGML_CACHE_ENABLED=true
-CITYGML_CACHE_DIR=backend/data/citygml_cache
+CITYGML_CACHE_DIR=data/citygml_cache
 ```
 
 #### 4. バックエンドの再起動
@@ -204,7 +204,7 @@ curl -X POST "http://localhost:8001/api/plateau/search-by-address" \
 
 PLATEAUの新データリリース時（通常年1回）にキャッシュを更新:
 ```bash
-rm -rf backend/data/citygml_cache
+rm -rf data/citygml_cache
 # 最新のtokyo23_datasets.jsonを再生成
 python scripts/setup_citygml_cache.py --datasets-json tokyo23_datasets.json
 ```

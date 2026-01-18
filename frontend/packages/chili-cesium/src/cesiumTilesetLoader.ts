@@ -40,7 +40,7 @@ export class CesiumTilesetLoader {
             debugShowGeometricError: false,
 
             // Performance settings
-            maximumScreenSpaceError: 64,
+            maximumScreenSpaceError: 128,
             cacheBytes: 48 * 1024 * 1024,
             maximumCacheOverflowBytes: 16 * 1024 * 1024,
             cullRequestsWhileMoving: true,
@@ -48,9 +48,9 @@ export class CesiumTilesetLoader {
 
             // Skip LOD levels for faster loading
             skipLevelOfDetail: true,
-            baseScreenSpaceError: 1024,
-            skipScreenSpaceErrorFactor: 32,
-            skipLevels: 2,
+            baseScreenSpaceError: 2048,
+            skipScreenSpaceErrorFactor: 64,
+            skipLevels: 3,
             loadSiblings: false,
 
             // Avoid eager preloading to keep memory use down.
@@ -61,10 +61,11 @@ export class CesiumTilesetLoader {
             // Enable dynamic screen space error for LOD
             dynamicScreenSpaceError: true,
             dynamicScreenSpaceErrorDensity: 0.00278,
-            dynamicScreenSpaceErrorFactor: 32.0,
+            dynamicScreenSpaceErrorFactor: 64.0,
             dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            progressiveResolutionHeightFraction: 0.3,
-            foveatedMinimumScreenSpaceErrorRelaxation: 2.0,
+            progressiveResolutionHeightFraction: 0.2,
+            foveatedMinimumScreenSpaceErrorRelaxation: 4.0,
+            foveatedConeSize: 0.2,
             foveatedTimeDelay: 0.4,
         };
     }
@@ -171,8 +172,9 @@ export class CesiumTilesetLoader {
      */
     async loadMultipleTilesets(
         tilesets: Array<{ meshCode: string; url: string }>,
-    ): Promise<{ failedMeshes: string[] }> {
+    ): Promise<{ failedMeshes: string[]; loadedTilesets: Cesium.Cesium3DTileset[] }> {
         const failedMeshes: string[] = [];
+        const loadedTilesets: Cesium.Cesium3DTileset[] = [];
         const loadPromises = tilesets.map(async ({ meshCode, url }) => {
             // Skip if already loaded, but update access time
             if (this.loadedTilesets.has(meshCode)) {
@@ -195,6 +197,7 @@ export class CesiumTilesetLoader {
                 // Add to scene
                 this.viewer.scene.primitives.add(tileset);
                 this.loadedTilesets.set(meshCode, tileset);
+                loadedTilesets.push(tileset);
 
                 // Track in LRU order
                 this.meshLoadOrder.push(meshCode);
@@ -212,7 +215,7 @@ export class CesiumTilesetLoader {
         await Promise.all(loadPromises);
 
         console.log(`[CesiumTilesetLoader] Loaded ${this.loadedTilesets.size} tilesets total`);
-        return { failedMeshes };
+        return { failedMeshes, loadedTilesets };
     }
 
     /**
@@ -273,6 +276,20 @@ export class CesiumTilesetLoader {
      */
     getLoadedMeshCodes(): string[] {
         return Array.from(this.loadedTilesets.keys());
+    }
+
+    /**
+     * Keep only the specified mesh codes loaded, unloading the rest.
+     *
+     * @param meshCodes - Mesh codes to retain
+     */
+    retainMeshes(meshCodes: string[]): void {
+        const keep = new Set(meshCodes);
+        Array.from(this.loadedTilesets.keys()).forEach((meshCode) => {
+            if (!keep.has(meshCode)) {
+                this.unloadTilesetByMesh(meshCode);
+            }
+        });
     }
 
     /**

@@ -71,6 +71,8 @@ export class PlateauCesiumPickerDialog {
             /\/$/,
             "",
         );
+        const preferredPickLod = Math.min(3, Math.max(1, Number(__APP_CONFIG__?.cesiumPickLod ?? 2)));
+        const preferNoTexture = Boolean(__APP_CONFIG__?.cesiumPreferNoTexture);
 
         // Cesium viewer container (left panel, 75%)
         const viewerContainer = div({
@@ -379,10 +381,13 @@ export class PlateauCesiumPickerDialog {
                 const municipalityCode = extractMunicipalityCode(result.value.buildings?.[0]?.building_id);
                 const requestBody: Record<string, unknown> = {
                     mesh_codes: meshCodes,
-                    lod: 2,
+                    lod: preferredPickLod,
                 };
                 if (municipalityCode) {
                     requestBody["municipality_code"] = municipalityCode;
+                }
+                if (preferNoTexture) {
+                    requestBody["prefer_no_texture"] = true;
                 }
 
                 // Fetch 3D Tiles URLs for mesh codes
@@ -506,10 +511,13 @@ export class PlateauCesiumPickerDialog {
                 const municipalityCode = extractMunicipalityCode(building.building_id || buildingId);
                 const requestBody: Record<string, unknown> = {
                     mesh_codes: [meshCodeToUse],
-                    lod: 2,
+                    lod: preferredPickLod,
                 };
                 if (municipalityCode) {
                     requestBody["municipality_code"] = municipalityCode;
+                }
+                if (preferNoTexture) {
+                    requestBody["prefer_no_texture"] = true;
                 }
 
                 // Fetch 3D Tiles for the mesh
@@ -594,7 +602,8 @@ export class PlateauCesiumPickerDialog {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mesh_codes: [meshCode],
-                        lod: 2,
+                        lod: preferredPickLod,
+                        prefer_no_texture: preferNoTexture || undefined,
                     }),
                 });
 

@@ -28,6 +28,7 @@ const createGsiCredit = () => new Cesium.Credit(GSI_CREDIT_HTML, true);
 const PLATEAU_CREDIT_HTML =
     '<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">Project PLATEAU</a>';
 const createPlateauCredit = () => new Cesium.Credit(PLATEAU_CREDIT_HTML, true);
+const JAPAN_RECTANGLE = Cesium.Rectangle.fromDegrees(122.93457, 20.425, 153.986, 45.557);
 
 /**
  * Basemap registry with GSI (Geospatial Information Authority of Japan) layers
@@ -46,7 +47,8 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
-                maximumLevel: 18,
+                maximumLevel: 17,
+                rectangle: JAPAN_RECTANGLE,
                 credit: createGsiCredit(),
             });
         },
@@ -56,7 +58,8 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-                maximumLevel: 18,
+                maximumLevel: 17,
+                rectangle: JAPAN_RECTANGLE,
                 credit: createGsiCredit(),
             });
         },
@@ -67,7 +70,8 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
                 minimumLevel: 2,
-                maximumLevel: 18,
+                maximumLevel: 16,
+                rectangle: JAPAN_RECTANGLE,
                 credit: createGsiCredit(),
             });
         },
@@ -78,7 +82,8 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
             return new Cesium.UrlTemplateImageryProvider({
                 url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
                 minimumLevel: 10,
-                maximumLevel: 19,
+                maximumLevel: 16,
+                rectangle: JAPAN_RECTANGLE,
                 credit: createPlateauCredit(),
             });
         },
@@ -105,6 +110,7 @@ const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
     return undefined;
 };
 
+const clampResolutionScale = (value: number): number => Math.min(Math.max(value, 0.5), 2);
 const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
     if (typeof document === "undefined") {
         return Promise.resolve();
@@ -197,6 +203,16 @@ export class CesiumView {
 
         await ensureCesiumWidgetCss(baseUrl);
 
+        if (
+            Cesium.RequestScheduler &&
+            typeof Cesium.RequestScheduler.maximumRequestsPerServer === "number"
+        ) {
+            Cesium.RequestScheduler.maximumRequestsPerServer = Math.min(
+                Cesium.RequestScheduler.maximumRequestsPerServer,
+                4,
+            );
+        }
+
         // Set Cesium Ion token if provided
         const ionToken = appConfig?.cesiumIonToken || appConfig?.cesiumTerrainIonToken;
         if (ionToken) {
@@ -225,10 +241,14 @@ export class CesiumView {
             baseLayer: false, // Will be added manually after viewer creation
         });
 
+        const resolutionScale = appConfig?.cesiumResolutionScale;
+        if (typeof resolutionScale === "number" && Number.isFinite(resolutionScale)) {
+            this.viewer.resolutionScale = clampResolutionScale(resolutionScale);
+        }
+
         if (this.viewer?.canvas) {
             this.enableTrackpadPinchZoom(this.viewer.canvas);
         }
-
         // Use PLATEAU terrain to align with Japan's geoid-based elevations
         if (!this.deferTerrain) {
             await this.ensureTerrainProvider();

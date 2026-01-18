@@ -94,6 +94,121 @@ docker compose up -d
 
 `.env.development` / `.env.demo` / `.env.production` を使用します。
 
+## CityGML Cache Setup（オプション、東京23区向け）
+
+東京23区のPLATEAU CityGMLデータを事前ダウンロードし、処理速度を10-50倍高速化できます。
+
+### 概要
+- **データサイズ**: 圧縮ZIP 500MB-1GB、展開後2-3GB
+- **対象**: 東京23区すべて（area_code: 13101-13123）
+- **実装方式**: セットアップスクリプトで事前ダウンロード（オプトイン）
+
+### 前提条件
+- 3-5GB以上の空きディスク容量
+- 安定したインターネット接続（30-60分のダウンロード時間）
+- Conda環境: `conda activate paper-cad`
+
+### インストール手順
+
+#### 1. データセット情報の準備
+まず、`tokyo23_datasets.json`を生成します。ClaudeにPLATEAU MCPツールを使用してファイルを生成するよう依頼してください:
+
+```json
+[
+  {
+    "area_code": "13101",
+    "ward_name": "千代田区",
+    "dataset_id": "d_13101_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "open_data_url": "https://assets.cms.plateau.reearth.io/...",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  ...
+]
+```
+
+#### 2. セットアップスクリプトの実行
+```bash
+cd backend
+python scripts/setup_citygml_cache.py --datasets-json tokyo23_datasets.json
+```
+
+**期待される出力:**
+```
+Checking disk space...
+✓ 8.5 GB available
+Loading Tokyo 23 wards dataset information...
+Found 23 wards
+
+[1/23] 千代田区 (13101)
+  Downloading ZIP... ████████████ 45.2MB
+  Extracting...
+  ✓ Cached (150 files, 120.3 MB, 35 mesh codes)
+
+[2/23] 中央区 (13102)
+...
+
+Building mesh → ward index...
+✓ Index created with 1250 mesh codes
+
+Cache setup complete!
+Total wards: 23
+Total size: 2.47 GB
+```
+
+#### 3. キャッシュの有効化
+`backend/.env.development`を編集:
+```bash
+CITYGML_CACHE_ENABLED=true
+CITYGML_CACHE_DIR=data/citygml_cache
+```
+
+#### 4. バックエンドの再起動
+```bash
+python main.py
+# 起動ログに以下が表示されればキャッシュが有効:
+# [CACHE] Loaded mesh index with 1250 entries
+```
+
+### 検証
+
+東京の住所でテスト:
+```bash
+curl -X POST "http://localhost:8001/api/plateau/search-by-address" \
+  -H "Content-Type: application/json" \
+  -d '{"address": "東京駅", "radius": 0.001, "limit": 5}'
+```
+
+ログに以下が表示されれば成功:
+```
+[PLATEAU] ✓ Cache HIT: mesh=53393580, ward=13101
+```
+
+### トラブルシューティング
+
+**「Insufficient disk space」エラー**
+- 5GB以上の空き容量を確保: `df -h` (Unix) または エクスプローラー
+
+**「Failed to download {ward}」エラー**
+- ネットワーク接続を確認し、以下でレジューム:
+  ```bash
+  python scripts/setup_citygml_cache.py --skip-existing --datasets-json tokyo23_datasets.json
+  ```
+
+**「Cache MISS」が表示される**
+- メッシュコードが東京外の場合は自動的にAPIフォールバック
+- キャッシュされていない地域では正常な動作
+
+### メンテナンス
+
+PLATEAUの新データリリース時（通常年1回）にキャッシュを更新:
+```bash
+rm -rf data/citygml_cache
+# 最新のtokyo23_datasets.jsonを再生成
+python scripts/setup_citygml_cache.py --datasets-json tokyo23_datasets.json
+```
+
 ## API 例
 
 ```bash

@@ -8,8 +8,8 @@ import { Provider } from "jotai";
 /**
  * renderReactDialog - Utility to render React components as modal dialogs
  *
- * Creates a backdrop + container, renders React component with Jotai provider,
- * and handles cleanup on unmount.
+ * Creates a full-screen container, renders the React component with Jotai
+ * provider, and handles cleanup on unmount.
  *
  * @param Component - React component to render
  * @param props - Props to pass to the component

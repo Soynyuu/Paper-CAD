@@ -83,10 +83,10 @@
     "area_code": "13109",
     "ward_name": "品川区",
     "dataset_id": "d_13109_bldg",
-    "year": 2023,
+    "year": 2024,
     "registration_year": 2024,
     "plateau_spec": "4.1",
-    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/23/c44296-a8d8-47fc-89c2-e6dc22ffa80e/13109_shinagawa-ku_pref_2023_citygml_2_op.zip",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/57/2e6543-d800-4f94-969b-28cac00723e2/13109_shinagawa-ku_city_2024_citygml_1_op.zip",
     "lod_levels": ["LOD1", "LOD2"]
   },
   {
@@ -106,7 +106,7 @@
     "year": 2023,
     "registration_year": 2024,
     "plateau_spec": "4.1",
-    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/1f/b8e8e2-8b23-473f-a3c5-9a2f8a81e603/13111_ota-ku_pref_2023_citygml_2_op.zip",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/ba/c3b8f9-80fc-4625-933c-50b751171cd7/13111_ota-ku_pref_2023_citygml_2_op.zip",
     "lod_levels": ["LOD1", "LOD2"]
   },
   {
@@ -116,7 +116,7 @@
     "year": 2023,
     "registration_year": 2024,
     "plateau_spec": "4.1",
-    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/11/f2a4c7-d8db-43d2-9a71-2f1c6ec49d93/13112_setagaya-ku_pref_2023_citygml_2_op.zip",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/12/0da84e-e494-47c9-bb61-0f21892f4118/13112_setagaya-ku_pref_2023_citygml_2_op.zip",
     "lod_levels": ["LOD1", "LOD2"]
   },
   {
@@ -136,17 +136,17 @@
     "year": 2023,
     "registration_year": 2024,
     "plateau_spec": "4.1",
-    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/02/f2cbf2-acd1-4ba7-be8d-25f2e929aa30/13114_nakano-ku_pref_2023_citygml_2_op.zip",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/f1/25d769-7ac9-4aca-ba2a-d1d266d08805/13114_nakano-ku_pref_2023_citygml_2_op.zip",
     "lod_levels": ["LOD1", "LOD2"]
   },
   {
     "area_code": "13115",
     "ward_name": "杉並区",
     "dataset_id": "d_13115_bldg",
-    "year": 2023,
+    "year": 2024,
     "registration_year": 2024,
     "plateau_spec": "4.1",
-    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/00/8c7c98-56cb-4faf-a74d-00afef86099b/13115_suginami-ku_pref_2023_citygml_2_op.zip",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/db/a37a57-c98f-40a8-94b7-7753f89a41c4/13115_suginami-ku_city_2024_citygml_1_op.zip",
     "lod_levels": ["LOD1", "LOD2"]
   },
   {

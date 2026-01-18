@@ -40,7 +40,7 @@ export class CesiumTilesetLoader {
             debugShowGeometricError: false,
 
             // Performance settings
-            maximumScreenSpaceError: 96,
+            maximumScreenSpaceError: 128,
             cacheBytes: 48 * 1024 * 1024,
             maximumCacheOverflowBytes: 16 * 1024 * 1024,
             cullRequestsWhileMoving: true,
@@ -48,9 +48,9 @@ export class CesiumTilesetLoader {
 
             // Skip LOD levels for faster loading
             skipLevelOfDetail: true,
-            baseScreenSpaceError: 1024,
-            skipScreenSpaceErrorFactor: 48,
-            skipLevels: 2,
+            baseScreenSpaceError: 2048,
+            skipScreenSpaceErrorFactor: 64,
+            skipLevels: 3,
             loadSiblings: false,
 
             // Avoid eager preloading to keep memory use down.
@@ -61,10 +61,11 @@ export class CesiumTilesetLoader {
             // Enable dynamic screen space error for LOD
             dynamicScreenSpaceError: true,
             dynamicScreenSpaceErrorDensity: 0.00278,
-            dynamicScreenSpaceErrorFactor: 48.0,
+            dynamicScreenSpaceErrorFactor: 64.0,
             dynamicScreenSpaceErrorHeightFalloff: 0.25,
-            progressiveResolutionHeightFraction: 0.3,
-            foveatedMinimumScreenSpaceErrorRelaxation: 3.0,
+            progressiveResolutionHeightFraction: 0.2,
+            foveatedMinimumScreenSpaceErrorRelaxation: 4.0,
+            foveatedConeSize: 0.2,
             foveatedTimeDelay: 0.4,
         };
     }

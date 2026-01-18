@@ -8,3 +8,4 @@ coverage
 CMakeUserPresets.json
 .env
 .env.demo
+.serena/

@@ -278,6 +278,20 @@ export class CesiumTilesetLoader {
     }
 
     /**
+     * Keep only the specified mesh codes loaded, unloading the rest.
+     *
+     * @param meshCodes - Mesh codes to retain
+     */
+    retainMeshes(meshCodes: string[]): void {
+        const keep = new Set(meshCodes);
+        Array.from(this.loadedTilesets.keys()).forEach((meshCode) => {
+            if (!keep.has(meshCode)) {
+                this.unloadTilesetByMesh(meshCode);
+            }
+        });
+    }
+
+    /**
      * Clear all loaded tilesets
      */
     clearAll(): void {

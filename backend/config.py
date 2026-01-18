@@ -1,6 +1,7 @@
 import os
 import builtins
 import sys
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -76,7 +77,8 @@ CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
 # CityGML Cache Configuration (Optional, for Tokyo 23 wards)
 CITYGML_CACHE_ENABLED = os.getenv("CITYGML_CACHE_ENABLED", "false").lower() == "true"
-CITYGML_CACHE_DIR = os.getenv("CITYGML_CACHE_DIR", "backend/data/citygml_cache")
+DEFAULT_CITYGML_CACHE_DIR = Path(__file__).resolve().parent / "data" / "citygml_cache"
+CITYGML_CACHE_DIR = os.getenv("CITYGML_CACHE_DIR", str(DEFAULT_CITYGML_CACHE_DIR))
 
 # アプリケーション設定
 APP_CONFIG = {

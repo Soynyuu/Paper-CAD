@@ -111,7 +111,6 @@ const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
 };
 
 const clampResolutionScale = (value: number): number => Math.min(Math.max(value, 0.5), 2);
-
 const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
     if (typeof document === "undefined") {
         return Promise.resolve();
@@ -250,7 +249,6 @@ export class CesiumView {
         if (this.viewer?.canvas) {
             this.enableTrackpadPinchZoom(this.viewer.canvas);
         }
-
         // Use PLATEAU terrain to align with Japan's geoid-based elevations
         if (!this.deferTerrain) {
             await this.ensureTerrainProvider();

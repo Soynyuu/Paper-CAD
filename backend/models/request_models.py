@@ -341,6 +341,11 @@ class MeshToTilesetsRequest(BaseModel):
         le=3,
         example=1
     )
+    prefer_no_texture: Optional[bool] = Field(
+        default=False,
+        description="テクスチャなしデータを優先 / Prefer no-texture tilesets when available",
+        example=True
+    )
     municipality_code: Optional[str] = Field(
         default=None,
         description="市区町村コード（5桁） / Municipality code (5 digits, optional)",

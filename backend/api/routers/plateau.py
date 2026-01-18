@@ -1180,10 +1180,15 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
         print(f"[API] /api/plateau/mesh-to-tilesets")
         print(f"[API] Mesh Codes: {request.mesh_codes}")
         print(f"[API] LOD: {request.lod}")
+        print(f"[API] Prefer no texture: {request.prefer_no_texture}")
         print(f"{'='*60}\n")
 
         if request.municipality_code:
-            dataset = await fetch_plateau_dataset_by_municipality(request.municipality_code, request.lod)
+            dataset = await fetch_plateau_dataset_by_municipality(
+                request.municipality_code,
+                request.lod,
+                request.prefer_no_texture,
+            )
             if dataset:
                 mesh_code = request.mesh_codes[0] if request.mesh_codes else request.municipality_code
                 tilesets = [
@@ -1218,7 +1223,8 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
         # Fetch 3D Tiles URLs for mesh codes
         tilesets_data = await fetch_tilesets_for_meshes(
             request.mesh_codes,
-            request.lod
+            request.lod,
+            request.prefer_no_texture,
         )
 
         # Build response

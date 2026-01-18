@@ -1,0 +1,232 @@
+[
+  {
+    "area_code": "13101",
+    "ward_name": "千代田区",
+    "dataset_id": "d_13101_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/f0/8694c9-c697-4c07-96fc-720b6f61b06b/13101_chiyoda-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13102",
+    "ward_name": "中央区",
+    "dataset_id": "d_13102_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/0c/b282cf-c242-4dd7-af9b-4ec3d4373018/13102_chuo-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13103",
+    "ward_name": "港区",
+    "dataset_id": "d_13103_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/5f/36c4bd-4dca-479a-a4ef-b6856d731a9a/13103_minato-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2", "LOD3"]
+  },
+  {
+    "area_code": "13104",
+    "ward_name": "新宿区",
+    "dataset_id": "d_13104_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/b5/dd5300-732c-4585-b4c6-d90415832a11/13104_shinjuku-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13105",
+    "ward_name": "文京区",
+    "dataset_id": "d_13105_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/ca/12c0c0-caba-4680-b8ff-6db34a43ae5c/13105_bunkyo-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13106",
+    "ward_name": "台東区",
+    "dataset_id": "d_13106_bldg",
+    "year": 2024,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/27/f90235-aa3e-4b2e-937e-6c41499135d6/13106_taito-ku_city_2024_citygml_1_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13107",
+    "ward_name": "墨田区",
+    "dataset_id": "d_13107_bldg",
+    "year": 2024,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/2b/28056b-2d02-4cf5-9811-cf10b4075f11/13107_sumida-ku_city_2024_citygml_1_op.zip",
+    "lod_levels": ["LOD1", "LOD2", "LOD3"]
+  },
+  {
+    "area_code": "13108",
+    "ward_name": "江東区",
+    "dataset_id": "d_13108_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/54/fa52a5-6383-4e1f-9920-1efe42216b24/13108_koto-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13109",
+    "ward_name": "品川区",
+    "dataset_id": "d_13109_bldg",
+    "year": 2024,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/57/2e6543-d800-4f94-969b-28cac00723e2/13109_shinagawa-ku_city_2024_citygml_1_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13110",
+    "ward_name": "目黒区",
+    "dataset_id": "d_13110_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/b9/6a30e5-9726-42df-90cf-92fddd9b0aa5/13110_meguro-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13111",
+    "ward_name": "大田区",
+    "dataset_id": "d_13111_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/ba/c3b8f9-80fc-4625-933c-50b751171cd7/13111_ota-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13112",
+    "ward_name": "世田谷区",
+    "dataset_id": "d_13112_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/12/0da84e-e494-47c9-bb61-0f21892f4118/13112_setagaya-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13113",
+    "ward_name": "渋谷区",
+    "dataset_id": "d_13113_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/e5/29b4f5-f0bf-433d-8f98-deb594bfbebd/13113_shibuya-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13114",
+    "ward_name": "中野区",
+    "dataset_id": "d_13114_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/f1/25d769-7ac9-4aca-ba2a-d1d266d08805/13114_nakano-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13115",
+    "ward_name": "杉並区",
+    "dataset_id": "d_13115_bldg",
+    "year": 2024,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/db/a37a57-c98f-40a8-94b7-7753f89a41c4/13115_suginami-ku_city_2024_citygml_1_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13116",
+    "ward_name": "豊島区",
+    "dataset_id": "d_13116_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/42/94f2ba-d007-47f9-93c3-3f21fbcde827/13116_toshima-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13117",
+    "ward_name": "北区",
+    "dataset_id": "d_13117_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/09/91816c-8dff-47a8-98f2-d1aafdb2bb06/13117_kita-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13118",
+    "ward_name": "荒川区",
+    "dataset_id": "d_13118_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/28/eeb030-dcd5-407b-b18e-16cf2e50054c/13118_arakawa-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13119",
+    "ward_name": "板橋区",
+    "dataset_id": "d_13119_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/83/bbf456-38d5-4edf-99e9-bba2aad20d30/13119_itabashi-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13120",
+    "ward_name": "練馬区",
+    "dataset_id": "d_13120_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/f6/46e4fa-4077-4660-af6c-fe5b332af859/13120_nerima-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13121",
+    "ward_name": "足立区",
+    "dataset_id": "d_13121_bldg",
+    "year": 2023,
+    "registration_year": 2023,
+    "plateau_spec": "3.4",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/42/b87cc4-eae3-4612-950e-391fbfb25866/13121_adachi-ku_city_2023_citygml_1_op.zip",
+    "lod_levels": ["LOD1"]
+  },
+  {
+    "area_code": "13122",
+    "ward_name": "葛飾区",
+    "dataset_id": "d_13122_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/74/82d64e-1f13-4e2c-8442-d89b9b706429/13122_katsushika-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  },
+  {
+    "area_code": "13123",
+    "ward_name": "江戸川区",
+    "dataset_id": "d_13123_bldg",
+    "year": 2023,
+    "registration_year": 2024,
+    "plateau_spec": "4.1",
+    "open_data_url": "https://assets.cms.plateau.reearth.io/assets/92/28e36f-472f-42dc-8d9c-67348e3a7261/13123_edogawa-ku_pref_2023_citygml_2_op.zip",
+    "lod_levels": ["LOD1", "LOD2"]
+  }
+]

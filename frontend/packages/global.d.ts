@@ -39,6 +39,10 @@ interface AppConfig {
     cesiumTerrainIonToken?: string;
     /** Preferred LOD for PLATEAU 3D Tiles in the Cesium picker (1-3) */
     cesiumPickLod?: number;
+    /** Base rendering resolution scale for Cesium canvas */
+    cesiumResolutionScale?: number;
+    /** Prefer no-texture tilesets when available */
+    cesiumPreferNoTexture?: boolean;
     useReactCesiumPicker: boolean;
 }
 

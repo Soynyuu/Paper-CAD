@@ -26,10 +26,14 @@ Usage:
 
 from __future__ import annotations
 
+import glob
+import json
+import os
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict, Any
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict, Any, Set
 
 import requests
 from shapely.geometry import Point
@@ -37,7 +41,6 @@ from shapely import distance
 
 # Import mesh code utilities
 import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from mesh_utils import latlon_to_mesh_3rd, get_neighboring_meshes_3rd
 
@@ -51,6 +54,248 @@ NS = {
     "gen": "http://www.opengis.net/citygml/generics/2.0",
     "xlink": "http://www.w3.org/1999/xlink",
 }
+
+
+# ============================================================================
+# CityGML Cache Utilities (optional opt-in feature)
+# ============================================================================
+
+# Module-level cache for mesh index (loaded once per process)
+_MESH_INDEX_CACHE: Optional[Dict[str, Any]] = None
+
+
+def _get_cache_config() -> Dict[str, Any]:
+    """Get CityGML cache configuration from environment variables.
+
+    Returns:
+        Dictionary with cache configuration:
+        - enabled: bool - Whether cache is enabled
+        - cache_dir: Path - Cache directory path
+        - mesh_index_path: Path - Path to mesh_to_ward_index.json
+    """
+    default_cache_dir = Path(__file__).resolve().parent.parent / "data" / "citygml_cache"
+    cache_dir_str = os.getenv("CITYGML_CACHE_DIR", str(default_cache_dir))
+    cache_dir = Path(cache_dir_str)
+
+    return {
+        "enabled": os.getenv("CITYGML_CACHE_ENABLED", "false").lower() == "true",
+        "cache_dir": cache_dir,
+        "mesh_index_path": cache_dir / "mesh_to_ward_index.json"
+    }
+
+
+def _load_mesh_index() -> Dict[str, Any]:
+    """Load mesh→ward index from cache with module-level caching.
+
+    The index is loaded once per process and cached in memory for O(1) lookups.
+
+    Returns:
+        Dictionary mapping mesh codes to ward area codes:
+        - Single ward: {"53393580": "13101"}
+        - Multiple wards: {"53393580": ["13101", "13102"]}
+        Empty dict if cache is disabled or loading fails.
+    """
+    global _MESH_INDEX_CACHE
+
+    # Return cached index if already loaded
+    if _MESH_INDEX_CACHE is not None:
+        return _MESH_INDEX_CACHE
+
+    config = _get_cache_config()
+    if not config["enabled"]:
+        _MESH_INDEX_CACHE = {}
+        return _MESH_INDEX_CACHE
+
+    try:
+        mesh_index_path = config["mesh_index_path"]
+        if not mesh_index_path.exists():
+            print(f"[CACHE] Mesh index not found: {mesh_index_path}")
+            _MESH_INDEX_CACHE = {}
+            return _MESH_INDEX_CACHE
+
+        with open(mesh_index_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            _MESH_INDEX_CACHE = data.get("index", {})
+            print(f"[CACHE] Loaded mesh index with {len(_MESH_INDEX_CACHE)} entries")
+            return _MESH_INDEX_CACHE
+
+    except Exception as e:
+        print(f"[CACHE] Failed to load mesh index: {e}")
+        _MESH_INDEX_CACHE = {}
+        return _MESH_INDEX_CACHE
+
+
+def _get_ward_from_mesh(mesh_code: str) -> Optional[str]:
+    """Get ward area code from mesh code using O(1) index lookup.
+
+    Args:
+        mesh_code: 3rd mesh code (8 digits, e.g., "53393580")
+
+    Returns:
+        Ward area code (e.g., "13101") if found, None otherwise.
+        If mesh spans multiple wards, returns the first ward.
+    """
+    mesh_index = _load_mesh_index()
+    ward = mesh_index.get(mesh_code)
+
+    if ward is None:
+        return None
+
+    # Handle meshes spanning multiple wards
+    if isinstance(ward, list):
+        return ward[0] if ward else None
+
+    return ward
+
+
+def _get_wards_from_mesh(mesh_code: str) -> List[str]:
+    """Get all ward area codes for a mesh code."""
+    mesh_index = _load_mesh_index()
+    ward = mesh_index.get(mesh_code)
+
+    if ward is None:
+        return []
+
+    if isinstance(ward, list):
+        return [w for w in ward if w]
+
+    return [ward]
+
+
+def _find_cached_gml_files(cache_dir: Path, area_code: str, mesh_code: str) -> List[Path]:
+    """Find cached GML files for a mesh code within a ward directory."""
+    # Find ward directory: {area_code}_*
+    ward_dirs = list(cache_dir.glob(f"{area_code}_*"))
+    if not ward_dirs:
+        print(f"[CACHE] No ward directory found for area code: {area_code}")
+        return []
+
+    ward_dir = ward_dirs[0]
+
+    # Find GML files matching the mesh code: {mesh_code}_bldg_*.gml
+    gml_pattern = str(ward_dir / "udx" / "bldg" / f"{mesh_code}_bldg_*.gml")
+    gml_files = [Path(p) for p in glob.glob(gml_pattern)]
+
+    if not gml_files:
+        print(f"[CACHE] No GML files found for mesh {mesh_code} in {ward_dir.name}")
+        return []
+
+    print(f"[CACHE] Found {len(gml_files)} GML file(s) for mesh {mesh_code} in {ward_dir.name}")
+    return gml_files
+
+
+def _load_gml_from_cache(mesh_code: str, area_code: str) -> Optional[str]:
+    """Load CityGML content from cache for a specific mesh code.
+
+    Args:
+        mesh_code: 3rd mesh code (8 digits, e.g., "53393580")
+        area_code: Ward area code (5 digits, e.g., "13101")
+
+    Returns:
+        Combined CityGML XML content as string if found, None otherwise.
+    """
+    config = _get_cache_config()
+    cache_dir = config["cache_dir"]
+
+    gml_files = _find_cached_gml_files(cache_dir, area_code, mesh_code)
+    if not gml_files:
+        return None
+
+    # Single file: read directly
+    if len(gml_files) == 1:
+        try:
+            with open(gml_files[0], 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            print(f"[CACHE] Failed to read GML file: {e}")
+            return None
+
+    # Multiple files: combine them
+    try:
+        return _combine_gml_files(gml_files)
+    except Exception as e:
+        print(f"[CACHE] Failed to combine GML files: {e}")
+        return None
+
+
+def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optional[str]:
+    """Load CityGML content from cache across multiple ward directories."""
+    config = _get_cache_config()
+    cache_dir = config["cache_dir"]
+
+    all_files: List[Path] = []
+    for area_code in area_codes:
+        all_files.extend(_find_cached_gml_files(cache_dir, area_code, mesh_code))
+
+    if not all_files:
+        return None
+
+    seen: Set[str] = set()
+    unique_files: List[Path] = []
+    for path in all_files:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_files.append(path)
+
+    print(f"[CACHE] Found {len(unique_files)} GML file(s) across wards for mesh {mesh_code}")
+
+    if len(unique_files) == 1:
+        try:
+            with open(unique_files[0], 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            print(f"[CACHE] Failed to read GML file: {e}")
+            return None
+
+    try:
+        return _combine_gml_files(unique_files)
+    except Exception as e:
+        print(f"[CACHE] Failed to combine GML files: {e}")
+        return None
+
+
+def _combine_gml_files(file_paths: List[Path]) -> str:
+    """Combine multiple CityGML files into a single XML document.
+
+    Merges all cityObjectMember elements from multiple files into one root element.
+
+    Args:
+        file_paths: List of paths to CityGML files
+
+    Returns:
+        Combined CityGML XML content as string
+
+    Raises:
+        Exception if reading or parsing fails
+    """
+    if not file_paths:
+        raise ValueError("No file paths provided")
+
+    # Read base file
+    with open(file_paths[0], 'r', encoding='utf-8') as f:
+        base_xml = f.read()
+
+    root = ET.fromstring(base_xml)
+
+    # Single file: return as-is
+    if len(file_paths) == 1:
+        return base_xml
+
+    # Merge remaining files
+    for file_path in file_paths[1:]:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        other_root = ET.fromstring(content)
+
+        # Find all cityObjectMember elements and append to base
+        for member in other_root.findall(".//{http://www.opengis.net/citygml/2.0}cityObjectMember"):
+            root.append(member)
+
+    # Convert back to string
+    return ET.tostring(root, encoding='unicode')
 
 
 # ============================================================================
@@ -435,7 +680,29 @@ def fetch_citygml_from_plateau(
         print(f"[PLATEAU] Failed to calculate mesh code: {e}")
         return None
 
-    # Step 2: Query PLATEAU API with mesh code
+    # Step 1.5: Check cache if enabled
+    config = _get_cache_config()
+    if config["enabled"]:
+        try:
+            area_codes = _get_wards_from_mesh(center_mesh)
+            if area_codes:
+                if len(area_codes) > 1:
+                    print(f"[CACHE] Mesh {center_mesh} spans multiple wards: {area_codes}")
+                    cached_xml = _load_gml_from_cache_multi(center_mesh, area_codes)
+                else:
+                    cached_xml = _load_gml_from_cache(center_mesh, area_codes[0])
+
+                if cached_xml:
+                    ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                    print(f"[PLATEAU] ✓ Cache HIT: mesh={center_mesh}, wards={ward_label}")
+                    return cached_xml
+
+                ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                print(f"[PLATEAU] Cache MISS: mesh={center_mesh}, wards={ward_label}")
+        except Exception as e:
+            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+
+    # Step 2: Query PLATEAU API with mesh code (fallback)
     api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{center_mesh}"
 
     print(f"[PLATEAU] Querying API...")
@@ -1282,7 +1549,44 @@ def fetch_citygml_by_municipality(municipality_code: str, timeout: int = 30) -> 
 
     print(f"[PLATEAU] Municipality: {municipality_name}")
 
-    # Step 2: Geocode city hall to get representative coordinates
+    # Step 1.5: Check if entire ward is cached
+    config = _get_cache_config()
+    if config["enabled"]:
+        try:
+            cache_dir = config["cache_dir"]
+            ward_dirs = list(cache_dir.glob(f"{municipality_code}_*"))
+            if ward_dirs:
+                ward_dir = ward_dirs[0]
+                ward_metadata_path = ward_dir / "ward_metadata.json"
+
+                if ward_metadata_path.exists():
+                    with open(ward_metadata_path, 'r', encoding='utf-8') as f:
+                        metadata = json.load(f)
+
+                    # Load all GML files for this ward
+                    all_gml_files = []
+                    for mesh_code in metadata.get("mesh_codes", []):
+                        gml_pattern = str(ward_dir / "udx" / "bldg" / f"{mesh_code}_bldg_*.gml")
+                        all_gml_files.extend(glob.glob(gml_pattern))
+
+                    if all_gml_files:
+                        print(f"[PLATEAU] ✓ Cache HIT: Full ward cached ({len(all_gml_files)} files)")
+                        combined_xml = _combine_gml_files([Path(f) for f in all_gml_files])
+
+                        # Count buildings in combined XML
+                        try:
+                            root = ET.fromstring(combined_xml)
+                            buildings = root.findall(".//{http://www.opengis.net/citygml/building/2.0}Building")
+                            total_buildings = len(buildings)
+                            print(f"[PLATEAU] Cache: Found {total_buildings} buildings in {municipality_name}")
+                            return (combined_xml, municipality_name, total_buildings)
+                        except ET.ParseError as e:
+                            print(f"[PLATEAU] Cache: Failed to parse combined XML: {e}")
+                            # Fall through to API download
+        except Exception as e:
+            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+
+    # Step 2: Geocode city hall to get representative coordinates (fallback)
     geocode_query = f"{municipality_name}役所"
     geocoding = geocode_address(geocode_query)
 
@@ -1520,7 +1824,29 @@ def fetch_citygml_by_mesh_code(
         print(f"[PLATEAU] Invalid mesh code format: {mesh_code} (expected 8 digits)")
         return None
 
-    # Query PLATEAU API with mesh code
+    # Check cache if enabled
+    config = _get_cache_config()
+    if config["enabled"]:
+        try:
+            area_codes = _get_wards_from_mesh(mesh_code)
+            if area_codes:
+                if len(area_codes) > 1:
+                    print(f"[CACHE] Mesh {mesh_code} spans multiple wards: {area_codes}")
+                    cached_xml = _load_gml_from_cache_multi(mesh_code, area_codes)
+                else:
+                    cached_xml = _load_gml_from_cache(mesh_code, area_codes[0])
+
+                if cached_xml:
+                    ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                    print(f"[PLATEAU] ✓ Cache HIT: mesh={mesh_code}, wards={ward_label}")
+                    return cached_xml
+
+                ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
+                print(f"[PLATEAU] Cache MISS: mesh={mesh_code}, wards={ward_label}")
+        except Exception as e:
+            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+
+    # Query PLATEAU API with mesh code (fallback)
     api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
 
     print(f"[PLATEAU] Querying API...")

@@ -279,8 +279,10 @@ export class CesiumBuildingPicker {
             this.originalColors.set(gmlId, feature.color.clone());
         }
 
-        // Set highlight color (yellow with enhanced alpha for better visibility)
-        feature.color = Cesium.Color.YELLOW.withAlpha(0.85);
+        const originalColor = this.originalColors.get(gmlId);
+        const originalAlpha = originalColor?.alpha ?? feature.color.alpha;
+        // Set highlight color without changing opacity.
+        feature.color = Cesium.Color.YELLOW.withAlpha(originalAlpha);
 
         // Force render when requestRenderMode is enabled (Phase 1.3)
         if (this.scene.requestRenderMode) {

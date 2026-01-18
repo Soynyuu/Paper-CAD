@@ -25,7 +25,9 @@ from services.plateau_fetcher import (
     _get_cache_config,
     _load_mesh_index,
     _get_ward_from_mesh,
+    _get_wards_from_mesh,
     _load_gml_from_cache,
+    _load_gml_from_cache_multi,
     _combine_gml_files,
     fetch_citygml_from_plateau,
     fetch_citygml_by_mesh_code,
@@ -90,6 +92,31 @@ def temp_cache_dir():
 
         with open(gml_dir / "53393580_bldg_002_op.gml", 'w', encoding='utf-8') as f:
             f.write(sample_gml.replace("test_building_1", "test_building_2"))
+
+        # Create ward directories for multi-ward mesh (53393587 spans 13113 and 13104)
+        multi_ward_samples = [
+            ("13113", "渋谷区", "multi_ward_building_1"),
+            ("13104", "新宿区", "multi_ward_building_2"),
+        ]
+
+        for area_code, ward_name, building_id in multi_ward_samples:
+            ward_dir = cache_dir / f"{area_code}_{ward_name}"
+            ward_dir.mkdir(parents=True)
+
+            ward_metadata = {
+                "area_code": area_code,
+                "ward_name": ward_name,
+                "mesh_codes": ["53393587"]
+            }
+
+            with open(ward_dir / "ward_metadata.json", 'w', encoding='utf-8') as f:
+                json.dump(ward_metadata, f)
+
+            gml_dir = ward_dir / "udx" / "bldg"
+            gml_dir.mkdir(parents=True)
+            gml_content = sample_gml.replace("test_building_1", building_id)
+            with open(gml_dir / "53393587_bldg_001_op.gml", 'w', encoding='utf-8') as f:
+                f.write(gml_content)
 
         yield cache_dir
 
@@ -188,6 +215,19 @@ class TestWardResolution:
             ward = _get_ward_from_mesh("53393587")
             assert ward == "13113"  # Should return first ward
 
+    def test_get_wards_from_mesh_multiple_wards(self, temp_cache_dir):
+        """Test ward list resolution for mesh spanning multiple wards."""
+        # Clear module-level cache
+        import services.plateau_fetcher
+        services.plateau_fetcher._MESH_INDEX_CACHE = None
+
+        with patch.dict(os.environ, {
+            "CITYGML_CACHE_ENABLED": "true",
+            "CITYGML_CACHE_DIR": str(temp_cache_dir)
+        }):
+            wards = _get_wards_from_mesh("53393587")
+            assert wards == ["13113", "13104"]
+
     def test_get_ward_from_mesh_not_found(self, temp_cache_dir):
         """Test ward resolution for unknown mesh code."""
         # Clear module-level cache
@@ -224,6 +264,36 @@ class TestCacheHit:
         }):
             xml = _load_gml_from_cache("99999999", "13101")
             assert xml is None
+
+    def test_load_gml_from_cache_multi_ward(self, temp_cache_dir):
+        """Test loading GML from multiple ward caches for a single mesh."""
+        with patch.dict(os.environ, {
+            "CITYGML_CACHE_ENABLED": "true",
+            "CITYGML_CACHE_DIR": str(temp_cache_dir)
+        }):
+            xml = _load_gml_from_cache_multi("53393587", ["13113", "13104"])
+            assert xml is not None
+            assert "multi_ward_building_1" in xml
+            assert "multi_ward_building_2" in xml
+
+    @patch('services.plateau_fetcher.requests.get')
+    def test_fetch_citygml_by_mesh_code_multi_ward_cache_hit(
+        self, mock_requests_get, temp_cache_dir
+    ):
+        """Test mesh cache hit across multiple wards without API fallback."""
+        # Clear module-level cache
+        import services.plateau_fetcher
+        services.plateau_fetcher._MESH_INDEX_CACHE = None
+
+        with patch.dict(os.environ, {
+            "CITYGML_CACHE_ENABLED": "true",
+            "CITYGML_CACHE_DIR": str(temp_cache_dir)
+        }):
+            xml = fetch_citygml_by_mesh_code("53393587", timeout=30)
+            assert xml is not None
+            assert "multi_ward_building_1" in xml
+            assert "multi_ward_building_2" in xml
+            assert not mock_requests_get.called
 
 
 class TestCombineGmlFiles:

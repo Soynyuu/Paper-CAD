@@ -49,3 +49,4 @@ frontend/.env.demo
 frontend/.env.development
 frontend/.env.local
 frontend/.env.demo
+frontend/.serena/

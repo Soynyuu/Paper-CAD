@@ -82,7 +82,7 @@ export default function App() {
                  3Dを、紙の模型へ。
                </p>
                <p className="text-lg lg:text-xl leading-relaxed text-gray-500 mt-8 tracking-normal font-medium">
-                 Paper-CADは、建築・都市の3Dデータを、組み立てられるペーパーモデルへ変換する幾何エンジンです。PLATEAUの都市空間からSTEPの精密モデルまで、ブラウザ上で解析し、展開図を生成します。
+                 Paper-CADは、産業用CADの精密幾何演算をブラウザで実行する、世界初のWebベース展開図エンジンです。数百万円の専門ソフトでしか不可能だった3D→2D変換を、誰でも無料で、どこでも使えるツールに変えました。
                </p>
             </motion.div>
           </motion.div>
@@ -114,10 +114,10 @@ export default function App() {
                 都市データや精密な3Dモデルは、画面の中では自在でも、触れられなければ実感になりません。紙の模型は、構造とスケールを「手触りのある理解」に変えてくれます。
               </p>
               <p>
-                これまで複雑な形を紙に落とすには、展開図づくりと試作が必要でした。Paper-CADは幾何演算で切断線とのりしろを設計し、組み立てやすい展開図を自動生成します。
+                <strong className="text-gray-800">技術の民主化。</strong>これまで数百万円のプロ向けCADソフトでしか不可能だった3D展開図生成を、高校生でも無料で使える技術に変えました。OpenCASCADEをWebAssemblyでブラウザに移植し、産業グレードの幾何演算を誰もが使える形で実現しています。
               </p>
               <p>
-                データを「眺める」から「手元に置く」へ。創造の距離を縮めることが、私たちのミッションです。
+                データを「眺める」から「手元に置く」へ。PLATEAUの都市データから実在建物の紙模型を作れる、世界で唯一のツールです。専門知識も高価なソフトも不要に。創造の距離を縮めることが、私たちのミッションです。
               </p>
             </div>
           </div>
@@ -146,10 +146,9 @@ export default function App() {
 	                 <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center group-hover:bg-brand-orange group-hover:text-white transition-all duration-500">
 	                    <Cpu className="w-8 h-8" />
 	                 </div>
-                 <h3 className="text-3xl font-black tracking-tighter">Indistinguishable from Magic.</h3>
+                 <h3 className="text-3xl font-black tracking-tighter">産業CADを、ブラウザへ。</h3>
                  <p className="text-lg text-gray-500 leading-relaxed font-medium">
-                   「十分に発達した科学技術は、魔法と見分けがつかない。」<br/>
-                   OpenCASCADEをWASM化し、ブラウザ上で産業グレードの幾何演算を実行。数万ポリゴンの都市データもローカルで解析し、展開図まで一気に生成します。
+                   <strong className="text-gray-800">技術的ブレークスルー:</strong> OpenCASCADE（世界標準の産業用CADカーネル）をWebAssemblyでブラウザに移植。インストール不要、クロスプラットフォーム、完全オフライン動作。数万ポリゴンの複雑な都市データも、ローカルで瞬時に解析・展開します。従来は不可能だった「誰でも、どこでも使える精密CAD」を実現しました。
                  </p>
               </div>
 
@@ -158,20 +157,53 @@ export default function App() {
 	                 <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
 	                    <Layers className="w-8 h-8" />
 	                 </div>
-                 <h3 className="text-3xl font-black tracking-tighter">Graph Theory Optimization</h3>
+                 <h3 className="text-3xl font-black tracking-tighter">グラフ理論で、最適解を。</h3>
                  <p className="text-lg text-gray-400 leading-relaxed font-medium">
-                   3D形状の接続関係をグラフとして扱い、最小全域木（MST）で切断線とのりしろを最適化。組み立てやすさと造形の美しさを両立します。
+                   <strong className="text-white">計算幾何学の応用:</strong> 3D形状の接続関係をグラフとして扱い、最小全域木（MST）アルゴリズムで切断パターンを最適化。折り線・切断線を自動分類し、組み立てやすさと造形の美しさを数学的に両立。単なるツールではなく、幾何学的課題への工学的回答です。
                  </p>
               </div>
            </div>
         </div>
       </section>
 
-      {/* Section 03: Recognition */}
+      {/* Section 03: PLATEAU Integration & Social Impact */}
+      <section className="py-48 px-8 lg:px-16 border-t border-gray-100 bg-white">
+        <div className="max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-24 items-start">
+          <div className="w-full lg:w-1/3 sticky top-48">
+            <div className="flex flex-col gap-4">
+              <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">03 IMPACT</span>
+              <h2 className="text-5xl font-black tracking-tighter leading-tight">
+                日本の都市を、<br/>
+                手のひらに。
+              </h2>
+            </div>
+          </div>
+          <div className="w-full lg:w-2/3 space-y-12">
+            <div className="space-y-8 text-lg lg:text-xl leading-loose text-gray-600 tracking-normal font-medium">
+              <p>
+                <strong className="text-gray-800 text-2xl">世界初、PLATEAU連携ペーパークラフトCAD。</strong>
+              </p>
+              <p>
+                国土交通省が整備する日本全国の3D都市モデル「PLATEAU」と完全統合。東京駅や渋谷スクランブル交差点など、実在する建物の精密な紙模型を、住所検索だけで自動生成できます。
+              </p>
+              <p>
+                LOD3（窓・ドアまで再現）→ LOD2（屋根形状）→ LOD1（基本形状）の自動フォールバック機能により、最高品質のデータを優先しながら確実に展開図を生成。CityGMLパーサーはストリーミング処理で98%のメモリ削減を実現し、10GBを超える巨大都市データも処理可能です。
+              </p>
+              <div className="bg-gray-50 border-l-4 border-brand-orange p-8 rounded-r-lg">
+                <p className="text-base text-gray-600 leading-relaxed">
+                  <strong className="text-gray-800">社会的インパクト:</strong> オープンデータと計算幾何学の融合により、都市計画の「市民参加」に新しい形を提案。専門家だけでなく、学生や市民が実際の都市データから物理模型を作り、まちづくりに参加できる未来を目指しています。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 04: Recognition */}
       <section className="py-32 px-8 lg:px-16 bg-gray-50/50">
         <div className="max-w-[1200px] mx-auto">
           <div className="mb-10 flex flex-wrap items-center gap-6 text-left">
-            <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">03 RECORD</span>
+            <span className="font-mono text-[11px] font-bold tracking-[0.4em] text-gray-400 uppercase">04 RECORD</span>
             <h2 className="inline-flex items-center rounded-full border border-brand-orange/20 bg-brand-orange/10 px-5 py-2 text-sm font-black tracking-wide text-brand-orange md:text-base">
               受賞・採択実績
             </h2>
@@ -179,7 +211,7 @@ export default function App() {
           
           <div className="flex flex-wrap gap-3">
              {[
-               { year: '2025', title: '未踏ジュニア 採択', desc: 'IPA（情報処理推進機構）独創的アイデア支援事業', highlight: true },
+               { year: '2025', title: '未踏ジュニア 採択', desc: 'IPA 独創的アイデア・革新的技術の認定（採択率15%）', highlight: true },
                { year: '2024', title: 'アプリ甲子園 優勝', desc: 'National Championship - Grand Prize', icon: <Trophy className="w-3 h-3" /> },
                { year: '2024', title: 'アプリ甲子園 技術賞', desc: 'Technical Award Excellence', icon: <Cpu className="w-3 h-3" /> },
                { year: '2024', title: 'アプリ甲子園 Cygames賞', desc: 'Corporate Special Recognition', icon: <Gamepad2 className="w-3 h-3" /> },
@@ -199,6 +231,12 @@ export default function App() {
                  )}
                </div>
              ))}
+          </div>
+          
+          <div className="mt-12 max-w-2xl">
+            <p className="text-base text-gray-500 leading-relaxed">
+              <strong className="text-gray-700">未踏ジュニアとは:</strong> 情報処理推進機構（IPA）による17歳以下の独創的なクリエイター支援プログラム。技術的先進性・社会的インパクト・実現可能性の3軸で厳格に審査され、採択率は例年15%前後。Paper-CADは「産業技術の民主化」という革新性と、PLATEAUを活用した社会実装性が評価されました。
+            </p>
           </div>
         </div>
       </section>

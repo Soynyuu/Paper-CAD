@@ -1,5 +1,9 @@
 {
     "name": "Paper-CAD",
+    "version": "0.1.0",
+    "license": "AGPL-3.0",
+    "author": "Soynyuu",
+    "description": "A browser-based 3D CAD for building model creation and papercraft unfolding",
     "scripts": {
         "dev": "NODE_ENV=development npx rspack dev",
         "build": "NODE_ENV=production npx rspack build",

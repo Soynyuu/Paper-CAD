@@ -305,7 +305,7 @@ Issue/PR を歓迎します。変更点・背景・再現手順（必要なら S
 
 このプロジェクトは [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) の下で配布されています。
 
-**重要**: このソフトウェアは [chili3d](https://github.com/xiangechen/chili3d) をベースにした派生作品です。chili3d は AGPL-3.0 ライセンスで配布されており、派生作品もそれに従います。商用利用については xiangetg@msn.cn にお問い合わせください。
+**重要**: このソフトウェアは [chili3d](https://github.com/xiangechen/chili3d) をベースにした派生作品です。chili3d は AGPL-3.0 ライセンスで配布されており、派生作品もそれに従います。
 
 ## 謝辞
 

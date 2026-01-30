@@ -303,9 +303,12 @@ Issue/PR を歓迎します。変更点・背景・再現手順（必要なら S
 
 ## ライセンス
 
-MIT License - 詳細は[LICENSE](LICENSE)をご覧ください。
+このプロジェクトは [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) の下で配布されています。
+
+**重要**: このソフトウェアは [chili3d](https://github.com/xiangechen/chili3d) をベースにした派生作品です。chili3d は AGPL-3.0 ライセンスで配布されており、派生作品もそれに従います。商用利用については xiangetg@msn.cn にお問い合わせください。
 
 ## 謝辞
 
+- **[chili3d](https://github.com/xiangechen/chili3d)** - このプロジェクトのベースとなったオープンソース 3D CAD フレームワーク (Copyright (c) 2022-2025 仙阁)
 - OpenCASCADE Technology
 - 一般社団法人未踏 未踏ジュニア（2025年度採択プロジェクト）

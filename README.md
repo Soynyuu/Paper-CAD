@@ -3,9 +3,11 @@
 **建物模型制作のための 3D → 2D 展開図（SVG）自動生成 CAD**
 ![paper_cad](https://github.com/user-attachments/assets/6b45ec18-dbe1-4e00-812e-2045f14d8a6f)
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![未踏ジュニア](https://img.shields.io/badge/未踏ジュニア-2025-orange.svg)](https://jr.mitou.org/)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 ## 概要
 
@@ -350,7 +352,11 @@ Paper-CAD/
 
 ## 開発に参加する
 
-Issue/PR を歓迎します。変更点・背景・再現手順（必要なら SVG のスクショ）を添えてください。コミットは `feat: ...` / `fix: ...` など短く明確に。
+Issue/PR を歓迎します。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
+
+- [コントリビューションガイド](CONTRIBUTING.md)
+- [行動規範](CODE_OF_CONDUCT.md)
+- [セキュリティポリシー](SECURITY.md)
 
 ## ライセンス
 

@@ -1,0 +1,97 @@
+name: バグ報告
+description: バグを報告してプロジェクトの改善に貢献する
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます！できるだけ詳しく情報を提供してください。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: バグの説明
+      description: 何が起こったかを明確に説明してください
+      placeholder: |
+        例：STEP ファイルをアップロードすると、展開図が正しく生成されない
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: バグを再現するための手順
+      placeholder: |
+        1. '...' に移動
+        2. '...' をクリック
+        3. '...' までスクロール
+        4. エラーを確認
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待される動作
+      description: 何が起こるべきだったか
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      description: 実際に何が起こったか
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: スクリーンショット
+      description: 該当する場合、スクリーンショットを追加してください
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: コンポーネント
+      description: どの部分に関連していますか？
+      options:
+        - フロントエンド（3D ビューア）
+        - フロントエンド（UI）
+        - バックエンド（展開処理）
+        - バックエンド（CityGML/PLATEAU）
+        - ランディングページ
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: 環境情報を提供してください
+      placeholder: |
+        - OS: [例: Windows 11, macOS 14, Ubuntu 22.04]
+        - ブラウザ: [例: Chrome 120, Firefox 121]
+        - Node.js: [例: 18.19.0]
+        - Python: [例: 3.10.13]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ
+      description: 関連するエラーログがあれば貼り付けてください
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 確認事項
+      options:
+        - label: 既存の Issue を検索し、重複がないことを確認しました
+          required: true

@@ -1,7 +1,8 @@
 # Paper-CAD
 
 **建物模型制作のための 3D → 2D 展開図（SVG）自動生成 CAD**
-![paper_cad](https://github.com/user-attachments/assets/6b45ec18-dbe1-4e00-812e-2045f14d8a6f)
+<img width="1935" height="1233" alt="image" src="https://github.com/user-attachments/assets/ebe07401-d143-4925-973b-8c7edd43f144" />
+
 
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8-blue.svg)](https://www.typescriptlang.org/)

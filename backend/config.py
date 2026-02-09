@@ -72,7 +72,7 @@ except ImportError:
     print("[CONFIG] python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。")
 
 # 設定値
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3001")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
 # CityGML Cache Configuration (Optional, for Tokyo 23 wards)
@@ -117,7 +117,7 @@ APP_CONFIG = {
         "url": "https://github.com/Soynyuu/Paper-CAD"
     },
     "license_info": {
-        "name": "MIT",
+        "name": "AGPL-3.0",
     }
 }
 

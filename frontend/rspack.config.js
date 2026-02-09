@@ -184,8 +184,7 @@ const config = defineConfig({
             __APP_VERSION__: JSON.stringify(packages.version),
             __DOCUMENT_VERSION__: JSON.stringify(packages.documentVersion),
             __APP_CONFIG__: JSON.stringify({
-                stepUnfoldApiUrl:
-                    process.env.STEP_UNFOLD_API_URL || "https://backend-paper-cad.soynyuu.com/api",
+                stepUnfoldApiUrl: process.env.STEP_UNFOLD_API_URL || "http://localhost:8001/api",
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
                 cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
                 cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",

@@ -3,7 +3,6 @@ import uvicorn
 from config import create_app, OCCT_AVAILABLE
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from api.endpoints import router
 
 # FastAPIアプリケーションの作成
@@ -31,10 +30,14 @@ async def startup_event():
         logger.error(f"❌ Failed to initialize PLATEAU mesh mapping: {e}")
         logger.warning("PLATEAU search functionality may be limited")
 
-# ルートパスでindex.htmlを返す
+# ルートパスでAPI情報を返す
 @app.get("/")
 async def read_index():
-    return FileResponse("index.html")
+    return {
+        "service": "Paper-CAD Backend API",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
 
 # 静的ファイルの配信（CSSやJSなどの追加リソース用）
 if os.path.exists("static"):

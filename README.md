@@ -106,8 +106,8 @@ docker compose up -d
 ## 設定（環境変数）
 
 フロントエンド（ビルド時に埋め込み）:
-- `STEP_UNFOLD_API_URL`（必須）: `http://localhost:8001/api`
-- `STEP_UNFOLD_WS_URL`（任意）: `ws://localhost:8001/ws/preview`
+- `STEP_UNFOLD_API_URL`（任意、未設定時は `http://localhost:8001/api`）: バックエンドAPI URL
+- `STEP_UNFOLD_WS_URL`（任意、将来拡張用）: 現時点では未使用
 
 `.env.development` / `.env.demo` / `.env.production.example` を使用します。
 

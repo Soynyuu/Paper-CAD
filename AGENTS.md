@@ -173,8 +173,8 @@ def test_streaming_parser_limits_buildings(sample_citygml_single_building):
 ### Frontend (`.env.*`)
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `STEP_UNFOLD_API_URL` | Yes | Backend API URL |
-| `STEP_UNFOLD_WS_URL` | No | WebSocket URL |
+| `STEP_UNFOLD_API_URL` | No | Backend API URL (default: `http://localhost:8001/api`) |
+| `STEP_UNFOLD_WS_URL` | No | Reserved for future WebSocket use (currently unused) |
 
 ### Backend (`.env.*`)
 | Variable | Required | Description |

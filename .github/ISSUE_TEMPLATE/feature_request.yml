@@ -1,0 +1,64 @@
+name: 機能リクエスト
+description: 新機能や改善を提案する
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機能リクエストありがとうございます！あなたのアイデアを聞かせてください。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい問題
+      description: どのような問題や課題を解決したいですか？
+      placeholder: |
+        例：複数の建物を一度にインポートできると便利です
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 提案する解決策
+      description: どのような機能があれば良いですか？
+      placeholder: |
+        例：ドラッグ＆ドロップで複数の STEP ファイルを同時にアップロードできる機能
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 検討した代替案
+      description: 他に検討した解決策があれば教えてください
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 関連コンポーネント
+      description: どの部分に関連していますか？
+      options:
+        - フロントエンド（3D ビューア）
+        - フロントエンド（UI）
+        - バックエンド（展開処理）
+        - バックエンド（CityGML/PLATEAU）
+        - ランディングページ
+        - 新規コンポーネント
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 追加情報
+      description: スクリーンショット、モックアップ、参考リンクなど
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: 貢献の意思
+      options:
+        - label: この機能の実装に貢献したいと考えています

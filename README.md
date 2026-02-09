@@ -1,11 +1,14 @@
 # Paper-CAD
 
 **建物模型制作のための 3D → 2D 展開図（SVG）自動生成 CAD**
-![paper_cad](https://github.com/user-attachments/assets/6b45ec18-dbe1-4e00-812e-2045f14d8a6f)
+<img width="1935" height="1233" alt="image" src="https://github.com/user-attachments/assets/ebe07401-d143-4925-973b-8c7edd43f144" />
 
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![未踏ジュニア](https://img.shields.io/badge/未踏ジュニア-2025-orange.svg)](https://jr.mitou.org/)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 ## 概要
 
@@ -15,7 +18,9 @@ Paper-CAD は、ブラウザで建物の 3D モデルを作成・インポート
 
 - **モデリング**: 3D モデル作成、STEP インポート、3D リアルタイム表示
 - **展開**: 折り線・切り線の分類、面番号付与、A4/A3/Letter に対応
-- **出力**: SVG を中心に、印刷・加工に適したレイアウトを生成
+- **出力**: SVG / PDF 形式で、印刷・加工に適したレイアウトを生成
+- **都市モデル対応**: CityGML や PLATEAU のインテグレーションが実装済み。建物名を指定するだけで建物がインポートできます。
+- **ランディングページ**: 製品紹介用の LP が `/lp` に独立して実装されています。
 
 ## クイックスタート
 
@@ -38,6 +43,13 @@ npm install
 npm run dev  # http://localhost:8080
 ```
 
+### ランディングページ
+```bash
+cd lp
+npm install
+npm run dev  # http://localhost:5173
+```
+
 ## 実行モード
 
 ### 開発モード
@@ -56,6 +68,13 @@ ENV=demo python main.py
 
 # frontend (別ターミナル)
 npm run demo
+```
+
+### ランディングページビルド
+```bash
+cd lp
+npm run build
+npm run preview  # ビルドした成果物をプレビュー
 ```
 
 ### 本番ビルド/デプロイ
@@ -78,6 +97,11 @@ docker compose up -d
 バックエンド:
 - `pytest`: テスト実行
 - `pytest tests/citygml/streaming/`: CityGML ストリーミング関連のみ
+
+ランディングページ (`/lp`):
+- `npm run dev`: 開発サーバー（Vite）
+- `npm run build`: プロダクションビルド
+- `npm run preview`: ビルド成果物のプレビュー
 
 ## 設定（環境変数）
 
@@ -234,6 +258,8 @@ Paper-CAD/
 │   │   ├── chili-core/                # Document/Model/Material/Selection などのコア
 │   │   ├── chili-three/               # Three.js 連携・3D 描画
 │   │   ├── chili-wasm/                # WebAssembly バインディング
+│   │   ├── chili-cesium/              # Cesium 3D Tiles for PLATEAU ビルディングピッカー
+│   │   ├── chili-react-bridge/        # React 連携ブリッジ
 │   │   ├── chili-controls/            # 操作/入力系の補助
 │   │   ├── chili-geo/                 # 幾何/座標補助
 │   │   ├── chili-vis/                 # 可視化ユーティリティ
@@ -243,7 +269,15 @@ Paper-CAD/
 │   ├── rspack.config.js               # ビルド設定
 │   └── .env.*                         # フロント用環境変数
 ├── backend/                           # FastAPI サーバー
-│   ├── api/                           # REST API ルーティング（endpoints.py）
+│   ├── api/                           # REST API ルーティング
+│   │   ├── routers/                   # エンドポイント定義
+│   │   │   ├── step.py                # POST /api/step/unfold, /unfold-pdf
+│   │   │   ├── citygml.py             # POST /api/citygml/to-step
+│   │   │   ├── plateau.py             # POST /api/plateau/search-by-address
+│   │   │   ├── svg.py                 # SVG 関連エンドポイント
+│   │   │   └── system.py              # システム/ヘルスチェック
+│   │   ├── endpoints.py               # ルーター登録
+│   │   └── helpers.py                 # API ヘルパー関数
 │   ├── core/                          # 展開パイプライン
 │   │   ├── file_loaders.py            # STEP/BREP 読み込み
 │   │   ├── geometry_analyzer.py       # 面/エッジ/隣接解析
@@ -251,10 +285,14 @@ Paper-CAD/
 │   │   ├── layout_manager.py          # 配置/レイアウト
 │   │   ├── svg_exporter.py            # SVG 出力
 │   │   ├── pdf_exporter.py            # PDF 出力
-│   │   └── step_exporter.py           # STEP 書き出し
+│   │   ├── step_exporter.py           # STEP 書き出し
+│   │   └── brep_exporter.py           # BREP 出力
 │   ├── services/
 │   │   ├── step_processor.py          # パイプライン統合
 │   │   ├── plateau_fetcher.py         # PLATEAU 連携
+│   │   ├── plateau_api_client.py      # PLATEAU API クライアント
+│   │   ├── plateau_mesh_mapping.py    # メッシュコードマッピング
+│   │   ├── coordinate_utils.py        # 座標変換ユーティリティ
 │   │   └── citygml/                   # CityGML → STEP 変換（多層構造）
 │   │       ├── core/                  # 型・定数
 │   │       ├── utils/                 # XML/XLink/ログ
@@ -262,12 +300,18 @@ Paper-CAD/
 │   │       ├── geometry/              # ワイヤ/面/シェル構築
 │   │       ├── transforms/            # CRS 変換/リセンタリング
 │   │       ├── lod/                   # LOD 抽出戦略
-│   │       └── pipeline/              # オーケストレーター
+│   │       ├── pipeline/              # オーケストレーター
+│   │       └── streaming/             # メモリ効率のよいストリーミング処理
 │   ├── models/                        # Pydantic モデル
 │   ├── utils/                         # 共有ユーティリティ
 │   ├── tests/                         # pytest テスト
 │   ├── config.py                      # CORS/OCCT 設定
 │   └── main.py                        # FastAPI 起動
+├── lp/                                # ランディングページ（Vite + React + Tailwind）
+│   ├── src/                           # React コンポーネント
+│   ├── public/                        # 静的アセット
+│   ├── vite.config.ts                 # Vite 設定
+│   └── tailwind.config.js             # Tailwind CSS 設定
 ├── docs/                              # 運用・最適化ドキュメント
 ├── AGENTS.md                          # Contributor ガイド
 └── CLAUDE.md                          # アーキテクチャ詳細（AI 向け）
@@ -279,13 +323,23 @@ Paper-CAD/
 - **入口**: `frontend/packages/chili-web/src/index.ts`
 - **UI**: `chili-ui` の Web Components、CSS Modules を使用
 - **3D**: `chili-three` が Three.js を統合
+- **都市モデル**: `chili-cesium` が Cesium 3D Tiles を使用した PLATEAU ビルディングピッカー機能を提供
 - **CAD カーネル**: `frontend/cpp/` の C++ を WASM 化して `chili-wasm` から呼び出し
 - **設定**: `STEP_UNFOLD_API_URL` はビルド時注入（`.env.*`）
 
 ### バックエンド
-- **主 API**: `POST /api/step/unfold`（STEP → SVG/JSON）
+- **主 API ルーター**: `api/routers/` 以下に機能別に分離
+  - `step.py`: `POST /api/step/unfold`（STEP → SVG/JSON）、`/unfold-pdf`
+  - `citygml.py`: `POST /api/citygml/to-step`（CityGML → STEP 変換）
+  - `plateau.py`: `POST /api/plateau/search-by-address`（PLATEAU 建物検索）
 - **処理フロー**: `step_processor.py` → `file_loaders.py` → `geometry_analyzer.py` → `unfold_engine.py` → `layout_manager.py` → `svg_exporter.py`
 - **CityGML**: `services/citygml/` 以下に多層構造（LOD 抽出と変換パイプライン）
+- **ストリーミング処理**: `services/citygml/streaming/` でメモリ効率のよい大規模 CityGML 処理
+
+### ランディングページ
+- **技術スタック**: Vite + React + Tailwind CSS
+- **入口**: `lp/src/`
+- **目的**: 製品紹介・マーケティング用のシングルページ
 
 ### 重要な注意
 - OpenCASCADE が未インストールでも API は起動しますが、STEP 展開系は 503 になります。
@@ -299,7 +353,11 @@ Paper-CAD/
 
 ## 開発に参加する
 
-Issue/PR を歓迎します。変更点・背景・再現手順（必要なら SVG のスクショ）を添えてください。コミットは `feat: ...` / `fix: ...` など短く明確に。
+Issue/PR を歓迎します。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
+
+- [コントリビューションガイド](CONTRIBUTING.md)
+- [行動規範](CODE_OF_CONDUCT.md)
+- [セキュリティポリシー](SECURITY.md)
 
 ## ライセンス
 

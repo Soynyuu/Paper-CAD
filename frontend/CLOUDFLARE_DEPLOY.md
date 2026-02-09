@@ -57,7 +57,7 @@ npm run preview
 
 プロジェクトの設定 > 環境変数から以下を設定：
 
-- バックエンドURL: `http://153.126.191.72:8001`（既にコードに埋め込み済み）
+- バックエンドURL: `STEP_UNFOLD_API_URL`（Cloudflare Pages の環境変数で設定）
 
 ## トラブルシューティング
 

@@ -340,8 +340,8 @@ sudo journalctl -u container-paper-cad.service -f
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|-------------|-----|
-| `STEP_UNFOLD_API_URL` | バックエンドAPIのベースURL | `https://backend-paper-cad.soynyuu.com/api` | `http://localhost:8001/api` (開発環境) |
-| `STEP_UNFOLD_WS_URL` | WebSocketのURL (オプション) | `null` | `wss://backend-paper-cad.soynyuu.com/ws/preview` |
+| `STEP_UNFOLD_API_URL` | バックエンドAPIのベースURL | `http://localhost:8001/api` | `https://backend-paper-cad.soynyuu.com/api` (本番環境) |
+| `STEP_UNFOLD_WS_URL` | 将来のWebSocket拡張用 (現在未使用) | `null` | `wss://backend-paper-cad.soynyuu.com/ws/preview` |
 
 **注意**: 環境変数はビルド時に `rspack.config.js` によって読み込まれ、`__APP_CONFIG__` としてバンドルに埋め込まれます。
 
@@ -353,7 +353,7 @@ sudo journalctl -u container-paper-cad.service -f
 |--------|------|-------------|-----|
 | `ENV` | 実行環境 (`development`/`production`) | `development` | `production` |
 | `PORT` | APIサーバーのポート番号 | `8001` | `8001` |
-| `FRONTEND_URL` | フロントエンドのオリジンURL (CORS設定) | `http://localhost:3001` | `https://app-paper-cad.soynyuu.com` |
+| `FRONTEND_URL` | フロントエンドのオリジンURL (CORS設定) | `http://localhost:8080` | `https://app-paper-cad.soynyuu.com` |
 | `CORS_ALLOW_ALL` | すべてのオリジンを許可するか (開発環境のみ) | `false` | `true` (開発環境), `false` (本番環境) |
 | `PYTHONUNBUFFERED` | Pythonの出力バッファリングを無効化 | - | `1` |
 
@@ -503,7 +503,7 @@ curl https://backend-paper-cad.soynyuu.com/api/health
 ```json
 {
   "status": "healthy",
-  "occt_available": true
+  "opencascade_available": true
 }
 ```
 
@@ -585,7 +585,7 @@ sudo tail -f /var/log/nginx/paper-cad.error.log
 
 #### OpenCASCADE (OCCT) が利用できない
 
-**問題**: `/api/health` のレスポンスで `"occt_available": false` となる
+**問題**: `/api/health` のレスポンスで `"opencascade_available": false` となる
 
 **解決策**:
 1. Conda環境が正しくビルドされているか確認

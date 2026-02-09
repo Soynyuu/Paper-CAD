@@ -30,12 +30,50 @@ export class CesiumBuildingPicker {
     private selectedBuildings: Map<string, PickedBuilding> = new Map();
     private highlightedFeatures: Map<string, Cesium.Cesium3DTileFeature> = new Map();
     private originalColors: Map<string, Cesium.Color> = new Map();
+    private previewHighlight: {
+        gmlId: string;
+        feature: Cesium.Cesium3DTileFeature;
+        originalColor: Cesium.Color;
+    } | null = null;
     private lastCandidates: PickedBuilding[] = [];
     private lastScreenCoords: { x: number; y: number } | null = null;
 
     constructor(viewer: Cesium.Viewer) {
         this.viewer = viewer;
         this.scene = viewer.scene;
+    }
+
+    private normalizeBuildingId(value?: string): string | undefined {
+        if (!value) return undefined;
+        return value.trim().toLowerCase();
+    }
+
+    private stripNamespace(value: string): string {
+        return value.replace(/^.*[:/]/, "");
+    }
+
+    private extractBuildingSegment(value: string): string {
+        const index = value.indexOf("bldg_");
+        return index >= 0 ? value.slice(index) : value;
+    }
+
+    private isMatchingBuildingId(featureId: string, targetId?: string): boolean {
+        const normalizedFeature = this.normalizeBuildingId(featureId);
+        const normalizedTarget = this.normalizeBuildingId(targetId);
+
+        if (!normalizedFeature || !normalizedTarget) return false;
+        if (normalizedFeature === normalizedTarget) return true;
+        if (normalizedFeature.endsWith(normalizedTarget) || normalizedTarget.endsWith(normalizedFeature)) {
+            return true;
+        }
+
+        const strippedFeature = this.stripNamespace(normalizedFeature);
+        const strippedTarget = this.stripNamespace(normalizedTarget);
+        if (strippedFeature === strippedTarget) return true;
+
+        const featureSegment = this.extractBuildingSegment(strippedFeature);
+        const targetSegment = this.extractBuildingSegment(strippedTarget);
+        return featureSegment === targetSegment;
     }
 
     /**
@@ -53,6 +91,28 @@ export class CesiumBuildingPicker {
             }
         }
         return undefined;
+    }
+
+    /**
+     * Return GML ID if the feature looks like a building, otherwise undefined.
+     */
+    private extractBuildingGmlId(feature: any): string | undefined {
+        if (!feature || !feature.getProperty) return undefined;
+
+        const featureType = this.getPropertyFlexible(feature, ["feature_type", "featureType", "type"]) as
+            | string
+            | undefined;
+        const gmlId = this.getPropertyFlexible(feature, ["gml_id", "gmlId", "gml:id", "id"]) as
+            | string
+            | undefined;
+        if (!gmlId) return undefined;
+
+        const hasTypeMatch = featureType === "bldg:Building";
+        const hasBuildingProps =
+            this.getPropertyFlexible(feature, ["bldg:usage", "usage"]) !== undefined ||
+            this.getPropertyFlexible(feature, ["bldg:measuredHeight", "measuredHeight"]) !== undefined;
+
+        return hasTypeMatch || hasBuildingProps ? gmlId : undefined;
     }
 
     /**
@@ -284,6 +344,10 @@ export class CesiumBuildingPicker {
         // Set highlight color without changing opacity.
         feature.color = Cesium.Color.YELLOW.withAlpha(originalAlpha);
 
+        if (this.previewHighlight?.gmlId === gmlId) {
+            this.previewHighlight = null;
+        }
+
         // Force render when requestRenderMode is enabled (Phase 1.3)
         if (this.scene.requestRenderMode) {
             this.scene.requestRender();
@@ -313,6 +377,127 @@ export class CesiumBuildingPicker {
 
         this.highlightedFeatures.delete(gmlId);
         this.originalColors.delete(gmlId);
+    }
+
+    /**
+     * Clear preview highlight that is independent from selected-building highlight.
+     */
+    clearPreviewHighlight(): void {
+        if (!this.previewHighlight) return;
+
+        const { gmlId, feature, originalColor } = this.previewHighlight;
+
+        // Keep selected highlight intact.
+        if (!this.isSelected(gmlId)) {
+            feature.color = originalColor;
+            if (this.scene.requestRenderMode) {
+                this.scene.requestRender();
+            }
+        }
+
+        this.previewHighlight = null;
+    }
+
+    /**
+     * Get currently previewed GML ID.
+     */
+    getPreviewGmlId(): string | null {
+        return this.previewHighlight?.gmlId ?? null;
+    }
+
+    private setPreviewHighlight(feature: Cesium.Cesium3DTileFeature, gmlId: string): void {
+        if (this.previewHighlight?.gmlId === gmlId && this.previewHighlight.feature === feature) {
+            return;
+        }
+
+        this.clearPreviewHighlight();
+
+        // If already selected, keep selected highlight color untouched.
+        if (this.isSelected(gmlId)) {
+            return;
+        }
+
+        const originalColor = feature.color.clone();
+        const alpha = originalColor.alpha;
+        feature.color = Cesium.Color.fromCssColorString("#1ea7fd").withAlpha(alpha);
+
+        if (this.scene.requestRenderMode) {
+            this.scene.requestRender();
+        }
+
+        this.previewHighlight = { gmlId, feature, originalColor };
+    }
+
+    /**
+     * Try to preview-highlight a building near the screen coordinates.
+     *
+     * @param screenCoords - Screen coordinates
+     * @param targetGmlId - Optional GML ID to match exactly
+     * @returns True if a feature was highlighted
+     */
+    previewBuildingAtScreen(screenCoords: { x: number; y: number }, targetGmlId?: string): boolean {
+        const offsets: Array<{ x: number; y: number }> = [{ x: 0, y: 0 }];
+        const radii = [6, 12, 20, 30, 44, 60, 80];
+        const directions = 12;
+
+        for (const radius of radii) {
+            for (let i = 0; i < directions; i++) {
+                const angle = (i / directions) * Math.PI * 2;
+                offsets.push({
+                    x: Math.round(Math.cos(angle) * radius),
+                    y: Math.round(Math.sin(angle) * radius),
+                });
+            }
+        }
+
+        let fallback:
+            | {
+                  gmlId: string;
+                  feature: Cesium.Cesium3DTileFeature;
+              }
+            | undefined;
+
+        for (const offset of offsets) {
+            const pickPosition = new Cesium.Cartesian2(screenCoords.x + offset.x, screenCoords.y + offset.y);
+            const picked = this.scene.drillPick(pickPosition, 20);
+
+            for (const pickedObject of picked) {
+                const gmlId = this.extractBuildingGmlId(pickedObject);
+                if (!gmlId) continue;
+
+                if (targetGmlId && this.isMatchingBuildingId(gmlId, targetGmlId)) {
+                    this.setPreviewHighlight(pickedObject, gmlId);
+                    return true;
+                }
+
+                if (!fallback) {
+                    fallback = { gmlId, feature: pickedObject };
+                }
+            }
+        }
+
+        if (!targetGmlId && fallback) {
+            this.setPreviewHighlight(fallback.feature, fallback.gmlId);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Try to preview-highlight a building at world coordinates.
+     *
+     * @param longitude - WGS84 longitude
+     * @param latitude - WGS84 latitude
+     * @param targetGmlId - Optional GML ID to match exactly
+     * @returns True if a feature was highlighted
+     */
+    previewBuildingAtCoordinates(longitude: number, latitude: number, targetGmlId?: string): boolean {
+        const cartesian = Cesium.Cartesian3.fromDegrees(longitude, latitude, 20);
+        const windowPos = Cesium.SceneTransforms.worldToWindowCoordinates(this.scene, cartesian);
+        if (!windowPos) return false;
+
+        return this.previewBuildingAtScreen({ x: windowPos.x, y: windowPos.y }, targetGmlId);
     }
 
     /**
@@ -347,6 +532,8 @@ export class CesiumBuildingPicker {
      * Clear all selections and highlights
      */
     clearSelection(): void {
+        this.clearPreviewHighlight();
+
         // Restore all original colors
         for (const [gmlId, feature] of this.highlightedFeatures.entries()) {
             const originalColor = this.originalColors.get(gmlId);

@@ -1,7 +1,7 @@
 /* Building Card - Paper-CAD Design System */
 .buildingCard {
-    background: var(--neutral-50, #1f1f1f);
-    border: 1px solid var(--border-color, #3a3a3a);
+    background: color-mix(in srgb, var(--panel-background-color) 92%, #edf3f8 8%);
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9eb3c2 18%);
     border-radius: var(--radius-sm, 4px);
     padding: var(--spacing-12, 12px);
     display: flex;
@@ -12,7 +12,7 @@
 }
 
 .buildingCard:hover {
-    border-color: var(--primary-color, #ff7744);
+    border-color: color-mix(in srgb, var(--primary-color) 38%, #2d5273 62%);
     box-shadow: var(--shadow-sm);
 }
 
@@ -26,7 +26,7 @@
 .buildingName {
     font-weight: var(--font-weight-medium, 500);
     font-size: var(--font-size-sm, 14px);
-    color: var(--foreground-color, #f5f5f5);
+    color: var(--foreground-color);
     line-height: 1.4;
     flex: 1;
     margin-right: var(--spacing-sm, 8px);
@@ -35,7 +35,7 @@
 .removeButton {
     background: transparent;
     border: none;
-    color: var(--neutral-500, #999);
+    color: var(--neutral-500);
     cursor: pointer;
     padding: var(--spacing-xs, 4px);
     margin: -4px -4px 0 0;
@@ -51,13 +51,13 @@
 }
 
 .removeButton:hover {
-    color: var(--danger-color, #e74c3c);
+    color: var(--danger-color);
     background: rgba(231, 76, 60, 0.15);
 }
 
 .cardDetail {
     font-size: var(--font-size-xs, 12px);
-    color: var(--neutral-500, #999);
+    color: color-mix(in srgb, var(--neutral-500) 84%, #35566d 16%);
     display: flex;
     justify-content: space-between;
 }
@@ -65,7 +65,7 @@
 .cardId {
     font-family: "SF Mono", Monaco, "Consolas", monospace;
     font-size: 10px;
-    color: var(--neutral-400, #666);
+    color: var(--neutral-400);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -15,8 +15,10 @@ export interface LoadingProps {
  */
 export function Loading({ message = "Loading..." }: LoadingProps) {
     return (
-        <div className={styles.loading}>
-            <span>{message}</span>
+        <div className={styles.overlay}>
+            <div className={styles.loading}>
+                <span>{message}</span>
+            </div>
         </div>
     );
 }

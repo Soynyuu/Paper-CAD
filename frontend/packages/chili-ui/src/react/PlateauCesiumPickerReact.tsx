@@ -16,6 +16,7 @@ import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/
 import { Sidebar } from "./components/Sidebar";
 import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
+import { PlateauSearchLoading } from "./components/PlateauSearchLoading";
 import styles from "./PlateauCesiumPickerReact.module.css";
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
@@ -86,15 +87,17 @@ export interface PlateauCesiumPickerReactProps {
 }
 
 interface SearchResult {
+    id: string;
     displayName: string;
     latitude: number;
     longitude: number;
-    targetLatitude?: number;
-    targetLongitude?: number;
+    gmlId?: string;
+    buildingId?: string;
+    distanceMeters?: number;
     municipalityCode?: string;
     osmType?: string;
     osmId?: number;
-    buildingCount?: number; // NEW: 周辺の建物件数
+    usage?: string;
 }
 
 /**
@@ -107,18 +110,18 @@ interface SearchResult {
 export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactProps) {
     const cesiumViewRef = useRef<CesiumView | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
     const handlerRef = useRef<Cesium.ScreenSpaceEventHandler | null>(null);
     const buildingPickerRef = useRef<CesiumBuildingPicker | null>(null);
     const tilesetLoaderRef = useRef<CesiumTilesetLoader | null>(null);
-    const perfDefaultsRef = useRef<{ resolutionScale: number; globeMaxSSE: number | null } | null>(
-        null,
-    );
+    const perfDefaultsRef = useRef<{ resolutionScale: number; globeMaxSSE: number | null } | null>(null);
 
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
     const [loading, setLoading] = useAtom(loadingAtom);
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
     const [viewerReady, setViewerReady] = useState(false);
+    const [pickerStage, setPickerStage] = useState<"search" | "map">("search");
+    const [pendingResult, setPendingResult] = useState<SearchResult | null>(null);
+    const [activeResultId, setActiveResultId] = useState<string | null>(null);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState<string>("");
@@ -131,6 +134,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const abortControllerRef = useRef<AbortController | null>(null);
     const searchContainerRef = useRef<HTMLDivElement | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
+    const focusRequestIdRef = useRef(0);
 
     // Search mode state
     const [searchMode, setSearchMode] = useState<"facility" | "address" | "buildingId">("facility");
@@ -140,6 +144,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // UI state for Google-style progressive disclosure
     const [isExpanded, setIsExpanded] = useState<boolean>(false);
     const isComposingRef = useRef<boolean>(false);
+    const isSearchStage = pickerStage === "search";
+    const showExpandedSearch = isSearchStage || isExpanded;
     const appConfig = getRuntimeAppConfig();
     const preferredPickLod = Math.min(3, Math.max(1, Number(appConfig?.cesiumPickLod ?? 2)));
     const preferredResolutionScale = clampResolutionScale(appConfig?.cesiumResolutionScale ?? 0.6, 0.6);
@@ -205,8 +211,20 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const isMultiSelect = clickWithModifier.modifier === Cesium.KeyboardEventModifier.CTRL;
 
             try {
-                picker.pickBuilding({ x: click.position.x, y: click.position.y }, isMultiSelect);
+                const picked = picker.pickBuilding(
+                    { x: click.position.x, y: click.position.y },
+                    isMultiSelect,
+                );
                 setSelectedBuildings(picker.getSelectedBuildings());
+                if (picked?.gmlId) {
+                    const resultIndex = searchResults.findIndex(
+                        (result) => result.gmlId === picked.gmlId || result.buildingId === picked.gmlId,
+                    );
+                    if (resultIndex >= 0) {
+                        setSelectedResultIndex(resultIndex);
+                        setActiveResultId(searchResults[resultIndex].id);
+                    }
+                }
             } catch (error) {
                 if (error instanceof Error) {
                     PubSub.default.pub("showToast", "error.plateau.selectionFailed:{0}", error.message);
@@ -220,11 +238,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 handlerRef.current = null;
             }
         };
-    }, [setSelectedBuildings, viewerReady]);
+    }, [searchResults, setSelectedBuildings, viewerReady]);
 
     // Initialize CesiumView when container is ready
     useEffect(() => {
-        if (!containerRef.current) return;
+        if (pickerStage !== "map" || !containerRef.current) return;
 
         const container = containerRef.current;
         let mounted = true;
@@ -286,23 +304,29 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         return () => {
             mounted = false;
+            focusRequestIdRef.current += 1;
             resizeObserver?.disconnect();
             handlerRef.current?.destroy();
             handlerRef.current = null;
+            buildingPickerRef.current?.clearPreviewHighlight();
             buildingPickerRef.current = null;
             tilesetLoaderRef.current = null;
             cesiumViewRef.current?.dispose();
             cesiumViewRef.current = null;
             setViewerReady(false);
         };
-    }, []);
+    }, [pickerStage]);
 
     // Tileset loading removed - using mesh-based dynamic loading (Issue #177)
 
     // Close search results and collapse when clicking outside
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+            if (
+                isSearchStage &&
+                searchContainerRef.current &&
+                !searchContainerRef.current.contains(e.target as Node)
+            ) {
                 setShowResults(false);
                 if (!searchQuery.trim()) {
                     setIsExpanded(false);
@@ -312,7 +336,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [searchQuery]);
+    }, [isSearchStage, searchQuery]);
 
     // handleCityChange removed - using mesh-based dynamic loading (Issue #177)
 
@@ -365,28 +389,303 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         [handleClose],
     );
 
-    // Constants for coordinate conversion
-    const METERS_PER_DEGREE = 111000; // Approximate meters per degree at equator (OK for small ranges)
-    const DEFAULT_TOKYO_LAT = 35.681236; // Tokyo Station latitude
-    const DEFAULT_TOKYO_LON = 139.767125; // Tokyo Station longitude
+    const METERS_PER_DEGREE = 111000;
+    const DEFAULT_TOKYO_LAT = 35.681236;
+    const DEFAULT_TOKYO_LON = 139.767125;
     const MUNICIPALITY_CODE_PATTERN = /^(\d{5})/;
-
     const getMunicipalityCodeFromBuildingId = (buildingId?: string | null) => {
         if (!buildingId) return undefined;
         const match = buildingId.match(MUNICIPALITY_CODE_PATTERN);
         return match?.[1];
     };
 
-    // Search handlers
-    const performSearch = useCallback(async () => {
-        console.log("[Search] performSearch called, searchQuery:", searchQuery);
-        const query = searchQuery.trim();
-        if (!query) {
-            console.log("[Search] Empty query, returning");
-            return;
-        }
+    const toNumberOrUndefined = (value: unknown): number | undefined => {
+        const numeric = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+    };
 
-        // GML IDモードの場合、メッシュコードもチェック
+    useEffect(() => {
+        if (pickerStage === "map") return;
+        buildingPickerRef.current?.clearPreviewHighlight();
+    }, [pickerStage]);
+
+    const loadTilesetsForResult = useCallback(
+        async (result: SearchResult) => {
+            const viewer = cesiumViewRef.current?.getViewer();
+            const loader = tilesetLoaderRef.current;
+            if (!viewer || !loader) return;
+
+            const targetLatitude = result.latitude;
+            const targetLongitude = result.longitude;
+            const municipalityCode = result.municipalityCode;
+            const centerMeshCodes = resolveMeshCodesFromCoordinates(targetLatitude, targetLongitude, false);
+            const loadedMeshCodes = new Set(loader.getLoadedMeshCodes());
+            const hasCenterMeshLoaded = centerMeshCodes.some((meshCode) => loadedMeshCodes.has(meshCode));
+
+            if (hasCenterMeshLoaded) {
+                viewer.scene.requestRender();
+                return;
+            }
+
+            setLoading(true);
+            setLoadingMessage("3D Tilesを読み込み中...");
+            applyPerformanceMode(viewer);
+            let restoreOnFinish = true;
+
+            try {
+                const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+                const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
+                    const requestBody: Record<string, unknown> = {
+                        mesh_codes: meshCodes,
+                        lod: preferredPickLod,
+                    };
+                    if (preferNoTexture) {
+                        requestBody["prefer_no_texture"] = true;
+                    }
+                    if (municipalityCode) {
+                        requestBody["municipality_code"] = municipalityCode;
+                    }
+
+                    const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(requestBody),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API error: ${response.status}`);
+                    }
+
+                    return response.json();
+                };
+
+                let data = await fetchTilesetsForMeshes(centerMeshCodes);
+                let tilesets = data.tilesets || [];
+
+                if (tilesets.length === 0) {
+                    const neighborMeshCodes = resolveMeshCodesFromCoordinates(
+                        targetLatitude,
+                        targetLongitude,
+                        true,
+                    );
+                    data = await fetchTilesetsForMeshes(neighborMeshCodes);
+                    tilesets = data.tilesets || [];
+                }
+
+                if (municipalityCode) {
+                    const filtered = tilesets.filter(
+                        (tileset: any) => tileset.municipality_code === municipalityCode,
+                    );
+                    if (filtered.length > 0) {
+                        tilesets = filtered;
+                    }
+                }
+
+                if (tilesets.length === 0) {
+                    console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
+                    return;
+                }
+
+                const MAX_TILESETS_TO_LOAD = 2;
+                const PRIMARY_TILESETS_TO_LOAD = 1;
+                const BACKGROUND_BATCH_SIZE = 1;
+                const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
+                const meshCodesToLoad = tilesetsToLoad.map((tileset: any) => tileset.mesh_code);
+                const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
+                const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
+
+                loader.retainMeshes(meshCodesToLoad);
+
+                const primaryLoad = await loader.loadMultipleTilesets(
+                    primaryTilesets.map((tileset: any) => ({
+                        meshCode: tileset.mesh_code,
+                        url: tileset.tileset_url,
+                    })),
+                );
+                let failedMeshCount = primaryLoad.failedMeshes.length;
+
+                if (cesiumViewRef.current) {
+                    setLoadingMessage("地図タイルを読み込み中...");
+                    await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
+                }
+
+                if (backgroundTilesets.length > 0) {
+                    restoreOnFinish = false;
+                    const yieldToBrowser = () =>
+                        new Promise<void>((resolve) => {
+                            if (typeof requestAnimationFrame === "function") {
+                                requestAnimationFrame(() => resolve());
+                            } else {
+                                setTimeout(resolve, 0);
+                            }
+                        });
+
+                    const loadBackgroundTilesets = async () => {
+                        for (let i = 0; i < backgroundTilesets.length; i += BACKGROUND_BATCH_SIZE) {
+                            const batch = backgroundTilesets.slice(i, i + BACKGROUND_BATCH_SIZE);
+                            const loadResult = await loader.loadMultipleTilesets(
+                                batch.map((tileset: any) => ({
+                                    meshCode: tileset.mesh_code,
+                                    url: tileset.tileset_url,
+                                })),
+                            );
+                            failedMeshCount += loadResult.failedMeshes.length;
+                            await yieldToBrowser();
+                        }
+
+                        if (failedMeshCount > 0) {
+                            PubSub.default.pub(
+                                "showToast",
+                                "toast.plateau.tilesetLoadFailed:{0}",
+                                failedMeshCount,
+                            );
+                        }
+
+                        if (cesiumViewRef.current) {
+                            void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
+                        }
+                    };
+
+                    void loadBackgroundTilesets()
+                        .catch((error) => {
+                            console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
+                            if (failedMeshCount > 0) {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.tilesetLoadFailed:{0}",
+                                    failedMeshCount,
+                                );
+                            }
+                        })
+                        .finally(() => {
+                            restorePerformanceMode(viewer);
+                        });
+                } else {
+                    if (failedMeshCount > 0) {
+                        PubSub.default.pub(
+                            "showToast",
+                            "toast.plateau.tilesetLoadFailed:{0}",
+                            failedMeshCount,
+                        );
+                    }
+                    if (cesiumViewRef.current) {
+                        void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
+                    }
+                }
+            } finally {
+                if (restoreOnFinish) {
+                    restorePerformanceMode(viewer);
+                }
+                setLoading(false);
+                setLoadingMessage("");
+            }
+        },
+        [preferNoTexture, preferredPickLod, setLoading, setLoadingMessage],
+    );
+
+    const focusResultOnMap = useCallback(
+        async (result: SearchResult) => {
+            const viewer = cesiumViewRef.current?.getViewer();
+            if (!viewer) return;
+
+            const requestId = ++focusRequestIdRef.current;
+            const index = searchResults.findIndex((candidate) => candidate.id === result.id);
+            if (index >= 0) {
+                setSelectedResultIndex(index);
+            }
+            setActiveResultId(result.id);
+
+            await new Promise<void>((resolve) => {
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, 420),
+                    duration: 1.2,
+                    complete: () => resolve(),
+                    cancel: () => resolve(),
+                });
+            });
+            viewer.scene.requestRender();
+
+            if (focusRequestIdRef.current !== requestId) return;
+            await loadTilesetsForResult(result);
+            if (focusRequestIdRef.current !== requestId) return;
+
+            const picker = buildingPickerRef.current;
+            if (!picker) return;
+
+            const attemptPreviewHighlight = () => {
+                const targets = [result.gmlId, result.buildingId].filter(
+                    (value): value is string => typeof value === "string" && value.length > 0,
+                );
+                const center = {
+                    x: Math.floor(viewer.canvas.clientWidth / 2),
+                    y: Math.floor(viewer.canvas.clientHeight / 2),
+                };
+
+                for (const target of targets) {
+                    if (
+                        picker.previewBuildingAtCoordinates(result.longitude, result.latitude, target) ||
+                        picker.previewBuildingAtScreen(center, target)
+                    ) {
+                        return true;
+                    }
+                }
+
+                return (
+                    picker.previewBuildingAtCoordinates(result.longitude, result.latitude) ||
+                    picker.previewBuildingAtScreen(center)
+                );
+            };
+
+            if (attemptPreviewHighlight()) return;
+
+            let retries = 0;
+            const MAX_RETRIES = 40;
+            const RETRY_INTERVAL_MS = 150;
+            const retryPreview = () => {
+                if (focusRequestIdRef.current !== requestId) return;
+                if (viewer.isDestroyed()) return;
+                viewer.scene.requestRender();
+                retries += 1;
+                if (attemptPreviewHighlight() || retries >= MAX_RETRIES) {
+                    if (retries >= MAX_RETRIES) {
+                        console.warn(
+                            "[PlateauCesiumPicker] Search result highlight timed out",
+                            result.gmlId || result.buildingId || result.id,
+                        );
+                    }
+                    return;
+                }
+                window.setTimeout(retryPreview, RETRY_INTERVAL_MS);
+            };
+            window.setTimeout(retryPreview, RETRY_INTERVAL_MS);
+        },
+        [loadTilesetsForResult, searchResults],
+    );
+
+    const activateSearchResult = useCallback(
+        (result: SearchResult) => {
+            setShowResults(true);
+            if (pickerStage !== "map") {
+                setPickerStage("map");
+                setPendingResult(result);
+                setIsExpanded(false);
+                return;
+            }
+
+            if (!viewerReady) {
+                setPendingResult(result);
+                return;
+            }
+
+            void focusResultOnMap(result);
+        },
+        [focusResultOnMap, pickerStage, viewerReady],
+    );
+
+    const performSearch = useCallback(async () => {
+        const query = searchQuery.trim();
+        if (!query) return;
+
         if (searchMode === "buildingId" && !meshCode.trim()) {
             setSearchError(
                 I18n.translate("error.plateau.emptyMeshCode") || "メッシュコードを入力してください",
@@ -406,13 +705,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         try {
             const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
-
-            // 検索モードに応じてエンドポイント切り替え
             const endpoint =
                 searchMode === "buildingId"
-                    ? `/plateau/search-by-id-and-mesh`
-                    : `/plateau/search-by-address`;
-
+                    ? "/plateau/search-by-id-and-mesh"
+                    : "/plateau/search-by-address";
             const requestBody =
                 searchMode === "buildingId"
                     ? {
@@ -423,13 +719,12 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                       }
                     : {
                           query,
-                          radius: searchRadius / METERS_PER_DEGREE, // Convert meters to degrees
+                          radius: searchRadius / METERS_PER_DEGREE,
                           limit: 20,
                           search_mode: searchMode === "facility" ? "hybrid" : "distance",
                           name_filter: searchMode === "facility" ? query : undefined,
                       };
 
-            console.log("[Search] Fetching:", `${apiBaseUrl}${endpoint}`, requestBody);
             const response = await fetch(`${apiBaseUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -437,84 +732,129 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 signal: abortControllerRef.current.signal,
             });
 
-            console.log("[Search] Response status:", response.status);
-
-            // Check HTTP status
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
             const data = await response.json();
-            console.log("[Search] Response data:", JSON.stringify(data, null, 2));
-
             if (!data.success) {
                 setSearchError(
                     data.error || I18n.translate("error.plateau.searchFailed:{0}", "Unknown error"),
                 );
                 setSearchResults([]);
                 setShowResults(true);
+                setActiveResultId(null);
                 return;
             }
 
-            // 検索結果を統一フォーマットに変換
-            let result: SearchResult;
-
+            const results: SearchResult[] = [];
             if (searchMode === "buildingId") {
-                // GML ID検索の場合
                 if (!data.building) {
                     setSearchError(I18n.translate("error.plateau.noBuildingsFound:{0}", query));
                     setSearchResults([]);
                     setShowResults(true);
+                    setActiveResultId(null);
                     return;
                 }
-                const municipalityCode = getMunicipalityCodeFromBuildingId(data.building.building_id);
-                result = {
-                    displayName: data.building.name || data.building.gml_id,
-                    latitude: data.building.latitude || DEFAULT_TOKYO_LAT,
-                    longitude: data.building.longitude || DEFAULT_TOKYO_LON,
-                    targetLatitude: data.building.latitude,
-                    targetLongitude: data.building.longitude,
-                    municipalityCode,
-                    buildingCount: 1,
-                };
+
+                const building = data.building;
+                const latitude = toNumberOrUndefined(building.latitude) ?? DEFAULT_TOKYO_LAT;
+                const longitude = toNumberOrUndefined(building.longitude) ?? DEFAULT_TOKYO_LON;
+                const gmlId =
+                    typeof building.gml_id === "string"
+                        ? building.gml_id
+                        : typeof building.building_id === "string" &&
+                            building.building_id.startsWith("bldg_")
+                          ? building.building_id
+                          : undefined;
+                const buildingId =
+                    typeof building.building_id === "string" ? building.building_id : undefined;
+
+                results.push({
+                    id: gmlId || buildingId || "single-result",
+                    displayName: building.name || building.building_id || building.gml_id || query,
+                    latitude,
+                    longitude,
+                    gmlId,
+                    buildingId,
+                    distanceMeters: toNumberOrUndefined(building.distance_meters),
+                    municipalityCode: getMunicipalityCodeFromBuildingId(buildingId),
+                    usage: building.usage,
+                });
             } else {
-                // 施設名/住所検索の場合
-                if (!data.geocoding) {
-                    setSearchError(I18n.translate("error.plateau.noBuildingsFound:{0}", query));
-                    setSearchResults([]);
-                    setShowResults(true);
-                    return;
-                }
-                const primaryBuilding = data.buildings?.[0];
-                const municipalityCode = getMunicipalityCodeFromBuildingId(primaryBuilding?.building_id);
-                result = {
-                    displayName: data.geocoding.display_name,
-                    latitude: data.geocoding.latitude,
-                    longitude: data.geocoding.longitude,
-                    targetLatitude: primaryBuilding?.latitude,
-                    targetLongitude: primaryBuilding?.longitude,
-                    municipalityCode,
-                    osmType: data.geocoding.osm_type,
-                    osmId: data.geocoding.osm_id,
-                    buildingCount: data.buildings ? data.buildings.length : 0,
-                };
+                const buildings = Array.isArray(data.buildings) ? data.buildings : [];
+                const geocoding = data.geocoding;
+
+                buildings.forEach((building: any, index: number) => {
+                    const latitude =
+                        toNumberOrUndefined(building.latitude) ??
+                        toNumberOrUndefined(geocoding?.latitude) ??
+                        DEFAULT_TOKYO_LAT;
+                    const longitude =
+                        toNumberOrUndefined(building.longitude) ??
+                        toNumberOrUndefined(geocoding?.longitude) ??
+                        DEFAULT_TOKYO_LON;
+                    const gmlId =
+                        typeof building.gml_id === "string"
+                            ? building.gml_id
+                            : typeof building.building_id === "string" &&
+                                building.building_id.startsWith("bldg_")
+                              ? building.building_id
+                              : undefined;
+                    const buildingId =
+                        typeof building.building_id === "string" ? building.building_id : undefined;
+                    const resultId = gmlId || buildingId || `search-result-${index + 1}`;
+
+                    results.push({
+                        id: resultId,
+                        displayName:
+                            building.name || building.building_id || building.gml_id || `候補 ${index + 1}`,
+                        latitude,
+                        longitude,
+                        gmlId,
+                        buildingId,
+                        distanceMeters: toNumberOrUndefined(building.distance_meters),
+                        municipalityCode: getMunicipalityCodeFromBuildingId(buildingId),
+                        usage: building.usage,
+                        osmType: geocoding?.osm_type,
+                        osmId: geocoding?.osm_id,
+                    });
+                });
             }
 
-            console.log("[Search] Setting result:", result);
-            setSearchResults([result]);
-            setShowResults(true);
+            if (results.length === 0) {
+                setSearchError(I18n.translate("error.plateau.noBuildingsFound:{0}", query));
+                setSearchResults([]);
+                setShowResults(true);
+                setActiveResultId(null);
+                return;
+            }
+
+            setSearchResults(results);
             setSelectedResultIndex(0);
-            console.log("[Search] Results set, showResults should be true now");
+            setActiveResultId(results[0].id);
+            setShowResults(true);
+            setPendingResult(results[0]);
+            if (pickerStage !== "map") {
+                setPickerStage("map");
+                setIsExpanded(false);
+            }
         } catch (error: unknown) {
             if (error instanceof Error && error.name === "AbortError") return;
-            console.error("[PlateauCesiumPickerReact] Search failed:", error);
             const errorMsg = error instanceof Error ? error.message : "Unknown error";
             setSearchError(I18n.translate("error.plateau.searchFailed:{0}", errorMsg));
             setShowResults(true);
         } finally {
             setIsSearching(false);
         }
-    }, [searchQuery, searchMode, searchRadius, meshCode]);
+    }, [meshCode, pickerStage, searchMode, searchQuery, searchRadius]);
+
+    const handleResultClick = useCallback(
+        (result: SearchResult) => {
+            activateSearchResult(result);
+        },
+        [activateSearchResult],
+    );
 
     // IME composition handlers for proper Japanese input support
     const handleCompositionStart = useCallback(() => {
@@ -522,7 +862,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     }, []);
 
     const handleCompositionEnd = useCallback(() => {
-        // Delay to ensure composition is fully complete
         setTimeout(() => {
             isComposingRef.current = false;
         }, 10);
@@ -530,20 +869,24 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
     const handleSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
-            // For Enter key, only check nativeEvent.isComposing to allow search after IME confirmation
             if (e.key === "Enter") {
-                // If IME is actively composing (e.g., showing candidates), don't trigger search
                 if (e.nativeEvent.isComposing) {
-                    console.log("[KeyDown] Enter blocked - IME composing");
                     return;
                 }
-                console.log("[KeyDown] Enter pressed, calling performSearch");
                 e.preventDefault();
-                performSearch();
+                if (
+                    !isSearchStage &&
+                    showResults &&
+                    selectedResultIndex >= 0 &&
+                    searchResults[selectedResultIndex]
+                ) {
+                    activateSearchResult(searchResults[selectedResultIndex]);
+                } else {
+                    void performSearch();
+                }
                 return;
             }
 
-            // For other keys, block during active IME composition
             if (isComposingRef.current || e.nativeEvent.isComposing) {
                 return;
             }
@@ -573,12 +916,22 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     break;
             }
         },
-        [performSearch, searchQuery, showResults, searchResults.length],
+        [
+            activateSearchResult,
+            isSearchStage,
+            performSearch,
+            searchQuery,
+            searchResults,
+            selectedResultIndex,
+            showResults,
+        ],
     );
 
     const handleSearchFocus = useCallback(() => {
-        setIsExpanded(true);
-    }, []);
+        if (!isSearchStage) {
+            setIsExpanded(true);
+        }
+    }, [isSearchStage]);
 
     const handleSearchClear = useCallback(() => {
         setSearchQuery("");
@@ -586,367 +939,261 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         setShowResults(false);
         setSearchError(null);
         setSelectedResultIndex(-1);
+        setActiveResultId(null);
+        setPendingResult(null);
+        buildingPickerRef.current?.clearPreviewHighlight();
         searchInputRef.current?.focus();
     }, []);
 
-    // findNearestCity removed - using mesh-based dynamic loading (Issue #177)
+    const handleSearchSubmit = useCallback(() => {
+        void performSearch();
+    }, [performSearch]);
 
-    const handleResultClick = useCallback(
-        async (result: SearchResult) => {
-            const viewer = cesiumViewRef.current?.getViewer();
-            const loader = tilesetLoaderRef.current;
-            if (!viewer || !loader) return;
+    useEffect(() => {
+        if (!viewerReady || !pendingResult) return;
+        const result = pendingResult;
+        setPendingResult(null);
+        void focusResultOnMap(result);
+    }, [focusResultOnMap, pendingResult, viewerReady]);
 
-            const targetLatitude = result.targetLatitude ?? result.latitude;
-            const targetLongitude = result.targetLongitude ?? result.longitude;
-            const municipalityCode = result.municipalityCode;
+    const handleBackToSearch = useCallback(() => {
+        setPickerStage("search");
+        setPendingResult(null);
+        setIsExpanded(false);
+        setShowResults(searchResults.length > 0);
+        buildingPickerRef.current?.clearPreviewHighlight();
+    }, [searchResults.length]);
 
-            // 検索ドロップダウンを閉じる
-            setShowResults(false);
-            setSearchQuery(result.displayName);
+    const renderSearchPanel = (variant: "dialog" | "floating") => {
+        const isDialogPanel = variant === "dialog";
+        const showDetails = isDialogPanel || showExpandedSearch;
+        const containerClassName = `${isDialogPanel ? styles.searchDialogContainer : styles.searchContainer} ${
+            isSearching ? styles.searchLoadingContainer : ""
+        }`;
 
-            setLoading(true);
-            setLoadingMessage("地図を準備中...");
+        if (isSearching) {
+            return (
+                <div ref={searchContainerRef} className={containerClassName}>
+                    <PlateauSearchLoading minimal />
+                </div>
+            );
+        }
 
-            viewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(targetLongitude, targetLatitude, 1200),
-            });
-            viewer.scene.requestRender();
+        return (
+            <div ref={searchContainerRef} className={containerClassName}>
+                <div
+                    className={`${styles.searchBox} ${showDetails ? styles.expanded : ""} ${
+                        isDialogPanel ? styles.searchBoxDialog : styles.searchBoxFloating
+                    }`}
+                >
+                    {isDialogPanel && (
+                        <div className={styles.searchHeader}>
+                            <div className={styles.searchEyebrow}>PLATEAU Building Import</div>
+                            <div className={styles.searchTitle}>建物を検索</div>
+                            <div className={styles.searchSubtitle}>
+                                検索後は3D地図で結果を確認しながら候補をクリックできます。
+                            </div>
+                        </div>
+                    )}
 
-            const loadTilesets = async () => {
-                setLoadingMessage("3D Tilesを読み込み中...");
-                applyPerformanceMode(viewer);
-                let restoreOnFinish = true;
-                try {
-                    // Get API base URL
-                    const apiBaseUrl = getRuntimeAppConfig()?.stepUnfoldApiUrl || "http://localhost:8001/api";
+                    <div className={styles.searchInputWrapper}>
+                        <span className={styles.searchIcon}>
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="7" />
+                                <path d="M21 21l-4.35-4.35" />
+                            </svg>
+                        </span>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            className={styles.searchInput}
+                            placeholder="場所や施設を検索"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onFocus={handleSearchFocus}
+                            onKeyDown={handleSearchKeyDown}
+                            onCompositionStart={handleCompositionStart}
+                            onCompositionEnd={handleCompositionEnd}
+                            disabled={isSearching}
+                            autoComplete="off"
+                        />
+                        <button
+                            className={styles.searchSubmitButton}
+                            onClick={handleSearchSubmit}
+                            disabled={isSearching || !searchQuery.trim()}
+                            type="button"
+                        >
+                            検索
+                        </button>
+                        {isSearching && <div className={styles.searchSpinner} />}
+                        {!isSearching && searchQuery && (
+                            <button
+                                className={styles.searchClearButton}
+                                onClick={handleSearchClear}
+                                onMouseDown={(e) => e.preventDefault()}
+                                type="button"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
 
-                    const fetchTilesetsForMeshes = async (meshCodes: string[]) => {
-                        const requestBody: Record<string, unknown> = {
-                            mesh_codes: meshCodes,
-                            lod: preferredPickLod,
-                        };
-                        if (preferNoTexture) {
-                            requestBody["prefer_no_texture"] = true;
-                        }
-                        if (municipalityCode) {
-                            requestBody["municipality_code"] = municipalityCode;
-                        }
+                    <div className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}>
+                        <button
+                            className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
+                            onClick={() => setSearchMode("facility")}
+                        >
+                            施設名
+                        </button>
+                        <button
+                            className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
+                            onClick={() => setSearchMode("address")}
+                        >
+                            住所
+                        </button>
+                        <button
+                            className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
+                            onClick={() => setSearchMode("buildingId")}
+                        >
+                            建物ID
+                        </button>
+                    </div>
 
-                        const response = await fetch(`${apiBaseUrl}/plateau/mesh-to-tilesets`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(requestBody),
-                        });
+                    {showDetails && searchMode === "buildingId" && (
+                        <div className={styles.meshCodeSection}>
+                            <input
+                                type="text"
+                                className={styles.meshCodeInput}
+                                placeholder="メッシュコード（例: 53394511）"
+                                value={meshCode}
+                                onChange={(e) => setMeshCode(e.target.value)}
+                                disabled={isSearching}
+                            />
+                        </div>
+                    )}
 
-                        if (!response.ok) {
-                            throw new Error(`API error: ${response.status}`);
-                        }
+                    {showResults && <div className={styles.searchDivider} />}
 
-                        return response.json();
-                    };
+                    <div
+                        className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
+                        role="listbox"
+                    >
+                        {searchError ? (
+                            <div className={styles.searchError}>{searchError}</div>
+                        ) : (
+                            searchResults.map((result, index) =>
+                                (() => {
+                                    const isResultActive =
+                                        index === selectedResultIndex || result.id === activeResultId;
+                                    const isResultSelected = !!result.gmlId
+                                        ? selectedBuildings.some(
+                                              (building) => building.gmlId === result.gmlId,
+                                          )
+                                        : false;
 
-                    // Start with center mesh only; fallback to neighbors if nothing is found.
-                    const centerMeshCodes = resolveMeshCodesFromCoordinates(
-                        targetLatitude,
-                        targetLongitude,
-                        false,
-                    );
-                    console.log(
-                        `[PlateauCesiumPicker] Loading 3D Tiles for ${centerMeshCodes.length} mesh codes`,
-                    );
-
-                    let data = await fetchTilesetsForMeshes(centerMeshCodes);
-                    let tilesets = data.tilesets || [];
-
-                    if (tilesets.length === 0) {
-                        const neighborMeshCodes = resolveMeshCodesFromCoordinates(
-                            targetLatitude,
-                            targetLongitude,
-                            true,
-                        );
-                        console.log(
-                            `[PlateauCesiumPicker] No tilesets found for center mesh; retrying with ${neighborMeshCodes.length} meshes`,
-                        );
-                        data = await fetchTilesetsForMeshes(neighborMeshCodes);
-                        tilesets = data.tilesets || [];
-                    }
-
-                    if (result.municipalityCode) {
-                        const filtered = tilesets.filter(
-                            (tileset: any) => tileset.municipality_code === result.municipalityCode,
-                        );
-                        if (filtered.length > 0) {
-                            tilesets = filtered;
-                        }
-                    }
-
-                    if (tilesets.length === 0) {
-                        console.warn("[PlateauCesiumPicker] No 3D Tiles found for this area");
-                        return;
-                    }
-
-                    const MAX_TILESETS_TO_LOAD = 2;
-                    const PRIMARY_TILESETS_TO_LOAD = 1;
-                    const BACKGROUND_BATCH_SIZE = 1;
-                    const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
-                    const meshCodesToLoad = tilesetsToLoad.map((t: any) => t.mesh_code);
-                    loader.retainMeshes(meshCodesToLoad);
-                    const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
-                    const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
-
-                    const primaryLoad = await loader.loadMultipleTilesets(
-                        primaryTilesets.map((t: any) => ({
-                            meshCode: t.mesh_code,
-                            url: t.tileset_url,
-                        })),
-                    );
-                    let failedMeshCount = primaryLoad.failedMeshes.length;
-
-                    if (cesiumViewRef.current) {
-                        setLoadingMessage("地図タイルを読み込み中...");
-                        await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
-                    }
-
-                    if (backgroundTilesets.length > 0) {
-                        restoreOnFinish = false;
-                        const yieldToBrowser = () =>
-                            new Promise<void>((resolve) => {
-                                if (typeof requestAnimationFrame === "function") {
-                                    requestAnimationFrame(() => resolve());
-                                } else {
-                                    setTimeout(resolve, 0);
-                                }
-                            });
-
-                        const loadBackgroundTilesets = async () => {
-                            for (let i = 0; i < backgroundTilesets.length; i += BACKGROUND_BATCH_SIZE) {
-                                const batch = backgroundTilesets.slice(i, i + BACKGROUND_BATCH_SIZE);
-                                const loadResult = await loader.loadMultipleTilesets(
-                                    batch.map((t: any) => ({
-                                        meshCode: t.mesh_code,
-                                        url: t.tileset_url,
-                                    })),
-                                );
-                                failedMeshCount += loadResult.failedMeshes.length;
-                                await yieldToBrowser();
-                            }
-
-                            if (failedMeshCount > 0) {
-                                PubSub.default.pub(
-                                    "showToast",
-                                    "toast.plateau.tilesetLoadFailed:{0}",
-                                    failedMeshCount,
-                                );
-                            }
-
-                            if (cesiumViewRef.current) {
-                                void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                            }
-                        };
-
-                        void loadBackgroundTilesets()
-                            .catch((error) => {
-                                console.warn("[PlateauCesiumPicker] Background tileset load failed:", error);
-                                if (failedMeshCount > 0) {
-                                    PubSub.default.pub(
-                                        "showToast",
-                                        "toast.plateau.tilesetLoadFailed:{0}",
-                                        failedMeshCount,
+                                    return (
+                                        <div
+                                            key={result.id}
+                                            className={`${styles.searchResultItem} ${
+                                                isResultActive ? styles.selected : ""
+                                            }`}
+                                            onClick={() => handleResultClick(result)}
+                                            role="option"
+                                            aria-selected={isResultActive}
+                                        >
+                                            <div className={styles.locationName}>{result.displayName}</div>
+                                            <div className={styles.resultMetaRow}>
+                                                {typeof result.distanceMeters === "number" && (
+                                                    <span className={styles.resultMetaText}>
+                                                        {Math.round(result.distanceMeters)}m
+                                                    </span>
+                                                )}
+                                                {result.buildingId && (
+                                                    <span className={styles.resultMetaText}>
+                                                        {result.buildingId}
+                                                    </span>
+                                                )}
+                                                {isResultSelected && (
+                                                    <span className={styles.resultTag}>選択済み</span>
+                                                )}
+                                                {result.id === activeResultId && (
+                                                    <span
+                                                        className={`${styles.resultTag} ${styles.resultTagActive}`}
+                                                    >
+                                                        ハイライト中
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     );
-                                }
-                            })
-                            .finally(() => {
-                                restorePerformanceMode(viewer);
-                            });
-                    } else if (failedMeshCount > 0) {
-                        PubSub.default.pub(
-                            "showToast",
-                            "toast.plateau.tilesetLoadFailed:{0}",
-                            failedMeshCount,
-                        );
-                    } else if (cesiumViewRef.current) {
-                        void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                    }
+                                })(),
+                            )
+                        )}
+                    </div>
 
-                    console.log(`[PlateauCesiumPicker] Loaded ${primaryTilesets.length} tilesets first`);
-
-                    // ユーザーに建物選択を促す（カメラ移動完了後）
-                    if (result.buildingCount && result.buildingCount > 0) {
-                        console.log(
-                            `[PlateauCesiumPicker] 周辺に${result.buildingCount}件の建物があります。3D地図上でクリックして選択してください。`,
-                        );
-                    }
-                } finally {
-                    if (restoreOnFinish) {
-                        restorePerformanceMode(viewer);
-                    }
-                }
-            };
-
-            void loadTilesets()
-                .catch((error) => {
-                    console.error("[PlateauCesiumPicker] Failed to load 3D Tiles:", error);
-                })
-                .finally(() => {
-                    setLoading(false);
-                    setLoadingMessage("");
-                });
-        },
-        [setLoading, setLoadingMessage],
-    );
+                    {!showResults && !searchQuery && (
+                        <div className={styles.searchHint}>
+                            Enterで検索。結果をクリックすると地図でハイライト表示されます。
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className={styles.dialog} onKeyDown={handleDialogKeyDown}>
-            <div className={styles.body}>
-                {/* Map area */}
-                <div className={styles.mapContainer}>
-                    {/* Cesium container */}
-                    <div className={styles.cesiumContainer}>
-                        <div
-                            ref={containerRef}
-                            id="plateau-cesium-host"
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-                        />
-                    </div>
-
-                    {/* Close button */}
-                    <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
+            {isSearchStage ? (
+                <div className={styles.searchStage}>
+                    <button
+                        className={`${styles.closeButton} ${styles.searchStageCloseButton}`}
+                        onClick={handleClose}
+                        aria-label="閉じる"
+                    >
                         <svg viewBox="0 0 24 24" fill="none">
                             <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
                     </button>
-
-                    {/* Search box */}
-                    <div ref={searchContainerRef} className={styles.searchContainer}>
-                        <div className={`${styles.searchBox} ${isExpanded ? styles.expanded : ""}`}>
-                            <div className={styles.searchInputWrapper}>
-                                <span className={styles.searchIcon}>
-                                    <svg viewBox="0 0 24 24">
-                                        <circle cx="11" cy="11" r="7" />
-                                        <path d="M21 21l-4.35-4.35" />
-                                    </svg>
-                                </span>
-                                <input
-                                    ref={searchInputRef}
-                                    type="text"
-                                    className={styles.searchInput}
-                                    placeholder="場所や施設を検索"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onFocus={handleSearchFocus}
-                                    onKeyDown={handleSearchKeyDown}
-                                    onCompositionStart={handleCompositionStart}
-                                    onCompositionEnd={handleCompositionEnd}
-                                    disabled={isSearching}
-                                    autoComplete="off"
-                                />
-                                {isSearching && <div className={styles.searchSpinner} />}
-                                {!isSearching && searchQuery && (
-                                    <button
-                                        className={styles.searchClearButton}
-                                        onClick={handleSearchClear}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        type="button"
-                                    >
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M18 6L6 18M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className={`${styles.searchModes} ${isExpanded ? styles.visible : ""}`}>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("facility")}
-                                >
-                                    施設名
-                                </button>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("address")}
-                                >
-                                    住所
-                                </button>
-                                <button
-                                    className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
-                                    onClick={() => setSearchMode("buildingId")}
-                                >
-                                    建物ID
-                                </button>
-                            </div>
-
-                            {isExpanded && searchMode === "buildingId" && (
-                                <div
-                                    className={styles.meshCodeSection}
-                                    style={{ opacity: 1, maxHeight: 60, padding: "0 16px 12px" }}
-                                >
-                                    <input
-                                        type="text"
-                                        className={styles.meshCodeInput}
-                                        placeholder="メッシュコード（例: 53394511）"
-                                        value={meshCode}
-                                        onChange={(e) => setMeshCode(e.target.value)}
-                                        disabled={isSearching}
-                                    />
-                                </div>
-                            )}
-
-                            {showResults && <div className={styles.searchDivider} />}
-
+                    {renderSearchPanel("dialog")}
+                </div>
+            ) : (
+                <div className={styles.body}>
+                    <div className={styles.mapContainer}>
+                        <div className={styles.cesiumContainer}>
                             <div
-                                className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
-                                role="listbox"
-                            >
-                                {searchError ? (
-                                    <div className={styles.searchError}>{searchError}</div>
-                                ) : (
-                                    searchResults.map((result, index) => (
-                                        <div
-                                            key={`${result.osmType}-${result.osmId}-${index}`}
-                                            className={`${styles.searchResultItem} ${
-                                                index === selectedResultIndex ? styles.selected : ""
-                                            }`}
-                                            onClick={() => handleResultClick(result)}
-                                            role="option"
-                                            aria-selected={index === selectedResultIndex}
-                                        >
-                                            <div className={styles.locationName}>{result.displayName}</div>
-                                            {result.buildingCount !== undefined &&
-                                                result.buildingCount > 0 && (
-                                                    <div className={styles.buildingCount}>
-                                                        {result.buildingCount}件の建物
-                                                    </div>
-                                                )}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-
-                            {isExpanded && !showResults && !searchQuery && (
-                                <div className={styles.searchHint}>Enter で検索</div>
-                            )}
+                                ref={containerRef}
+                                id="plateau-cesium-host"
+                                style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+                            />
                         </div>
+
+                        <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <button className={styles.backButton} onClick={handleBackToSearch} type="button">
+                            検索に戻る
+                        </button>
+
+                        {renderSearchPanel("floating")}
+
+                        <Instructions />
+                        {!viewerReady && <Loading message="地図ビューを準備中..." />}
+                        {loading && <Loading message={loadingMessage} />}
                     </div>
 
-                    <Instructions />
-                    {loading && <Loading message={loadingMessage} />}
+                    <Sidebar
+                        selectedBuildings={selectedBuildings}
+                        onRemove={handleRemoveBuilding}
+                        onImport={handleImport}
+                        onClear={handleClear}
+                    />
                 </div>
-
-                {/* Sidebar */}
-                <Sidebar
-                    selectedBuildings={selectedBuildings}
-                    onRemove={handleRemoveBuilding}
-                    onImport={handleImport}
-                    onClear={handleClear}
-                />
-            </div>
+            )}
         </div>
     );
 }

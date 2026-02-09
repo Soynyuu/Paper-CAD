@@ -1,8 +1,8 @@
 /* Sidebar - Paper-CAD Design System */
 .sidebar {
     width: 320px;
-    background: var(--neutral-100, #2a2a2a);
-    border-left: 1px solid var(--border-color, #3a3a3a);
+    background: color-mix(in srgb, var(--panel-background-color) 92%, #e8eef4 8%);
+    border-left: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
@@ -12,18 +12,18 @@
 /* Sidebar Header */
 .sidebarHeader {
     padding: var(--spacing-md, 16px);
-    border-bottom: 1px solid var(--border-color, #3a3a3a);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
 }
 
 .selectionCount {
     font-weight: var(--font-weight-semibold, 600);
-    color: var(--primary-color, #ff7744);
+    color: color-mix(in srgb, var(--foreground-color) 76%, #2f5675 24%);
     font-size: var(--font-size-sm, 14px);
 }
 
 .emptyHeader {
     font-weight: var(--font-weight-medium, 500);
-    color: var(--neutral-500, #999);
+    color: color-mix(in srgb, var(--neutral-500) 85%, #395a72 15%);
     font-size: var(--font-size-sm, 14px);
 }
 
@@ -40,7 +40,7 @@
 .emptyState {
     text-align: center;
     padding: var(--spacing-xl, 32px) var(--spacing-md, 16px);
-    color: var(--neutral-500, #999);
+    color: color-mix(in srgb, var(--neutral-500) 85%, #3a5b73 15%);
     font-size: var(--font-size-sm, 14px);
     display: flex;
     flex-direction: column;
@@ -51,7 +51,7 @@
 /* Sidebar Footer */
 .sidebarFooter {
     padding: var(--spacing-md, 16px);
-    border-top: 1px solid var(--border-color, #3a3a3a);
+    border-top: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm, 8px);
@@ -60,8 +60,8 @@
 .importButton {
     width: 100%;
     padding: var(--spacing-10, 10px);
-    background: var(--primary-color, #ff7744);
-    color: var(--neutral-0, #121212);
+    background: linear-gradient(140deg, #2f5877, #1b3f5f);
+    color: #f7f8fa;
     border: none;
     border-radius: var(--radius-sm, 4px);
     font-weight: var(--font-weight-semibold, 600);
@@ -71,12 +71,12 @@
 }
 
 .importButton:hover:not(:disabled) {
-    background: var(--primary-color-dark, #e6682e);
+    background: linear-gradient(140deg, #3a6484, #234b6b);
 }
 
 .importButton:disabled {
-    background: var(--neutral-300, #4d4d4d);
-    color: var(--neutral-500, #999);
+    background: var(--neutral-300);
+    color: var(--neutral-500);
     cursor: not-allowed;
 }
 
@@ -84,8 +84,8 @@
     width: 100%;
     padding: var(--spacing-sm, 8px);
     background: transparent;
-    border: 1px solid var(--border-color, #3a3a3a);
-    color: var(--neutral-600, #ccc);
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
+    color: color-mix(in srgb, var(--neutral-600) 86%, #3a5b73 14%);
     border-radius: var(--radius-sm, 4px);
     font-size: var(--font-size-sm, 14px);
     cursor: pointer;
@@ -94,8 +94,8 @@
 
 .clearButton:hover:not(:disabled) {
     background: var(--hover-background-color);
-    border-color: var(--primary-color, #ff7744);
-    color: var(--foreground-color, #f5f5f5);
+    border-color: #2f597a;
+    color: var(--foreground-color);
 }
 
 .clearButton:disabled {

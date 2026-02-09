@@ -1,19 +1,24 @@
-.loading {
+.overlay {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--neutral-100, #2a2a2a);
-    color: var(--foreground-color, #f5f5f5);
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: var(--z-popover, 10000);
+}
+
+.loading {
+    background: color-mix(in srgb, var(--panel-background-color) 88%, #e0e8ef 12%);
+    color: var(--foreground-color);
     padding: var(--spacing-md, 16px) var(--spacing-lg, 24px);
     border-radius: var(--radius-full, 9999px);
     font-size: var(--font-size-sm, 14px);
     font-weight: var(--font-weight-medium, 500);
-    z-index: var(--z-popover, 10000);
     display: flex;
     align-items: center;
     gap: var(--spacing-12, 12px);
-    border: 1px solid var(--border-color, #3a3a3a);
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9eb3c2 18%);
     box-shadow: var(--shadow-lg);
 }
 
@@ -21,8 +26,8 @@
     content: "";
     width: 18px;
     height: 18px;
-    border: 2px solid var(--neutral-300, #4d4d4d);
-    border-top-color: var(--primary-color, #ff7744);
+    border: 2px solid color-mix(in srgb, var(--neutral-300) 85%, #8ca5b6 15%);
+    border-top-color: color-mix(in srgb, var(--primary-color) 42%, #2a4f70 58%);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }

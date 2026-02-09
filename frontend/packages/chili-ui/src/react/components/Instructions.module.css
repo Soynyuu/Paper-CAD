@@ -4,20 +4,20 @@
     bottom: var(--spacing-lg, 24px);
     left: var(--spacing-lg, 24px);
     max-width: 280px;
-    background: var(--neutral-100, #2a2a2a);
-    color: var(--neutral-600, #ccc);
+    background: color-mix(in srgb, var(--panel-background-color) 84%, #d7e2ec 16%);
+    color: color-mix(in srgb, var(--neutral-600) 84%, #37576f 16%);
     padding: var(--spacing-12, 12px) var(--spacing-md, 16px);
     border-radius: var(--radius-md, 8px);
     font-size: var(--font-size-xs, 12px);
     line-height: 1.6;
     z-index: var(--z-dropdown, 100);
     pointer-events: none;
-    border: 1px solid var(--border-color, #3a3a3a);
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c3 18%);
 }
 
 .instructionsTitle {
     font-weight: var(--font-weight-semibold, 600);
-    color: var(--foreground-color, #f5f5f5);
+    color: var(--foreground-color);
     margin-bottom: var(--spacing-sm, 8px);
     font-size: var(--font-size-sm, 14px);
     display: flex;

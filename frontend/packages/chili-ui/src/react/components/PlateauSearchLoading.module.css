@@ -1,0 +1,56 @@
+.wrapper {
+    margin: 10px 18px 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 84%, #a4b6c4 16%);
+    background: color-mix(in srgb, var(--panel-background-color) 90%, #edf2f7 10%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.minimalWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.animation {
+    width: 110px;
+    height: 72px;
+    flex: 0 0 auto;
+}
+
+.minimalAnimation {
+    width: 210px;
+    height: 136px;
+    flex: 0 0 auto;
+}
+
+.fallbackSpinner {
+    width: 22px;
+    height: 22px;
+    border: 2px solid color-mix(in srgb, var(--neutral-300) 84%, #97aebe 16%);
+    border-top-color: color-mix(in srgb, var(--primary-color) 50%, #2a4f70 50%);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.fallbackSpinnerMinimal {
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+}
+
+.message {
+    color: color-mix(in srgb, var(--foreground-color) 84%, #274860 16%);
+    font-size: var(--font-size-xs, 12px);
+    font-weight: var(--font-weight-medium, 500);
+    line-height: 1.45;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,72 @@
+name: "gml2step Task"
+description: "Implementation task linked to an Epic."
+title: "task: <work item>"
+labels:
+  - task
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Parent Epic
+      description: Link the epic issue number.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background
+      description: Why this task exists.
+      placeholder: This task is needed to unblock API packaging.
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Concrete files/outputs expected.
+      placeholder: |
+        - src/gml2step/citygml/**
+        - src/gml2step/coordinate_utils.py
+        - import paths fixed
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Testable completion conditions.
+      placeholder: |
+        - [ ] Unit tests pass
+        - [ ] No imports from Paper-CAD-only modules remain
+        - [ ] Public API imports successfully
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test Plan
+      description: Commands and checks to run.
+      placeholder: |
+        - pytest tests/citygml/streaming/test_parser.py -v
+        - python -c "from gml2step import convert"
+    validations:
+      required: true
+
+  - type: textarea
+    id: session_log
+    attributes:
+      label: Session Log
+      description: Append one entry per session with date and summary.
+      value: |
+        - YYYY-MM-DD:
+          - Done:
+          - Next:
+          - Blockers:
+    validations:
+      required: true
+

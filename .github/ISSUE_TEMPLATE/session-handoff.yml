@@ -1,0 +1,55 @@
+name: "Session Handoff"
+description: "Use when ending a work session and handing off context."
+title: "handoff: <topic>"
+labels:
+  - handoff
+  - tracking
+body:
+  - type: input
+    id: related_issue
+    attributes:
+      label: Related Issue
+      description: Main issue tracking this work.
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done in this session
+      placeholder: |
+        - Updated import graph for citygml package
+        - Added API wrapper stubs
+    validations:
+      required: true
+
+  - type: textarea
+    id: in_progress
+    attributes:
+      label: In progress
+      placeholder: |
+        - CLI command option mapping
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_actions
+    attributes:
+      label: Next actions
+      placeholder: |
+        1. Finish option validation
+        2. Add smoke tests
+        3. Update README examples
+    validations:
+      required: true
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers / Risks
+      placeholder: |
+        - pythonocc-core availability differs by platform
+    validations:
+      required: false
+

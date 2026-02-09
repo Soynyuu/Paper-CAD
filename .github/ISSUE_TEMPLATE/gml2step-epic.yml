@@ -1,0 +1,82 @@
+name: "gml2step Epic"
+description: "Top-level tracking issue for a multi-step delivery."
+title: "epic: <scope> (gml2step v0.1)"
+labels:
+  - epic
+  - tracking
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue as the single source of truth for cross-session progress.
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What will be delivered by this epic?
+      placeholder: Deliver gml2step v0.1 (library + CLI + Docker) from extracted Paper-CAD CityGML modules.
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition_of_done
+    attributes:
+      label: Definition of Done
+      description: Clear finish conditions.
+      placeholder: |
+        - Public API works (convert / parse / stream_parse / extract_footprints)
+        - CLI commands available
+        - Docker image supports STEP conversion
+        - Tests and docs updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Included and excluded scope.
+      placeholder: |
+        Included:
+        - backend/services/citygml/**
+        - backend/services/coordinate_utils.py
+        Excluded:
+        - unfold/layout/svg/pdf pipeline
+    validations:
+      required: true
+
+  - type: textarea
+    id: child_issues
+    attributes:
+      label: Child Issues
+      description: Use checkboxes and issue links.
+      placeholder: |
+        - [ ] #123 scaffold new gml2step repo
+        - [ ] #124 extract citygml core modules
+        - [ ] #125 add public API wrappers
+        - [ ] #126 add CLI with Typer
+        - [ ] #127 add plateau optional package
+        - [ ] #128 add Docker full-feature image
+        - [ ] #129 add CI and release docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: session_handoff
+    attributes:
+      label: Session Handoff
+      description: Update this block at the end of each work session.
+      value: |
+        Last update: YYYY-MM-DD HH:MM UTC
+        Done:
+        - 
+        In progress:
+        - 
+        Next:
+        - 
+        Risks/Blockers:
+        - 
+    validations:
+      required: true
+

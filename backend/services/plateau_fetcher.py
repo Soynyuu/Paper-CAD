@@ -418,6 +418,27 @@ def _tokenize(text: str) -> List[str]:
     return [t for t in tokens if t]  # Filter out empty strings
 
 
+def _is_shibuya_fukuras_query(query: str) -> bool:
+    """Return True when query clearly refers to Shibuya Fukuras.
+
+    Accept common notation variants used by users:
+    - Katakana: フクラス
+    - Hiragana: ふくらす
+    - Half-width katakana: ﾌｸﾗｽ
+    - Romanized: fukuras
+    """
+    if not query:
+        return False
+
+    lowered = query.lower()
+    return (
+        "フクラス" in query
+        or "ふくらす" in query
+        or "ﾌｸﾗｽ" in query
+        or "fukuras" in lowered
+    )
+
+
 @dataclass
 class BuildingInfo:
     """Information about a PLATEAU building.
@@ -1347,7 +1368,7 @@ def search_buildings_by_address(
         ...         print(f"{building.building_id}: {building.match_reason}")
     """
     # 渋谷フクラスの特別処理（ハードコーディング）
-    if "フクラス" in query or "fukuras" in query.lower():
+    if _is_shibuya_fukuras_query(query):
         print(f"\n{'='*60}")
         print(f"[SEARCH] Detected Shibuya Fukuras query - using hardcoded mesh/building ID")
         print(f"[SEARCH] Mesh code: 53393586, Building ID: bldg_3ad6aaeb-26f8-4716-a8ec-cb2504b94674")
@@ -1377,6 +1398,11 @@ def search_buildings_by_address(
             building.match_reason = "完全一致"
             building.relevance_score = 1.0
             building.name_similarity = 1.0
+
+            # Frontend tileset loading uses municipality code derived from building_id.
+            # Ensure Shibuya code exists even when source CityGML only has gml:id.
+            if not building.building_id or not building.building_id.startswith("13113-"):
+                building.building_id = f"13113-{building.gml_id}"
 
             # limitを適用（通常は1件だけ）
             buildings = [building]

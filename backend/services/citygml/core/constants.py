@@ -14,6 +14,7 @@ NS = {
     "gml": "http://www.opengis.net/gml",
     "bldg": "http://www.opengis.net/citygml/building/2.0",
     "core": "http://www.opengis.net/citygml/2.0",
+    "app": "http://www.opengis.net/citygml/appearance/2.0",
     "uro": "https://www.geospatial.jp/iur/uro/3.1",  # PLATEAU-specific namespace (iur/uro 3.1)
     "gen": "http://www.opengis.net/citygml/generics/2.0",
     "xlink": "http://www.w3.org/1999/xlink",

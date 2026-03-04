@@ -3,7 +3,7 @@
 
 import * as Cesium from "cesium";
 import type { PickedBuilding } from "./types";
-import { calculateMeshCode, detectMeshLevel } from "./cesiumCoordinateUtils";
+import { calculateMeshCode } from "./cesiumCoordinateUtils";
 
 /**
  * CesiumBuildingPicker
@@ -55,6 +55,20 @@ export class CesiumBuildingPicker {
     private extractBuildingSegment(value: string): string {
         const index = value.indexOf("bldg_");
         return index >= 0 ? value.slice(index) : value;
+    }
+
+    private normalizeMeshCodeForSearch(value: unknown): string | undefined {
+        if (value === undefined || value === null) return undefined;
+
+        const meshCode = String(value).trim();
+        if (/^\d{8}$/.test(meshCode)) {
+            return meshCode;
+        }
+        if (/^\d{9,10}$/.test(meshCode)) {
+            // Backend search endpoints require 3rd mesh (8 digits).
+            return meshCode.slice(0, 8);
+        }
+        return undefined;
     }
 
     private isMatchingBuildingId(featureId: string, targetId?: string): boolean {
@@ -215,9 +229,14 @@ export class CesiumBuildingPicker {
             }
 
             // Extract metadata
-            const tilesMeshCode = pickedObject.getProperty("meshcode");
-            const meshLevel = detectMeshLevel(tilesMeshCode);
-            const meshCode = calculateMeshCode(position.latitude, position.longitude, meshLevel);
+            const tilesMeshCodeRaw = this.getPropertyFlexible(pickedObject, [
+                "meshcode",
+                "mesh_code",
+                "meshCode",
+            ]);
+            const meshCode =
+                this.normalizeMeshCodeForSearch(tilesMeshCodeRaw) ||
+                calculateMeshCode(position.latitude, position.longitude, "mesh3rd");
 
             const building: PickedBuilding = {
                 gmlId,
@@ -236,7 +255,10 @@ export class CesiumBuildingPicker {
                     cityName: this.getPropertyFlexible(pickedObject, ["city_name", "cityName", "city"]) as
                         | string
                         | undefined,
-                    meshcode: tilesMeshCode || undefined,
+                    meshcode:
+                        tilesMeshCodeRaw !== undefined && tilesMeshCodeRaw !== null
+                            ? String(tilesMeshCodeRaw).trim() || undefined
+                            : undefined,
                     featureType: featureType as string | undefined,
                 },
             };

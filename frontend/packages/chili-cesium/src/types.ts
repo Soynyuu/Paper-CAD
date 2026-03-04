@@ -8,7 +8,7 @@ export interface PickedBuilding {
     /** GML ID from 3D Tiles feature properties (e.g., "bldg_71e4dcdd-bbe2-48b3-a99c-b86d3e947d04") */
     gmlId: string;
 
-    /** Calculated mesh code from picked WGS84 coordinates (6/8/9/10 digits) */
+    /** Mesh code used for backend lookup (8-digit 3rd mesh code) */
     meshCode: string;
 
     /** Geographic position of the picked point */

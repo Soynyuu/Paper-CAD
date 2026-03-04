@@ -50,6 +50,7 @@ NS = {
     "gml": "http://www.opengis.net/gml",
     "bldg": "http://www.opengis.net/citygml/building/2.0",
     "core": "http://www.opengis.net/citygml/2.0",
+    "app": "http://www.opengis.net/citygml/appearance/2.0",
     "uro": "http://www.opengis.net/uro/1.0",
     "gen": "http://www.opengis.net/citygml/generics/2.0",
     "xlink": "http://www.w3.org/1999/xlink",
@@ -256,6 +257,15 @@ def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optiona
         return None
 
 
+def _iter_citygml_members(root: ET.Element):
+    """Yield merge-worthy CityGML members from a document root.
+
+    We merge both geometry and appearance members so texture metadata is preserved.
+    """
+    yield from root.findall(".//{http://www.opengis.net/citygml/2.0}cityObjectMember")
+    yield from root.findall(".//{http://www.opengis.net/citygml/appearance/2.0}appearanceMember")
+
+
 def _combine_gml_files(file_paths: List[Path]) -> str:
     """Combine multiple CityGML files into a single XML document.
 
@@ -290,8 +300,8 @@ def _combine_gml_files(file_paths: List[Path]) -> str:
 
         other_root = ET.fromstring(content)
 
-        # Find all cityObjectMember elements and append to base
-        for member in other_root.findall(".//{http://www.opengis.net/citygml/2.0}cityObjectMember"):
+        # Preserve both geometry and appearance members when combining files.
+        for member in _iter_citygml_members(other_root):
             root.append(member)
 
     # Convert back to string
@@ -825,8 +835,8 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
                 # Parse additional XML
                 additional_root = ET.fromstring(response.text)
 
-                # Find all cityObjectMember elements and append to base
-                for member in additional_root.findall(".//{http://www.opengis.net/citygml/2.0}cityObjectMember"):
+                # Preserve both geometry and appearance members when combining files.
+                for member in _iter_citygml_members(additional_root):
                     root.append(member)
 
             except Exception as e:
@@ -1825,23 +1835,15 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
     }
 
 
-def fetch_citygml_by_mesh_code(
+def _fetch_citygml_by_mesh_code_with_sources(
     mesh_code: str,
     timeout: int = 30
-) -> Optional[str]:
-    """Fetch CityGML data from PLATEAU using mesh code directly.
-
-    Args:
-        mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
-        timeout: Request timeout in seconds
+) -> Optional[Tuple[str, List[str]]]:
+    """Fetch CityGML by mesh code and return merged XML with source file URLs.
 
     Returns:
-        Combined CityGML XML content as string if successful, None otherwise
-
-    Example:
-        >>> xml = fetch_citygml_by_mesh_code("53394511")
-        >>> if xml:
-        ...     print(f"Fetched {len(xml)} bytes of CityGML data")
+        Tuple[xml_content, source_urls] on success, otherwise None.
+        source_urls may be empty when cache is used.
     """
     print(f"[PLATEAU] Fetching CityGML for mesh code: {mesh_code}")
 
@@ -1865,7 +1867,22 @@ def fetch_citygml_by_mesh_code(
                 if cached_xml:
                     ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
                     print(f"[PLATEAU] ✓ Cache HIT: mesh={mesh_code}, wards={ward_label}")
-                    return cached_xml
+                    cache_dir = config["cache_dir"]
+                    cached_files: List[str] = []
+                    for area_code in area_codes:
+                        files = _find_cached_gml_files(cache_dir, area_code, mesh_code)
+                        cached_files.extend(str(path) for path in files)
+
+                    # de-duplicate while preserving order
+                    seen_paths: Set[str] = set()
+                    dedup_paths: List[str] = []
+                    for path_str in cached_files:
+                        if path_str in seen_paths:
+                            continue
+                        seen_paths.add(path_str)
+                        dedup_paths.append(path_str)
+
+                    return cached_xml, dedup_paths
 
                 ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
                 print(f"[PLATEAU] Cache MISS: mesh={mesh_code}, wards={ward_label}")
@@ -1925,10 +1942,69 @@ def fetch_citygml_by_mesh_code(
 
     if combined_xml:
         print(f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)")
+        return combined_xml, citygml_urls
     else:
         print(f"[PLATEAU] Failed to download CityGML files")
+        return None
 
-    return combined_xml
+
+def fetch_citygml_by_mesh_code(
+    mesh_code: str,
+    timeout: int = 30
+) -> Optional[str]:
+    """Fetch CityGML data from PLATEAU using mesh code directly."""
+    result = _fetch_citygml_by_mesh_code_with_sources(mesh_code, timeout=timeout)
+    if not result:
+        return None
+    return result[0]
+
+
+def _normalize_building_id_for_match(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return value.strip().lower()
+
+
+def _strip_building_id_namespace(value: str) -> str:
+    # Handle gml:bldg_xxx and URL/path-like prefixes uniformly.
+    stripped = value.rsplit(":", 1)[-1]
+    stripped = stripped.rsplit("/", 1)[-1]
+    return stripped
+
+
+def _extract_building_id_segment(value: str) -> str:
+    index = value.find("bldg_")
+    return value[index:] if index >= 0 else value
+
+
+def _is_building_id_match(candidate_id: Optional[str], target_id: str) -> bool:
+    normalized_candidate = _normalize_building_id_for_match(candidate_id)
+    normalized_target = _normalize_building_id_for_match(target_id)
+
+    if not normalized_candidate or not normalized_target:
+        return False
+    if normalized_candidate == normalized_target:
+        return True
+    if normalized_candidate.endswith(normalized_target) or normalized_target.endswith(normalized_candidate):
+        return True
+
+    stripped_candidate = _strip_building_id_namespace(normalized_candidate)
+    stripped_target = _strip_building_id_namespace(normalized_target)
+    if stripped_candidate == stripped_target:
+        return True
+
+    candidate_segment = _extract_building_id_segment(stripped_candidate)
+    target_segment = _extract_building_id_segment(stripped_target)
+    return candidate_segment == target_segment
+
+
+def _find_building_by_id_match(buildings: List[BuildingInfo], target_id: str) -> Optional[BuildingInfo]:
+    for building in buildings:
+        if _is_building_id_match(building.gml_id, target_id) or _is_building_id_match(
+            building.building_id, target_id
+        ):
+            return building
+    return None
 
 
 def search_building_by_id_and_mesh(
@@ -1954,6 +2030,7 @@ def search_building_by_id_and_mesh(
             "building": BuildingInfo or None,
             "mesh_code": str,
             "citygml_xml": str or None,
+            "citygml_source_urls": list[str],
             "total_buildings_in_mesh": int or None,
             "error": str or None,
             "error_details": str or None
@@ -1995,17 +2072,19 @@ def search_building_by_id_and_mesh(
         }
 
     # Step 3: Fetch CityGML for the specified mesh code
-    xml_content = fetch_citygml_by_mesh_code(mesh_code)
-    if not xml_content:
+    fetched = _fetch_citygml_by_mesh_code_with_sources(mesh_code)
+    if not fetched:
         return {
             "success": False,
             "building": None,
             "mesh_code": mesh_code,
             "citygml_xml": None,
+            "citygml_source_urls": [],
             "total_buildings_in_mesh": None,
             "error": "Failed to fetch PLATEAU data",
             "error_details": f"No CityGML data found for mesh code: {mesh_code}"
         }
+    xml_content, source_urls = fetched
 
     # Step 4: Parse buildings
     buildings = parse_buildings_from_citygml(xml_content)
@@ -2015,6 +2094,7 @@ def search_building_by_id_and_mesh(
             "building": None,
             "mesh_code": mesh_code,
             "citygml_xml": xml_content,
+            "citygml_source_urls": source_urls,
             "total_buildings_in_mesh": 0,
             "error": "No buildings found in mesh area",
             "error_details": f"Mesh code {mesh_code} contains no parseable buildings"
@@ -2030,23 +2110,49 @@ def search_building_by_id_and_mesh(
         print(f"[BUILDING SEARCH]   {i}. gml_id: {b.gml_id}")
         print(f"[BUILDING SEARCH]      building_id: {b.building_id or 'None'}")
 
-    # Step 5: Find building by ID (exact match on gml_id or building_id)
-    target_building = None
-    for building in buildings:
-        if building.gml_id == building_id or (building.building_id and building.building_id == building_id):
-            target_building = building
-            print(f"[BUILDING SEARCH] ✓ Match found: {building.building_id or building.gml_id}")
-            break
+    # Step 5: Find building by ID in requested mesh.
+    target_building = _find_building_by_id_match(buildings, building_id)
+    resolved_mesh_code = mesh_code
+    searched_mesh_codes = [mesh_code]
+    if target_building:
+        print(f"[BUILDING SEARCH] ✓ Match found in requested mesh: {target_building.building_id or target_building.gml_id}")
 
-    # Fallback: Try fuzzy match (case-insensitive, strip whitespace)
+    # Step 6: Fallback to neighboring meshes for boundary cases.
     if not target_building:
-        building_id_normalized = building_id.strip().lower()
-        for building in buildings:
-            gml_id_normalized = building.gml_id.strip().lower() if building.gml_id else ""
-            building_id_norm = building.building_id.strip().lower() if building.building_id else ""
+        try:
+            neighboring_meshes = [m for m in get_neighboring_meshes_3rd(mesh_code) if m != mesh_code]
+        except Exception as e:
+            neighboring_meshes = []
+            print(f"[BUILDING SEARCH] Failed to calculate neighboring meshes for {mesh_code}: {e}")
 
-            if gml_id_normalized == building_id_normalized or building_id_norm == building_id_normalized:
-                target_building = building
+        if neighboring_meshes:
+            print(
+                f"[BUILDING SEARCH] Building not found in mesh {mesh_code}. "
+                f"Trying {len(neighboring_meshes)} neighboring meshes..."
+            )
+
+        for neighbor_mesh in neighboring_meshes:
+            searched_mesh_codes.append(neighbor_mesh)
+            fetched_neighbor = _fetch_citygml_by_mesh_code_with_sources(neighbor_mesh)
+            if not fetched_neighbor:
+                continue
+
+            neighbor_xml, neighbor_sources = fetched_neighbor
+            neighbor_buildings = parse_buildings_from_citygml(neighbor_xml)
+            if not neighbor_buildings:
+                continue
+
+            matched_neighbor = _find_building_by_id_match(neighbor_buildings, building_id)
+            if matched_neighbor:
+                target_building = matched_neighbor
+                resolved_mesh_code = neighbor_mesh
+                xml_content = neighbor_xml
+                source_urls = neighbor_sources
+                total_buildings = len(neighbor_buildings)
+                print(
+                    f"[BUILDING SEARCH] ✓ Match found in neighboring mesh {neighbor_mesh}: "
+                    f"{target_building.building_id or target_building.gml_id}"
+                )
                 break
 
     if not target_building:
@@ -2067,14 +2173,21 @@ def search_building_by_id_and_mesh(
             "building": None,
             "mesh_code": mesh_code,
             "citygml_xml": xml_content,
+            "citygml_source_urls": source_urls,
             "total_buildings_in_mesh": total_buildings,
             "error": "Building not found in mesh area",
-            "error_details": f"Searched {total_buildings} buildings in mesh {mesh_code}, but building ID '{building_id}' was not found. Example IDs from this area: {', '.join(similar_ids[:3])}"
+            "error_details": (
+                f"Searched mesh(es) {', '.join(searched_mesh_codes)}; "
+                f"building ID '{building_id}' was not found. "
+                f"Primary mesh {mesh_code} had {total_buildings} buildings. "
+                f"Example IDs from primary mesh: {', '.join(similar_ids[:3])}"
+            ),
         }
 
     print(f"\n{'='*60}")
     print(f"[BUILDING SEARCH] Success: Found building!")
     print(f"[BUILDING SEARCH]   ID: {target_building.gml_id}")
+    print(f"[BUILDING SEARCH]   Mesh: {resolved_mesh_code} (requested: {mesh_code})")
     print(f"[BUILDING SEARCH]   Name: {target_building.name or 'N/A'}")
     print(f"[BUILDING SEARCH]   Height: {target_building.height or target_building.measured_height or 'N/A'}m")
     print(f"[BUILDING SEARCH]   LOD2: {target_building.has_lod2}, LOD3: {target_building.has_lod3}")
@@ -2083,8 +2196,9 @@ def search_building_by_id_and_mesh(
     return {
         "success": True,
         "building": target_building,
-        "mesh_code": mesh_code,
+        "mesh_code": resolved_mesh_code,
         "citygml_xml": xml_content,
+        "citygml_source_urls": source_urls,
         "total_buildings_in_mesh": total_buildings,
         "error": None,
         "error_details": None

@@ -11,6 +11,7 @@ export interface SidebarProps {
     selectedBuildings: PickedBuilding[];
     onRemove: (gmlId: string) => void;
     onImport: () => void;
+    onUnfoldBeta: () => void;
     onClear: () => void;
 }
 
@@ -20,7 +21,7 @@ export interface SidebarProps {
  * Shows list of selected buildings with remove buttons.
  * Footer includes Import and Clear buttons.
  */
-export function Sidebar({ selectedBuildings, onRemove, onImport, onClear }: SidebarProps) {
+export function Sidebar({ selectedBuildings, onRemove, onImport, onUnfoldBeta, onClear }: SidebarProps) {
     const count = selectedBuildings.length;
     const canImport = count > 0;
 
@@ -65,6 +66,14 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onClear }: Side
                     type="button"
                 >
                     {I18n.translate("plateau.cesium.importSelected")}
+                </button>
+                <button
+                    className={styles.unfoldBetaButton}
+                    onClick={onUnfoldBeta}
+                    disabled={!canImport}
+                    type="button"
+                >
+                    β テクスチャ展開図
                 </button>
                 <button className={styles.clearButton} onClick={onClear} disabled={!canImport} type="button">
                     {I18n.translate("plateau.cesium.clearSelection")}

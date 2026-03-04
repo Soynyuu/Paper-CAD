@@ -5,6 +5,9 @@ import base64
 import json
 import math
 import time
+import hashlib
+import copy
+from collections import OrderedDict
 from typing import List, Optional, Dict, Any, Union, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -29,12 +32,33 @@ if OCCT_AVAILABLE:
     from OCC.Core import BRepGProp
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
     from OCC.Core.GeomLProp import GeomLProp_SLProps
-    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone, GeomAbs_Sphere
+    from OCC.Core.GeomAbs import (
+        GeomAbs_Plane,
+        GeomAbs_Cylinder,
+        GeomAbs_Cone,
+        GeomAbs_Sphere,
+    )
     from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
     from OCC.Core.GProp import GProp_GProps
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Edge, TopoDS_Vertex
-    from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Dir, gp_Pln, gp_Cylinder, gp_Cone, gp_Trsf, gp_Ax1, gp_Ax2, gp_Ax3
-    from OCC.Core.Geom import Geom_Surface, Geom_Plane, Geom_CylindricalSurface, Geom_ConicalSurface
+    from OCC.Core.gp import (
+        gp_Pnt,
+        gp_Vec,
+        gp_Dir,
+        gp_Pln,
+        gp_Cylinder,
+        gp_Cone,
+        gp_Trsf,
+        gp_Ax1,
+        gp_Ax2,
+        gp_Ax3,
+    )
+    from OCC.Core.Geom import (
+        Geom_Surface,
+        Geom_Plane,
+        Geom_CylindricalSurface,
+        Geom_ConicalSurface,
+    )
     from OCC.Core.Standard import Standard_Failure
 
 
@@ -42,52 +66,63 @@ class StepUnfoldGenerator:
     """
     STEPソリッドモデルから展開図（SVG）を生成する専用クラス。
     """
+
+    # クラスレベルの解析結果キャッシュ（LRU、最大10エントリ）
+    # キー: SHA256ハッシュ, 値: (faces_data, edges_data, adjacency_map, stats)
+    _analysis_cache: OrderedDict = OrderedDict()
+    _CACHE_MAX_SIZE = 10
+
     def __init__(self):
         # ═══ 前提条件検証：品質保証の最初の砦 ═══
         if not OCCT_AVAILABLE:
             raise RuntimeError(
-                "OpenCASCADE Technology が利用できません。\n" +
-                "商用グレードBREP処理には OCCT が必須です。\n" +
-                "インストール手順：\n" +
-                "2. conda install -c conda-forge python-opencascade"
+                "OpenCASCADE Technology が利用できません。\n"
+                + "商用グレードBREP処理には OCCT が必須です。\n"
+                + "インストール手順：\n"
+                + "2. conda install -c conda-forge python-opencascade"
             )
-        
+
         # ═══ 幾何学的状態管理：BREPデータの構造化記憶域 ═══
         self.solid_shape = None  # ソリッドシェイプを格納
         # 読み込まれたBREPソリッド：すべての幾何学情報の根源となる形状データ
         # None状態は「未初期化」を意味し、処理前の安全な初期状態
-        
+
+        # ファイルハッシュ（キャッシュキー用）
+        self._file_hash: Optional[str] = None
+
         # ファイル読み込み処理クラス
         self.file_loader = FileLoader()
-        
+
         # ファイル情報の同期用
         self.last_file_info = None
-        
+
         # 幾何学解析クラス
         self.geometry_analyzer = GeometryAnalyzer()
-        
+
         # 解析済みデータへの参照
         self.faces_data = self.geometry_analyzer.faces_data
         self.edges_data = self.geometry_analyzer.edges_data
-        
+
         # 展開エンジン
         self.unfold_engine = UnfoldEngine()
-        
+
         self.unfold_groups: List[List[int]] = []
         # 展開グループリスト：展開可能な面をグループ化した結果を保存
-        
+
         # ═══ 設定パラメータ：ユーザー要求の内部表現 ═══
-        self.scale_factor = 10.0    # スケール倍率：デジタル-物理変換比率（より大きな初期値）
-        
+        self.scale_factor = (
+            10.0  # スケール倍率：デジタル-物理変換比率（より大きな初期値）
+        )
+
         # レイアウトマネージャー
         self.layout_manager = LayoutManager(scale_factor=self.scale_factor)
         self.layout_mode = "canvas"  # デフォルトはフリーキャンバスモード
         self.page_format = "A4"
         self.page_orientation = "portrait"
-        self.units = "mm"           # 単位系：寸法の解釈基準
-        self.tab_width = 5.0        # タブ幅：接着部の物理的寸法
-        self.show_scale = True      # スケールバー：図面標準への準拠
-        self.show_fold_lines = True # 折り線：組み立て指示の視覚化
+        self.units = "mm"  # 単位系：寸法の解釈基準
+        self.tab_width = 5.0  # タブ幅：接着部の物理的寸法
+        self.show_scale = True  # スケールバー：図面標準への準拠
+        self.show_fold_lines = True  # 折り線：組み立て指示の視覚化
         self.show_cut_lines = True  # 切断線：加工指示の視覚化
         self.mirror_horizontal = False  # 左右反転モード：水平方向の反転
 
@@ -102,18 +137,18 @@ class StepUnfoldGenerator:
             layout_mode=self.layout_mode,
             page_format=self.page_format,
             page_orientation=self.page_orientation,
-            mirror_horizontal=self.mirror_horizontal
+            mirror_horizontal=self.mirror_horizontal,
         )
-        
+
         # ═══ 処理統計情報：品質管理と性能監視のためのメトリクス ═══
         self.stats = {
-            "total_faces": 0,        # 総面数：入力モデルの複雑さ指標
-            "planar_faces": 0,       # 平面数：直接展開可能な面の数
+            "total_faces": 0,  # 総面数：入力モデルの複雑さ指標
+            "planar_faces": 0,  # 平面数：直接展開可能な面の数
             "cylindrical_faces": 0,  # 円筒面数：円筒展開対象面の数
-            "conical_faces": 0,      # 円錐面数：円錐展開対象面の数
-            "other_faces": 0,        # その他面数：特殊処理が必要な面の数
-            "unfoldable_faces": 0,   # 展開可能面数：最終的に展開された面の数
-            "processing_time": 0.0   # 処理時間：性能評価指標（秒単位）
+            "conical_faces": 0,  # 円錐面数：円錐展開対象面の数
+            "other_faces": 0,  # その他面数：特殊処理が必要な面の数
+            "unfoldable_faces": 0,  # 展開可能面数：最終的に展開された面の数
+            "processing_time": 0.0,  # 処理時間：性能評価指標（秒単位）
         }
 
         # ═══ テクスチャマッピング：面番号とテクスチャパターンの対応表 ═══
@@ -124,7 +159,6 @@ class StepUnfoldGenerator:
         # 注意: 現在の実装は簡易版のため、正確な展開ネットを生成できません
         # 各面を個別に展開する方が正確です
         self.generate_unfolding_net = False  # デフォルトで展開ネットモードを無効化
-
 
     def set_texture_mappings(self, texture_mappings: List[Dict[str, Any]]):
         """
@@ -140,6 +174,13 @@ class StepUnfoldGenerator:
         """
         ファイル拡張子に応じて適切な読み込み関数を呼び出す。
         """
+        # ファイルハッシュを計算（キャッシュキー用）
+        try:
+            with open(file_path, "rb") as f:
+                self._file_hash = hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            self._file_hash = None
+
         # FileLoaderクラスのload_from_fileメソッドを使用
         result = self.file_loader.load_from_file(file_path)
         # 読み込んだ形状を自分のインスタンスに設定
@@ -157,18 +198,24 @@ class StepUnfoldGenerator:
         """
         バイト列からCADデータを読み込む（API経由アップロード対応）。
         """
+        # ファイルハッシュを計算（キャッシュキー用）
+        self._file_hash = hashlib.sha256(file_content).hexdigest()
+
         result = self.file_loader.load_from_bytes(file_content, file_ext)
         # 読み込んだ形状を自分のインスタンスに設定
         self.solid_shape = self.file_loader.solid_shape
         # last_file_infoを同期
         self.last_file_info = self.file_loader.last_file_info
         return result
-    
+
     def load_brep_from_bytes(self, file_content: bytes) -> bool:
         """
         バイト列からBREPデータを読み込む（API経由アップロード対応）。
         無効なBREPの場合は、パラメータから立方体を生成する。
         """
+        # ファイルハッシュを計算（キャッシュキー用）
+        self._file_hash = hashlib.sha256(file_content).hexdigest()
+
         result = self.file_loader.load_brep_from_bytes(file_content)
         # 読み込んだ形状を自分のインスタンスに設定
         self.solid_shape = self.file_loader.solid_shape
@@ -180,22 +227,94 @@ class StepUnfoldGenerator:
         """
         BREPソリッドのトポロジ構造を詳細解析。
         面・エッジ・頂点の幾何特性を抽出し、展開戦略を決定。
+        SHA256ハッシュによるキャッシュで同一ファイルの再解析を回避。
         """
         if self.solid_shape is None:
             raise ValueError("BREPデータが読み込まれていません")
-        
-        # 幾何学解析クラスに委譲
+
+        # キャッシュヒットチェック
+        if self._file_hash and self._file_hash in self._analysis_cache:
+            cached = self._analysis_cache[self._file_hash]
+            print(f"[Cache HIT] 解析キャッシュを使用: {self._file_hash[:12]}...")
+
+            # LRU: アクセスしたエントリを末尾に移動
+            self._analysis_cache.move_to_end(self._file_hash)
+
+            # ディープコピーしてリクエスト間のデータ汚染を防止
+            self.geometry_analyzer.faces_data = copy.deepcopy(cached["faces_data"])
+            self.geometry_analyzer.edges_data = copy.deepcopy(cached["edges_data"])
+            self.geometry_analyzer.adjacency_map = copy.deepcopy(
+                cached["adjacency_map"]
+            )
+
+            # 共有参照を再設定
+            self.faces_data = self.geometry_analyzer.faces_data
+            self.edges_data = self.geometry_analyzer.edges_data
+
+            # 統計情報復元
+            for key in cached["stats"]:
+                self.geometry_analyzer.stats[key] = cached["stats"][key]
+                if key in self.stats:
+                    self.stats[key] = cached["stats"][key]
+
+            # 展開エンジンに幾何学データを設定
+            self.unfold_engine.set_geometry_data(
+                self.faces_data,
+                self.edges_data,
+                self.geometry_analyzer.adjacency_map,
+            )
+            return
+
+        # キャッシュミス: 通常の解析を実行
+        print(
+            f"[Cache MISS] OCCT解析を実行"
+            + (f": {self._file_hash[:12]}..." if self._file_hash else "")
+        )
         self.geometry_analyzer.analyze_brep_topology(self.solid_shape)
-        
+
         # 統計情報更新
         self.stats["total_faces"] = self.geometry_analyzer.stats["total_faces"]
         self.stats["planar_faces"] = self.geometry_analyzer.stats["planar_faces"]
-        self.stats["cylindrical_faces"] = self.geometry_analyzer.stats["cylindrical_faces"]
+        self.stats["cylindrical_faces"] = self.geometry_analyzer.stats[
+            "cylindrical_faces"
+        ]
         self.stats["conical_faces"] = self.geometry_analyzer.stats["conical_faces"]
         self.stats["other_faces"] = self.geometry_analyzer.stats["other_faces"]
-        
+
         # 展開エンジンに幾何学データを設定
-        self.unfold_engine.set_geometry_data(self.faces_data, self.edges_data)
+        self.unfold_engine.set_geometry_data(
+            self.faces_data,
+            self.edges_data,
+            self.geometry_analyzer.adjacency_map,
+        )
+
+        # キャッシュに保存（ディープコピー）
+        if self._file_hash:
+            cache_entry = {
+                "faces_data": copy.deepcopy(self.geometry_analyzer.faces_data),
+                "edges_data": copy.deepcopy(self.geometry_analyzer.edges_data),
+                "adjacency_map": copy.deepcopy(self.geometry_analyzer.adjacency_map),
+                "stats": {
+                    "total_faces": self.geometry_analyzer.stats["total_faces"],
+                    "planar_faces": self.geometry_analyzer.stats["planar_faces"],
+                    "cylindrical_faces": self.geometry_analyzer.stats[
+                        "cylindrical_faces"
+                    ],
+                    "conical_faces": self.geometry_analyzer.stats["conical_faces"],
+                    "other_faces": self.geometry_analyzer.stats["other_faces"],
+                },
+            }
+            self._analysis_cache[self._file_hash] = cache_entry
+
+            # LRUエビクション: 最大サイズを超えた場合、最も古いエントリを削除
+            while len(self._analysis_cache) > self._CACHE_MAX_SIZE:
+                evicted_key, _ = self._analysis_cache.popitem(last=False)
+                print(f"[Cache EVICT] キャッシュエビクション: {evicted_key[:12]}...")
+
+            print(
+                f"[Cache STORE] 解析結果をキャッシュ: {self._file_hash[:12]}... "
+                f"(キャッシュサイズ: {len(self._analysis_cache)}/{self._CACHE_MAX_SIZE})"
+            )
 
     def group_faces_for_unfolding(self, max_faces: int = 20) -> List[List[int]]:
         """
@@ -208,8 +327,7 @@ class StepUnfoldGenerator:
 
         # 展開エンジンに処理を委譲
         self.unfold_groups = self.unfold_engine.group_faces_for_unfolding(
-            max_faces=max_faces,
-            generate_unfolding_net=self.generate_unfolding_net
+            max_faces=max_faces, generate_unfolding_net=self.generate_unfolding_net
         )
         return self.unfold_groups
 
@@ -221,7 +339,7 @@ class StepUnfoldGenerator:
         # 展開エンジンの設定を更新
         self.unfold_engine.scale_factor = self.scale_factor
         self.unfold_engine.tab_width = self.tab_width
-        
+
         # 展開エンジンに処理を委譲
         return self.unfold_engine.unfold_face_groups()
 
@@ -232,7 +350,7 @@ class StepUnfoldGenerator:
         """
         # レイアウトマネージャーのスケール倍率を更新
         self.layout_manager.update_scale_factor(self.scale_factor)
-        
+
         # レイアウトマネージャーに処理を委譲
         return self.layout_manager.layout_unfolded_groups(unfolded_groups)
 
@@ -255,8 +373,7 @@ class StepUnfoldGenerator:
         self.unfold_engine.tab_width = self.tab_width
         self.layout_manager.update_scale_factor(self.scale_factor)
         self.layout_manager.update_page_settings(
-            page_format=self.page_format,
-            page_orientation=self.page_orientation
+            page_format=self.page_format, page_orientation=self.page_orientation
         )
         self.svg_exporter.update_settings(
             scale_factor=self.scale_factor,
@@ -268,7 +385,7 @@ class StepUnfoldGenerator:
             layout_mode=self.layout_mode,
             page_format=self.page_format,
             page_orientation=self.page_orientation,
-            mirror_horizontal=self.mirror_horizontal
+            mirror_horizontal=self.mirror_horizontal,
         )
 
     def export_to_svg(self, placed_groups: List[Dict], output_path: str) -> str:
@@ -287,7 +404,7 @@ class StepUnfoldGenerator:
             layout_mode=self.layout_mode,
             page_format=self.page_format,
             page_orientation=self.page_orientation,
-            mirror_horizontal=self.mirror_horizontal
+            mirror_horizontal=self.mirror_horizontal,
         )
 
         # テクスチャマッピングを設定
@@ -295,9 +412,13 @@ class StepUnfoldGenerator:
             self.svg_exporter.set_texture_mappings(self.texture_mappings)
 
         # SVGエクスポーターに処理を委譲
-        return self.svg_exporter.export_to_svg(placed_groups, output_path, self.layout_manager)
-    
-    def export_to_svg_paged_single_file(self, paged_groups: List[List[Dict]], output_path: str) -> str:
+        return self.svg_exporter.export_to_svg(
+            placed_groups, output_path, self.layout_manager
+        )
+
+    def export_to_svg_paged_single_file(
+        self, paged_groups: List[List[Dict]], output_path: str
+    ) -> str:
         """
         ページ分割された展開図を単一のSVGファイルに出力。
         """
@@ -312,7 +433,7 @@ class StepUnfoldGenerator:
             layout_mode=self.layout_mode,
             page_format=self.page_format,
             page_orientation=self.page_orientation,
-            mirror_horizontal=self.mirror_horizontal
+            mirror_horizontal=self.mirror_horizontal,
         )
 
         # テクスチャマッピングを設定
@@ -320,9 +441,13 @@ class StepUnfoldGenerator:
             self.svg_exporter.set_texture_mappings(self.texture_mappings)
 
         # SVGエクスポーターに処理を委譲
-        return self.svg_exporter.export_to_svg_paged_single_file(paged_groups, output_path)
+        return self.svg_exporter.export_to_svg_paged_single_file(
+            paged_groups, output_path
+        )
 
-    def export_to_svg_paged_files(self, paged_groups: List[List[Dict]], output_dir: str) -> List[str]:
+    def export_to_svg_paged_files(
+        self, paged_groups: List[List[Dict]], output_dir: str
+    ) -> List[str]:
         """
         ページ分割された展開図を複数SVGファイルとして出力。
         """
@@ -336,7 +461,7 @@ class StepUnfoldGenerator:
             layout_mode=self.layout_mode,
             page_format=self.page_format,
             page_orientation=self.page_orientation,
-            mirror_horizontal=self.mirror_horizontal
+            mirror_horizontal=self.mirror_horizontal,
         )
 
         if self.texture_mappings:
@@ -344,7 +469,9 @@ class StepUnfoldGenerator:
 
         return self.svg_exporter.export_to_svg_paged(paged_groups, output_dir)
 
-    def export_to_pdf_paged(self, paged_groups: List[List[Dict]], output_path: str) -> str:
+    def export_to_pdf_paged(
+        self, paged_groups: List[List[Dict]], output_path: str
+    ) -> str:
         """
         ページ分割された展開図をPDF形式で出力。
 
@@ -372,8 +499,7 @@ class StepUnfoldGenerator:
 
             # PDFExporterを初期化
             pdf_exporter = PDFExporter(
-                page_format=self.page_format,
-                page_orientation=self.page_orientation
+                page_format=self.page_format, page_orientation=self.page_orientation
             )
 
             # SVGファイルリストからPDFを生成
@@ -386,12 +512,14 @@ class StepUnfoldGenerator:
         finally:
             # 一時ファイルをクリーンアップ
             import shutil
+
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
                 print(f"一時ディレクトリを削除: {temp_dir}")
 
-
-    def generate_brep_papercraft_pages(self, request: BrepPapercraftRequest) -> Tuple[List[List[Dict]], Dict]:
+    def generate_brep_papercraft_pages(
+        self, request: BrepPapercraftRequest
+    ) -> Tuple[List[List[Dict]], Dict]:
         """
         BREPソリッドからページ単位の展開図データを生成する。
         """
@@ -409,14 +537,14 @@ class StepUnfoldGenerator:
             self.group_faces_for_unfolding(request.max_faces)
             unfolded_groups = self.unfold_face_groups()
 
-            paged_groups, layout_warnings = self.layout_manager.layout_for_pages(unfolded_groups)
+            paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
+                unfolded_groups
+            )
 
             end_time = time.time()
             self.stats["processing_time"] = end_time - start_time
             self.stats["unfoldable_faces"] = sum(
-                len(group["polygons"])
-                for page in paged_groups
-                for group in page
+                len(group["polygons"]) for page in paged_groups for group in page
             )
             self.stats["layout_mode"] = "paged"
             self.stats["page_count"] = len(paged_groups)
@@ -427,14 +555,12 @@ class StepUnfoldGenerator:
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             raise ValueError(f"BREP展開図生成エラー: {str(e)}")
 
-
     def generate_brep_papercraft(
-        self,
-        request: BrepPapercraftRequest,
-        output_path: Optional[str] = None
+        self, request: BrepPapercraftRequest, output_path: Optional[str] = None
     ) -> Tuple[str, Dict]:
         """
         BREPソリッドから展開図を一括生成。
@@ -442,36 +568,39 @@ class StepUnfoldGenerator:
         """
         if self.solid_shape is None:
             raise ValueError("BREPソリッドが読み込まれていません")
-        
+
         if output_path is None:
             temp_dir = tempfile.mkdtemp()
             output_path = os.path.join(temp_dir, f"brep_papercraft_{uuid.uuid4()}.svg")
-        
+
         try:
             start_time = time.time()
-            
+
             self.apply_request_settings(request)
-            
+
             # 1. BREPトポロジ解析
             self.analyze_brep_topology()
-            
+
             # 2. 展開可能面のグルーピング
             self.group_faces_for_unfolding(request.max_faces)
-            
+
             # 3. 各グループの2D展開
             unfolded_groups = self.unfold_face_groups()
-            
+
             # 4. レイアウトモードに応じた配置
             if self.layout_mode == "paged":
                 # ページモード: ページ単位でレイアウト
                 self.layout_manager.update_page_settings(
-                    page_format=self.page_format,
-                    page_orientation=self.page_orientation
+                    page_format=self.page_format, page_orientation=self.page_orientation
                 )
-                paged_groups, layout_warnings = self.layout_manager.layout_for_pages(unfolded_groups)
+                paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
+                    unfolded_groups
+                )
 
                 # 5. 単一SVGファイルに全ページを出力
-                svg_path = self.export_to_svg_paged_single_file(paged_groups, output_path)
+                svg_path = self.export_to_svg_paged_single_file(
+                    paged_groups, output_path
+                )
 
                 # 統計情報にページ数を追加
                 self.stats["page_count"] = len(paged_groups)
@@ -482,24 +611,27 @@ class StepUnfoldGenerator:
             else:
                 # キャンバスモード: 従来の単一SVG
                 placed_groups = self.layout_unfolded_groups(unfolded_groups)
-                
+
                 # 5. SVG出力
                 svg_path = self.export_to_svg(placed_groups, output_path)
-            
+
             # 処理統計更新
             end_time = time.time()
             self.stats["processing_time"] = end_time - start_time
             self.stats["unfoldable_faces"] = sum(
-                len(group["polygons"]) 
-                for page in (paged_groups if self.layout_mode == "paged" else [placed_groups])
+                len(group["polygons"])
+                for page in (
+                    paged_groups if self.layout_mode == "paged" else [placed_groups]
+                )
                 for group in (page if self.layout_mode == "paged" else placed_groups)
             )
             self.stats["layout_mode"] = self.layout_mode
-            
+
             return svg_path, self.stats
-            
+
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             raise ValueError(f"BREP展開図生成エラー: {str(e)}")
 
@@ -507,19 +639,20 @@ class StepUnfoldGenerator:
         """
         バックエンドで生成された面番号データを取得する。
         フロントエンドとの面番号統一に使用。
-        
+
         Returns:
             List[Dict]: [{"faceIndex": 0, "faceNumber": 1}, ...] 形式の面番号マッピング
         """
         face_numbers = []
-        
+
         if self.faces_data:
             for face_index, face_data in enumerate(self.faces_data):
                 face_number = face_data.get("face_number", face_index + 1)
-                face_numbers.append({
-                    "faceIndex": face_index,
-                    "faceNumber": face_number
-                })
-                
-        print(f"StepUnfoldGenerator.get_face_numbers(): {len(face_numbers)}個の面番号データを返します")
+                face_numbers.append(
+                    {"faceIndex": face_index, "faceNumber": face_number}
+                )
+
+        print(
+            f"StepUnfoldGenerator.get_face_numbers(): {len(face_numbers)}個の面番号データを返します"
+        )
         return face_numbers

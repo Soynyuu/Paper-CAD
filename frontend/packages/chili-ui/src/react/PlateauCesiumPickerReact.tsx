@@ -18,6 +18,7 @@ import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
 import { PlateauSearchLoading } from "./components/PlateauSearchLoading";
 import styles from "./PlateauCesiumPickerReact.module.css";
+import type { PlateauCesiumPickerResult } from "../plateauCesiumPickerDialog";
 
 const CESIUM_WIDGET_CSS_ID = "cesium-widget-css";
 const CESIUM_WIDGETS_CSS_PATH = "Widgets/widgets.css";
@@ -83,7 +84,7 @@ const ensureCesiumRuntime = () => {
 ensureCesiumRuntime();
 
 export interface PlateauCesiumPickerReactProps {
-    onClose: (result: DialogResult, data?: { selectedBuildings: PickedBuilding[] }) => void;
+    onClose: (result: DialogResult, data?: PlateauCesiumPickerResult) => void;
 }
 
 interface SearchResult {
@@ -361,7 +362,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
             return;
         }
-        onClose(DialogResult.ok, { selectedBuildings });
+        onClose(DialogResult.ok, { selectedBuildings, action: "import" });
+    }, [selectedBuildings, onClose]);
+
+    const handleUnfoldBeta = useCallback(() => {
+        if (selectedBuildings.length === 0) {
+            PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
+            return;
+        }
+        onClose(DialogResult.ok, { selectedBuildings, action: "unfoldBeta" });
     }, [selectedBuildings, onClose]);
 
     // Handle clear
@@ -1190,6 +1199,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         selectedBuildings={selectedBuildings}
                         onRemove={handleRemoveBuilding}
                         onImport={handleImport}
+                        onUnfoldBeta={handleUnfoldBeta}
                         onClear={handleClear}
                     />
                 </div>

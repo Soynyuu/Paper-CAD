@@ -1,11 +1,26 @@
+import asyncio
 import os
 import tempfile
+from functools import partial
 from typing import Optional, Union
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 
-from api.helpers import cleanup_temp_dir, normalize_limit_param, parse_csv_ids, save_upload_to_tmpdir
+from api.helpers import (
+    cleanup_temp_dir,
+    normalize_limit_param,
+    parse_csv_ids,
+    save_upload_to_tmpdir,
+)
 from services.citygml import export_step_from_citygml
 from services.citygml.lod.footprint_extractor import parse_citygml_footprints
 
@@ -23,14 +38,16 @@ router = APIRouter()
             "content": {
                 "application/octet-stream": {
                     "schema": {"type": "string", "format": "binary"},
-                    "example": "STEP file (ISO 10303-21 format)"
+                    "example": "STEP file (ISO 10303-21 format)",
                 }
-            }
+            },
         },
-        400: {"description": "Invalid file format, missing file/path, or invalid parameters"},
+        400: {
+            "description": "Invalid file format, missing file/path, or invalid parameters"
+        },
         404: {"description": "Specified gml_path not found on server"},
         413: {"description": "File too large (max 250MB)"},
-        500: {"description": "Conversion error (check debug logs for details)"}
+        500: {"description": "Conversion error (check debug logs for details)"},
     },
 )
 async def citygml_to_step(
@@ -153,25 +170,39 @@ async def citygml_to_step(
         normalized_limit = normalize_limit_param(limit)
 
         # Normalize string parameters (handle empty strings)
-        normalized_source_crs = source_crs if source_crs and source_crs.strip() else None
-        normalized_reproject_to = reproject_to if reproject_to and reproject_to.strip() else None
+        normalized_source_crs = (
+            source_crs if source_crs and source_crs.strip() else None
+        )
+        normalized_reproject_to = (
+            reproject_to if reproject_to and reproject_to.strip() else None
+        )
         normalized_gml_path = gml_path if gml_path and gml_path.strip() else None
 
         # Normalize precision parameters (handle empty strings, fall back to defaults)
-        normalized_precision_mode = precision_mode if precision_mode and precision_mode.strip() else "auto"
-        normalized_shape_fix_level = shape_fix_level if shape_fix_level and shape_fix_level.strip() else "standard"
+        normalized_precision_mode = (
+            precision_mode if precision_mode and precision_mode.strip() else "auto"
+        )
+        normalized_shape_fix_level = (
+            shape_fix_level
+            if shape_fix_level and shape_fix_level.strip()
+            else "standard"
+        )
 
         # Normalize building filtering parameters
         normalized_building_ids = parse_csv_ids(building_ids)
 
-        normalized_filter_attribute = filter_attribute if filter_attribute and filter_attribute.strip() else "gml:id"
+        normalized_filter_attribute = (
+            filter_attribute
+            if filter_attribute and filter_attribute.strip()
+            else "gml:id"
+        )
 
         # Validate precision_mode
         valid_precision_modes = ["auto", "standard", "high", "maximum", "ultra"]
         if normalized_precision_mode not in valid_precision_modes:
             raise HTTPException(
                 status_code=400,
-                detail=f"precision_mode must be one of {valid_precision_modes}, got: {normalized_precision_mode}"
+                detail=f"precision_mode must be one of {valid_precision_modes}, got: {normalized_precision_mode}",
             )
 
         # Validate shape_fix_level
@@ -179,31 +210,40 @@ async def citygml_to_step(
         if normalized_shape_fix_level not in valid_shape_fix_levels:
             raise HTTPException(
                 status_code=400,
-                detail=f"shape_fix_level must be one of {valid_shape_fix_levels}, got: {normalized_shape_fix_level}"
+                detail=f"shape_fix_level must be one of {valid_shape_fix_levels}, got: {normalized_shape_fix_level}",
             )
 
         if file is None and not normalized_gml_path:
-            raise HTTPException(status_code=400, detail="CityGMLファイルをアップロードするか gml_path を指定してください。")
+            raise HTTPException(
+                status_code=400,
+                detail="CityGMLファイルをアップロードするか gml_path を指定してください。",
+            )
 
         # 入力ファイルの用意
         if file is not None:
             if not file.filename.lower().endswith((".gml", ".xml")):
-                raise HTTPException(status_code=400, detail="CityGML (.gml/.xml) に対応しています。")
+                raise HTTPException(
+                    status_code=400, detail="CityGML (.gml/.xml) に対応しています。"
+                )
 
             # ファイルサイズチェック（250MB制限）
-            if hasattr(file, 'size') and file.size and file.size > 250 * 1024 * 1024:
+            if hasattr(file, "size") and file.size and file.size > 250 * 1024 * 1024:
                 raise HTTPException(
                     status_code=413,
-                    detail="ファイルサイズが大きすぎます（最大250MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。"
+                    detail="ファイルサイズが大きすぎます（最大250MB）。より小さいファイルを使用するか、limitパラメータで処理する建物数を制限してください。",
                 )
             tmpdir, in_path, total = await save_upload_to_tmpdir(file, "gml")
             if total == 0:
-                raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
+                raise HTTPException(
+                    status_code=400, detail="アップロードされたファイルが空です。"
+                )
             print(f"[UPLOAD] /api/citygml/to-step: received {total} bytes -> {in_path}")
         else:
             in_path = normalized_gml_path  # type: ignore
             if not os.path.exists(in_path):
-                raise HTTPException(status_code=404, detail=f"指定されたパスが見つかりません: {in_path}")
+                raise HTTPException(
+                    status_code=404, detail=f"指定されたパスが見つかりません: {in_path}"
+                )
             print(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
 
         # 出力パス
@@ -218,26 +258,33 @@ async def citygml_to_step(
         output_filename = f"{base_name}.step"
         out_path = os.path.join(out_dir, output_filename)
 
-        ok, msg = export_step_from_citygml(
-            in_path,
-            out_path,
-            limit=normalized_limit,
-            debug=debug,
-            method=method,
-            reproject_to=normalized_reproject_to,
-            source_crs=normalized_source_crs,
-            auto_reproject=auto_reproject,
-            precision_mode=normalized_precision_mode,
-            shape_fix_level=normalized_shape_fix_level,
-            building_ids=normalized_building_ids,
-            filter_attribute=normalized_filter_attribute,
+        loop = asyncio.get_event_loop()
+        ok, msg = await loop.run_in_executor(
+            None,
+            partial(
+                export_step_from_citygml,
+                in_path,
+                out_path,
+                limit=normalized_limit,
+                debug=debug,
+                method=method,
+                reproject_to=normalized_reproject_to,
+                source_crs=normalized_source_crs,
+                auto_reproject=auto_reproject,
+                precision_mode=normalized_precision_mode,
+                shape_fix_level=normalized_shape_fix_level,
+                building_ids=normalized_building_ids,
+                filter_attribute=normalized_filter_attribute,
+            ),
         )
         if not ok:
             raise HTTPException(status_code=400, detail=f"変換に失敗しました: {msg}")
 
         # ファイルサイズを取得してログ出力
         file_size = os.path.getsize(out_path)
-        print(f"[RESPONSE] Generated STEP file: {output_filename} ({file_size:,} bytes)")
+        print(
+            f"[RESPONSE] Generated STEP file: {output_filename} ({file_size:,} bytes)"
+        )
 
         # クリーンアップ関数を定義
         def cleanup_temp_files():
@@ -260,14 +307,13 @@ async def citygml_to_step(
             path=out_path,
             media_type="application/octet-stream",
             filename=output_filename,
-            headers={
-                "Cache-Control": "no-cache"
-            }
+            headers={"Cache-Control": "no-cache"},
         )
     except HTTPException:
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
     finally:
@@ -292,20 +338,26 @@ async def citygml_to_step(
                         "valid": True,
                         "buildings_with_footprints": 42,
                         "sample_building_id": "bldg_001",
-                        "notes": "footprint+height extrusion heuristic"
+                        "notes": "footprint+height extrusion heuristic",
                     }
                 }
-            }
+            },
         },
         400: {"description": "Missing file/path or empty file"},
         404: {"description": "Specified gml_path not found"},
-        500: {"description": "Validation error"}
-    }
+        500: {"description": "Validation error"},
+    },
 )
 async def citygml_validate(
-    file: Optional[UploadFile] = File(None, description="CityGML file (.gml/.xml) to validate"),
-    gml_path: Optional[str] = Form(None, description="サーバーローカルのCityGMLパス / Server-side CityGML path"),
-    limit: Optional[int] = Form(10, description="検証する建物数の上限 / Max buildings to validate"),
+    file: Optional[UploadFile] = File(
+        None, description="CityGML file (.gml/.xml) to validate"
+    ),
+    gml_path: Optional[str] = Form(
+        None, description="サーバーローカルのCityGMLパス / Server-side CityGML path"
+    ),
+    limit: Optional[int] = Form(
+        10, description="検証する建物数の上限 / Max buildings to validate"
+    ),
 ):
     """
     CityGML が当モジュールのヒューリスティックに適合するか簡易チェックします。
@@ -325,20 +377,33 @@ async def citygml_validate(
     tmpdir = None
     try:
         if file is None and not gml_path:
-            raise HTTPException(status_code=400, detail="CityGMLファイルをアップロードするか gml_path を指定してください。")
+            raise HTTPException(
+                status_code=400,
+                detail="CityGMLファイルをアップロードするか gml_path を指定してください。",
+            )
 
         if file is not None:
             tmpdir, in_path, total = await save_upload_to_tmpdir(file, "gml")
             if total == 0:
-                raise HTTPException(status_code=400, detail="アップロードされたファイルが空です。")
-            print(f"[UPLOAD] /api/citygml/validate: received {total} bytes -> {in_path}")
+                raise HTTPException(
+                    status_code=400, detail="アップロードされたファイルが空です。"
+                )
+            print(
+                f"[UPLOAD] /api/citygml/validate: received {total} bytes -> {in_path}"
+            )
         else:
             in_path = gml_path  # type: ignore
             if not os.path.exists(in_path):
-                raise HTTPException(status_code=404, detail=f"指定されたパスが見つかりません: {in_path}")
+                raise HTTPException(
+                    status_code=404, detail=f"指定されたパスが見つかりません: {in_path}"
+                )
             print(f"[UPLOAD] /api/citygml/validate: using local path {in_path}")
 
-        fps = parse_citygml_footprints(in_path, limit=limit or None)
+        loop = asyncio.get_event_loop()
+        fps = await loop.run_in_executor(
+            None,
+            partial(parse_citygml_footprints, in_path, limit=limit or None),
+        )
         return {
             "valid": len(fps) > 0,
             "buildings_with_footprints": len(fps),
@@ -349,6 +414,7 @@ async def citygml_validate(
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"検証でエラー: {str(e)}")
     finally:

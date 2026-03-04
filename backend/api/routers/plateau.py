@@ -1,7 +1,9 @@
+import asyncio
 import os
 import tempfile
 import uuid
-from typing import Optional, Union
+from functools import partial
+from typing import Any, Dict, Optional, Union
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException
 from fastapi.responses import FileResponse
@@ -19,17 +21,24 @@ from models.request_models import (
     PlateauBuildingIdRequest,
     PlateauBuildingIdSearchResponse,
     PlateauBuildingIdWithMeshRequest,
+    PlateauTexturedUnfoldRequest,
     PlateauSearchRequest,
     PlateauSearchResponse,
     TilesetInfo,
+    BrepPapercraftRequest,
 )
 from services.citygml import export_step_from_citygml
-from services.plateau_api_client import fetch_plateau_dataset_by_municipality, fetch_tilesets_for_meshes
+from services.plateau_api_client import (
+    fetch_plateau_dataset_by_municipality,
+    fetch_tilesets_for_meshes,
+)
 from services.plateau_fetcher import (
     search_building_by_id,
     search_building_by_id_and_mesh,
     search_buildings_by_address,
 )
+from services.plateau_texture_mapper import build_plateau_texture_mappings
+from services.step_processor import StepUnfoldGenerator
 
 router = APIRouter()
 
@@ -51,7 +60,7 @@ router = APIRouter()
                             "query": "東京駅",
                             "latitude": 35.681236,
                             "longitude": 139.767125,
-                            "display_name": "Tokyo Station, Tokyo, Japan"
+                            "display_name": "Tokyo Station, Tokyo, Japan",
                         },
                         "buildings": [
                             {
@@ -63,22 +72,20 @@ router = APIRouter()
                                 "height": 45.0,
                                 "usage": "商業施設",
                                 "name": "東京駅丸の内ビル",
-                                "has_lod2": True
+                                "has_lod2": True,
                             }
                         ],
                         "found_count": 15,
-                        "search_mode": "hybrid"
+                        "search_mode": "hybrid",
                     }
                 }
-            }
+            },
         },
         400: {"description": "Invalid search parameters"},
-        500: {"description": "Geocoding or PLATEAU API error"}
-    }
+        500: {"description": "Geocoding or PLATEAU API error"},
+    },
 )
-async def plateau_search_by_address(
-    request: PlateauSearchRequest
-):
+async def plateau_search_by_address(request: PlateauSearchRequest):
     """
     住所または施設名からPLATEAU建物を検索します。
 
@@ -114,20 +121,25 @@ async def plateau_search_by_address(
         ```
     """
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/search-by-address")
         print(f"[API] Query: {request.query}")
         print(f"[API] Radius: {request.radius} degrees")
         print(f"[API] Limit: {request.limit}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Call the search function with name_filter and search_mode
-        result = search_buildings_by_address(
-            query=request.query,
-            radius=request.radius,
-            limit=request.limit,
-            name_filter=request.name_filter,
-            search_mode=request.search_mode or "hybrid"
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(
+                search_buildings_by_address,
+                query=request.query,
+                radius=request.radius,
+                limit=request.limit,
+                name_filter=request.name_filter,
+                search_mode=request.search_mode or "hybrid",
+            ),
         )
 
         if not result["success"]:
@@ -138,19 +150,23 @@ async def plateau_search_by_address(
                 buildings=[],
                 found_count=0,
                 search_mode=result.get("search_mode", "hybrid"),
-                error=result.get("error", "Unknown error")
+                error=result.get("error", "Unknown error"),
             )
 
         # Convert to response models
         geocoding_data = result["geocoding"]
-        geocoding_response = GeocodingResultResponse(
-            query=geocoding_data.query,
-            latitude=geocoding_data.latitude,
-            longitude=geocoding_data.longitude,
-            display_name=geocoding_data.display_name,
-            osm_type=geocoding_data.osm_type,
-            osm_id=geocoding_data.osm_id
-        ) if geocoding_data else None
+        geocoding_response = (
+            GeocodingResultResponse(
+                query=geocoding_data.query,
+                latitude=geocoding_data.latitude,
+                longitude=geocoding_data.longitude,
+                display_name=geocoding_data.display_name,
+                osm_type=geocoding_data.osm_type,
+                osm_id=geocoding_data.osm_id,
+            )
+            if geocoding_data
+            else None
+        )
 
         buildings_response = [
             BuildingInfoResponse(
@@ -167,7 +183,7 @@ async def plateau_search_by_address(
                 name_similarity=b.name_similarity,
                 match_reason=b.match_reason,
                 has_lod2=b.has_lod2,
-                has_lod3=b.has_lod3
+                has_lod3=b.has_lod3,
             )
             for b in result["buildings"]
         ]
@@ -178,11 +194,12 @@ async def plateau_search_by_address(
             buildings=buildings_response,
             found_count=len(buildings_response),
             search_mode=result.get("search_mode", "hybrid"),
-            error=None
+            error=None,
         )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"検索エラー: {str(e)}")
 
@@ -197,27 +214,51 @@ async def plateau_search_by_address(
             "content": {
                 "application/octet-stream": {
                     "schema": {"type": "string", "format": "binary"},
-                    "example": "STEP file from PLATEAU building"
+                    "example": "STEP file from PLATEAU building",
                 }
-            }
+            },
         },
         400: {"description": "Invalid parameters or building_ids format"},
-        500: {"description": "Geocoding, PLATEAU API, or conversion error"}
-    }
+        500: {"description": "Geocoding, PLATEAU API, or conversion error"},
+    },
 )
 async def plateau_fetch_and_convert(
     background_tasks: BackgroundTasks,
-    query: str = Form(..., description="住所または施設名 / Address or facility name (e.g., '東京駅')"),
-    radius: float = Form(0.001, description="検索半径（度、約100m） / Search radius in degrees (~100m)"),
-    auto_select_nearest: bool = Form(True, description="最近傍建物を自動選択 / Auto-select nearest building"),
-    building_limit: Union[int, str, None] = Form(None, description="変換する建物数（未指定で無制限） / Max buildings to convert"),
-    building_ids: Optional[str] = Form(None, description="ユーザー選択の建物IDリスト（カンマ区切り） / User-selected building IDs (comma-separated)"),
+    query: str = Form(
+        ..., description="住所または施設名 / Address or facility name (e.g., '東京駅')"
+    ),
+    radius: float = Form(
+        0.001, description="検索半径（度、約100m） / Search radius in degrees (~100m)"
+    ),
+    auto_select_nearest: bool = Form(
+        True, description="最近傍建物を自動選択 / Auto-select nearest building"
+    ),
+    building_limit: Union[int, str, None] = Form(
+        None, description="変換する建物数（未指定で無制限） / Max buildings to convert"
+    ),
+    building_ids: Optional[str] = Form(
+        None,
+        description="ユーザー選択の建物IDリスト（カンマ区切り） / User-selected building IDs (comma-separated)",
+    ),
     debug: bool = Form(False, description="デバッグモード / Debug mode"),
-    method: str = Form("solid", description="変換方式 / Conversion method (solid/auto/sew/extrude)"),
-    auto_reproject: bool = Form(True, description="自動再投影 / Auto-reproject to planar CRS"),
-    precision_mode: str = Form("ultra", description="精度モード / Precision mode (standard/high/maximum/ultra, recommended: ultra)"),
-    shape_fix_level: str = Form("minimal", description="形状修正レベル / Shape fix level (minimal/standard/aggressive/ultra, recommended: minimal)"),
-    merge_building_parts: bool = Form(False, description="BuildingPart結合 / Merge BuildingPart (False recommended for detail preservation)"),
+    method: str = Form(
+        "solid", description="変換方式 / Conversion method (solid/auto/sew/extrude)"
+    ),
+    auto_reproject: bool = Form(
+        True, description="自動再投影 / Auto-reproject to planar CRS"
+    ),
+    precision_mode: str = Form(
+        "ultra",
+        description="精度モード / Precision mode (standard/high/maximum/ultra, recommended: ultra)",
+    ),
+    shape_fix_level: str = Form(
+        "minimal",
+        description="形状修正レベル / Shape fix level (minimal/standard/aggressive/ultra, recommended: minimal)",
+    ),
+    merge_building_parts: bool = Form(
+        False,
+        description="BuildingPart結合 / Merge BuildingPart (False recommended for detail preservation)",
+    ),
 ):
     """
     住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
@@ -251,37 +292,48 @@ async def plateau_fetch_and_convert(
     success = False
     try:
         # Normalize building_limit parameter (handle empty string, "0", or None)
-        normalized_building_limit = normalize_limit_param(building_limit, param_name="building_limit")
+        normalized_building_limit = normalize_limit_param(
+            building_limit, param_name="building_limit"
+        )
 
         # Normalize building_ids parameter (comma-separated string to list)
         normalized_building_ids = parse_csv_ids(building_ids)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/fetch-and-convert")
         print(f"[API] Query: {query}")
         print(f"[API] Radius: {radius} degrees")
-        print(f"[API] Building limit: {normalized_building_limit if normalized_building_limit else 'unlimited'}")
-        print(f"[API] User-selected building IDs: {normalized_building_ids if normalized_building_ids else 'None (auto-select)'}")
-        print(f"{'='*60}\n")
+        print(
+            f"[API] Building limit: {normalized_building_limit if normalized_building_limit else 'unlimited'}"
+        )
+        print(
+            f"[API] User-selected building IDs: {normalized_building_ids if normalized_building_ids else 'None (auto-select)'}"
+        )
+        print(f"{'=' * 60}\n")
 
         # Step 1: Search for buildings
-        search_result = search_buildings_by_address(
-            query=query,
-            radius=radius,
-            limit=normalized_building_limit if auto_select_nearest else None
+        loop = asyncio.get_event_loop()
+        search_result = await loop.run_in_executor(
+            None,
+            partial(
+                search_buildings_by_address,
+                query=query,
+                radius=radius,
+                limit=normalized_building_limit if auto_select_nearest else None,
+            ),
         )
 
         if not search_result["success"]:
             raise HTTPException(
                 status_code=404,
-                detail=search_result.get("error", "建物が見つかりませんでした")
+                detail=search_result.get("error", "建物が見つかりませんでした"),
             )
 
         buildings = search_result["buildings"]
         if not buildings:
             raise HTTPException(
                 status_code=404,
-                detail=f"指定された場所に建物が見つかりませんでした: {query}"
+                detail=f"指定された場所に建物が見つかりませんでした: {query}",
             )
 
         # Step 2: Extract gml:id list from user selection OR smart-selected buildings
@@ -293,7 +345,9 @@ async def plateau_fetch_and_convert(
             # Find LOD information for selected buildings
             for i, bid in enumerate(final_building_ids, 1):
                 # Find matching building in search results to get LOD info
-                matching_building = next((b for b in buildings if b.gml_id == bid), None)
+                matching_building = next(
+                    (b for b in buildings if b.gml_id == bid), None
+                )
                 if matching_building:
                     lod_str = []
                     if matching_building.has_lod3:
@@ -303,20 +357,40 @@ async def plateau_fetch_and_convert(
                     if not lod_str:
                         lod_str.append("LOD1 or lower")
 
-                    height = matching_building.measured_height or matching_building.height or 0
-                    name_str = f'"{matching_building.name}"' if matching_building.name else "unnamed"
+                    height = (
+                        matching_building.measured_height
+                        or matching_building.height
+                        or 0
+                    )
+                    name_str = (
+                        f'"{matching_building.name}"'
+                        if matching_building.name
+                        else "unnamed"
+                    )
                     print(f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)})")
                     print(f"[API LOD INFO]      ID: {bid[:50]}...")
-                    print(f"[API LOD INFO]      Height: {height:.1f}m, Distance: {matching_building.distance_meters:.1f}m")
+                    print(
+                        f"[API LOD INFO]      Height: {height:.1f}m, Distance: {matching_building.distance_meters:.1f}m"
+                    )
                 else:
                     print(f"[API]   {i}. {bid[:50]}... (LOD info unavailable)")
         else:
             # No user selection - fall back to auto-selection from search results
-            selected_buildings = buildings[:normalized_building_limit] if normalized_building_limit else buildings
-            final_building_ids = [b.gml_id for b in selected_buildings]  # Always use gml:id
+            selected_buildings = (
+                buildings[:normalized_building_limit]
+                if normalized_building_limit
+                else buildings
+            )
+            final_building_ids = [
+                b.gml_id for b in selected_buildings
+            ]  # Always use gml:id
 
-            print(f"[API] Auto-selected {len(final_building_ids)} building(s) by smart scoring:")
-            for i, (bid, b) in enumerate(zip(final_building_ids, selected_buildings), 1):
+            print(
+                f"[API] Auto-selected {len(final_building_ids)} building(s) by smart scoring:"
+            )
+            for i, (bid, b) in enumerate(
+                zip(final_building_ids, selected_buildings), 1
+            ):
                 lod_str = []
                 if b.has_lod3:
                     lod_str.append("LOD3")
@@ -327,7 +401,9 @@ async def plateau_fetch_and_convert(
 
                 height = b.measured_height or b.height or 0
                 name_str = f'"{b.name}"' if b.name else "unnamed"
-                print(f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)}) - {height:.1f}m, {b.distance_meters:.1f}m away")
+                print(
+                    f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)}) - {height:.1f}m, {b.distance_meters:.1f}m away"
+                )
                 print(f"[API LOD INFO]      ID: {bid[:30]}...")
 
         # Step 3: Reuse CityGML XML from search results (no re-fetch needed!)
@@ -335,8 +411,7 @@ async def plateau_fetch_and_convert(
 
         if not xml_content:
             raise HTTPException(
-                status_code=500,
-                detail="CityGMLデータの取得に失敗しました"
+                status_code=500, detail="CityGMLデータの取得に失敗しました"
             )
 
         print(f"[API] Reusing CityGML from search results ({len(xml_content):,} bytes)")
@@ -353,25 +428,28 @@ async def plateau_fetch_and_convert(
         output_filename = "plateau_building.step"
         out_path = os.path.join(out_dir, output_filename)
 
-        ok, msg = export_step_from_citygml(
-            gml_path,
-            out_path,
-            limit=None,  # Don't use limit - we filter by building_ids instead
-            debug=debug,
-            method=method,
-            auto_reproject=auto_reproject,
-            precision_mode=precision_mode,
-            shape_fix_level=shape_fix_level,
-            merge_building_parts=merge_building_parts,
-            # Use gml:id filtering (consistent, no mixed ID types)
-            building_ids=final_building_ids,
-            filter_attribute="gml:id",
+        ok, msg = await loop.run_in_executor(
+            None,
+            partial(
+                export_step_from_citygml,
+                gml_path,
+                out_path,
+                limit=None,  # Don't use limit - we filter by building_ids instead
+                debug=debug,
+                method=method,
+                auto_reproject=auto_reproject,
+                precision_mode=precision_mode,
+                shape_fix_level=shape_fix_level,
+                merge_building_parts=merge_building_parts,
+                # Use gml:id filtering (consistent, no mixed ID types)
+                building_ids=final_building_ids,
+                filter_attribute="gml:id",
+            ),
         )
 
         if not ok:
             raise HTTPException(
-                status_code=500,
-                detail=f"STEP変換に失敗しました: {msg}"
+                status_code=500, detail=f"STEP変換に失敗しました: {msg}"
             )
 
         # Step 6: Return STEP file
@@ -400,15 +478,14 @@ async def plateau_fetch_and_convert(
             path=out_path,
             media_type="application/octet-stream",
             filename=output_filename,
-            headers={
-                "Cache-Control": "no-cache"
-            }
+            headers={"Cache-Control": "no-cache"},
         )
 
     except HTTPException:
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
     finally:
@@ -438,19 +515,19 @@ async def plateau_fetch_and_convert(
                             "latitude": 35.681236,
                             "longitude": 139.767125,
                             "height": 45.0,
-                            "has_lod2": True
+                            "has_lod2": True,
                         },
                         "municipality_code": "13101",
                         "municipality_name": "千代田区",
-                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/bldg_53394611_op.gml"
+                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/bldg_53394611_op.gml",
                     }
                 }
-            }
+            },
         },
         400: {"description": "Invalid building ID format"},
         404: {"description": "Building not found in PLATEAU Data Catalog"},
-        500: {"description": "PLATEAU API error or parsing error"}
-    }
+        500: {"description": "PLATEAU API error or parsing error"},
+    },
 )
 async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
     """
@@ -481,13 +558,17 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
     - CityGMLファイル情報を返却 / Returns CityGML file information
     """
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/search-by-id")
         print(f"[API] Building ID: {request.building_id}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Search for building by ID
-        result = search_building_by_id(request.building_id, debug=request.debug)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(search_building_by_id, request.building_id, debug=request.debug),
+        )
 
         if not result["success"]:
             return PlateauBuildingIdSearchResponse(
@@ -498,7 +579,7 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
                 citygml_file=result.get("citygml_file"),
                 total_buildings_in_file=result.get("total_buildings_in_file"),
                 error=result.get("error"),
-                error_details=result.get("error_details")
+                error_details=result.get("error_details"),
             )
 
         # Success: Convert BuildingInfo to BuildingInfoResponse
@@ -517,7 +598,7 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
             name_similarity=building_data.name_similarity,
             match_reason=building_data.match_reason,
             has_lod2=building_data.has_lod2,
-            has_lod3=building_data.has_lod3
+            has_lod3=building_data.has_lod3,
         )
 
         return PlateauBuildingIdSearchResponse(
@@ -528,19 +609,20 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
             citygml_file=result.get("citygml_file"),
             total_buildings_in_file=result["total_buildings_in_file"],
             error=None,
-            error_details=None
+            error_details=None,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return PlateauBuildingIdSearchResponse(
             success=False,
             building=None,
             error="Internal server error",
-            error_details=f"予期しないエラー: {str(e)}"
+            error_details=f"予期しないエラー: {str(e)}",
         )
 
 
@@ -554,14 +636,14 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
             "content": {
                 "application/octet-stream": {
                     "schema": {"type": "string", "format": "binary"},
-                    "example": "STEP file for building 13101-bldg-2287"
+                    "example": "STEP file for building 13101-bldg-2287",
                 }
-            }
+            },
         },
         400: {"description": "Invalid building ID format"},
         404: {"description": "Building not found"},
-        500: {"description": "PLATEAU API error or conversion error"}
-    }
+        500: {"description": "PLATEAU API error or conversion error"},
+    },
 )
 async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
     """
@@ -587,38 +669,40 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
     if not OCCT_AVAILABLE:
         raise HTTPException(
             status_code=503,
-            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。"
+            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。",
         )
 
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/fetch-by-id")
         print(f"[API] Building ID: {request.building_id}")
         print(f"[API] Precision Mode: {request.precision_mode}")
         print(f"[API] Shape Fix Level: {request.shape_fix_level}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID
-        search_result = search_building_by_id(request.building_id, debug=request.debug)
+        loop = asyncio.get_event_loop()
+        search_result = await loop.run_in_executor(
+            None,
+            partial(search_building_by_id, request.building_id, debug=request.debug),
+        )
 
         if not search_result["success"]:
             error_msg = search_result.get("error", "Building not found")
             error_details = search_result.get("error_details", "")
-            raise HTTPException(
-                status_code=404,
-                detail=f"{error_msg}. {error_details}"
-            )
+            raise HTTPException(status_code=404, detail=f"{error_msg}. {error_details}")
 
         # Step 2: Convert to STEP
         citygml_xml = search_result.get("citygml_xml")
         if not citygml_xml:
             raise HTTPException(
-                status_code=500,
-                detail="CityGML data is missing from search result"
+                status_code=500, detail="CityGML data is missing from search result"
             )
 
         # Save CityGML to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.gml', delete=False, encoding='utf-8') as tmp_gml:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".gml", delete=False, encoding="utf-8"
+        ) as tmp_gml:
             tmp_gml.write(citygml_xml)
             tmp_gml_path = tmp_gml.name
 
@@ -628,33 +712,43 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
 
         try:
             # Export to STEP with specified building ID filter
-            success, message = export_step_from_citygml(
-                tmp_gml_path,
-                tmp_step_path,
-                building_ids=[request.building_id],
-                filter_attribute="gml:id",
-                method=request.method,
-                auto_reproject=request.auto_reproject,
-                precision_mode=request.precision_mode,
-                shape_fix_level=request.shape_fix_level,
-                merge_building_parts=request.merge_building_parts,
-                debug=request.debug
+            loop = asyncio.get_event_loop()
+            success, message = await loop.run_in_executor(
+                None,
+                partial(
+                    export_step_from_citygml,
+                    tmp_gml_path,
+                    tmp_step_path,
+                    building_ids=[request.building_id],
+                    filter_attribute="gml:id",
+                    method=request.method,
+                    auto_reproject=request.auto_reproject,
+                    precision_mode=request.precision_mode,
+                    shape_fix_level=request.shape_fix_level,
+                    merge_building_parts=request.merge_building_parts,
+                    debug=request.debug,
+                ),
             )
 
             if not success:
-                raise HTTPException(status_code=500, detail=f"CityGML to STEP conversion failed: {message}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"CityGML to STEP conversion failed: {message}",
+                )
 
             # Verify STEP file exists
             if not os.path.exists(tmp_step_path):
                 raise HTTPException(status_code=500, detail="STEP file was not created")
 
             # Return STEP file
-            print(f"[API] Success: Returning STEP file for building {request.building_id}")
+            print(
+                f"[API] Success: Returning STEP file for building {request.building_id}"
+            )
             return FileResponse(
                 path=tmp_step_path,
                 media_type="application/octet-stream",
                 filename=step_file_name,
-                background=BackgroundTasks()
+                background=BackgroundTasks(),
             )
 
         finally:
@@ -666,6 +760,7 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
 
@@ -689,18 +784,18 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
                             "latitude": 35.681236,
                             "longitude": 139.767125,
                             "height": 45.0,
-                            "has_lod2": True
+                            "has_lod2": True,
                         },
                         "municipality_code": "13101",
-                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/53394511_bldg_6697_op.gml"
+                        "citygml_file": "udx/bldg/13101_tokyo23-ku_2020_citygml_3_op/53394511_bldg_6697_op.gml",
                     }
                 }
-            }
+            },
         },
         400: {"description": "Invalid mesh code format (must be 8 digits)"},
         404: {"description": "Building not found in specified mesh"},
-        500: {"description": "PLATEAU API error"}
-    }
+        500: {"description": "PLATEAU API error"},
+    },
 )
 async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
@@ -730,17 +825,22 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
     - 大量建物の一括処理 / Batch processing of many buildings
     """
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/search-by-id-and-mesh")
         print(f"[API] Building ID: {request.building_id}")
         print(f"[API] Mesh Code: {request.mesh_code}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Search for building by ID + mesh code
-        result = search_building_by_id_and_mesh(
-            request.building_id,
-            request.mesh_code,
-            debug=request.debug
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(
+                search_building_by_id_and_mesh,
+                request.building_id,
+                request.mesh_code,
+                debug=request.debug,
+            ),
         )
 
         if not result["success"]:
@@ -752,7 +852,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
                 citygml_file=None,
                 total_buildings_in_file=result.get("total_buildings_in_mesh"),
                 error=result.get("error"),
-                error_details=result.get("error_details")
+                error_details=result.get("error_details"),
             )
 
         # Success: Convert BuildingInfo to BuildingInfoResponse
@@ -771,7 +871,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
             name_similarity=building_data.name_similarity,
             match_reason=building_data.match_reason,
             has_lod2=building_data.has_lod2,
-            has_lod3=building_data.has_lod3
+            has_lod3=building_data.has_lod3,
         )
 
         return PlateauBuildingIdSearchResponse(
@@ -782,19 +882,20 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
             citygml_file=None,
             total_buildings_in_file=result["total_buildings_in_mesh"],
             error=None,
-            error_details=None
+            error_details=None,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return PlateauBuildingIdSearchResponse(
             success=False,
             building=None,
             error="Internal server error",
-            error_details=f"予期しないエラー: {str(e)}"
+            error_details=f"予期しないエラー: {str(e)}",
         )
 
 
@@ -818,20 +919,20 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
                                     "gml_id": "bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86",
                                     "latitude": 35.681236,
                                     "longitude": 139.767125,
-                                    "height": 45.0
-                                }
+                                    "height": 45.0,
+                                },
                             }
                         ],
                         "total_requested": 2,
                         "total_success": 1,
-                        "total_failed": 1
+                        "total_failed": 1,
                     }
                 }
-            }
+            },
         },
         400: {"description": "Invalid request (empty list or > 100 buildings)"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
     """
@@ -863,10 +964,10 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
     - 大量建物の一括処理 / Batch processing of many buildings
     """
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/buildings/batch")
         print(f"[API] Total buildings requested: {len(request.buildings)}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         results = []
         total_requested = len(request.buildings)
@@ -882,6 +983,8 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
 
         print(f"[API] Grouped into {len(mesh_groups)} mesh code(s)")
 
+        loop = asyncio.get_event_loop()
+
         # Process each mesh group
         for mesh_code, building_ids in mesh_groups.items():
             print(f"[API] Processing mesh {mesh_code}: {len(building_ids)} buildings")
@@ -889,10 +992,14 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
             for building_id in building_ids:
                 try:
                     # Search for building
-                    result = search_building_by_id_and_mesh(
-                        building_id,
-                        mesh_code,
-                        debug=False
+                    result = await loop.run_in_executor(
+                        None,
+                        partial(
+                            search_building_by_id_and_mesh,
+                            building_id,
+                            mesh_code,
+                            debug=False,
+                        ),
                     )
 
                     if result["success"]:
@@ -912,47 +1019,57 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                             name_similarity=building_data.name_similarity,
                             match_reason=building_data.match_reason,
                             has_lod2=building_data.has_lod2,
-                            has_lod3=building_data.has_lod3
+                            has_lod3=building_data.has_lod3,
                         )
 
-                        results.append(PlateauBuildingIdSearchResponse(
-                            success=True,
-                            building=building_response,
-                            municipality_code=None,
-                            municipality_name=None,
-                            citygml_file=None,
-                            total_buildings_in_file=result.get("total_buildings_in_mesh"),
-                            error=None,
-                            error_details=None
-                        ))
+                        results.append(
+                            PlateauBuildingIdSearchResponse(
+                                success=True,
+                                building=building_response,
+                                municipality_code=None,
+                                municipality_name=None,
+                                citygml_file=None,
+                                total_buildings_in_file=result.get(
+                                    "total_buildings_in_mesh"
+                                ),
+                                error=None,
+                                error_details=None,
+                            )
+                        )
                         total_success += 1
 
                     else:
                         # Failure: Add error response
-                        results.append(PlateauBuildingIdSearchResponse(
+                        results.append(
+                            PlateauBuildingIdSearchResponse(
+                                success=False,
+                                building=None,
+                                municipality_code=None,
+                                municipality_name=None,
+                                citygml_file=None,
+                                total_buildings_in_file=result.get(
+                                    "total_buildings_in_mesh"
+                                ),
+                                error=result.get("error", "Unknown error"),
+                                error_details=result.get("error_details"),
+                            )
+                        )
+                        total_failed += 1
+
+                except Exception as e:
+                    print(f"[API] Error fetching building {building_id}: {str(e)}")
+                    results.append(
+                        PlateauBuildingIdSearchResponse(
                             success=False,
                             building=None,
                             municipality_code=None,
                             municipality_name=None,
                             citygml_file=None,
-                            total_buildings_in_file=result.get("total_buildings_in_mesh"),
-                            error=result.get("error", "Unknown error"),
-                            error_details=result.get("error_details")
-                        ))
-                        total_failed += 1
-
-                except Exception as e:
-                    print(f"[API] Error fetching building {building_id}: {str(e)}")
-                    results.append(PlateauBuildingIdSearchResponse(
-                        success=False,
-                        building=None,
-                        municipality_code=None,
-                        municipality_name=None,
-                        citygml_file=None,
-                        total_buildings_in_file=None,
-                        error="Internal error",
-                        error_details=f"予期しないエラー: {str(e)}"
-                    ))
+                            total_buildings_in_file=None,
+                            error="Internal error",
+                            error_details=f"予期しないエラー: {str(e)}",
+                        )
+                    )
                     total_failed += 1
 
         print(f"[API] Batch complete: {total_success} success, {total_failed} failed")
@@ -961,11 +1078,12 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
             results=results,
             total_requested=total_requested,
             total_success=total_success,
-            total_failed=total_failed
+            total_failed=total_failed,
         )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"バッチ検索エラー: {str(e)}")
 
@@ -980,14 +1098,14 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
             "content": {
                 "application/octet-stream": {
                     "schema": {"type": "string", "format": "binary"},
-                    "example": "STEP file from mesh 53394511"
+                    "example": "STEP file from mesh 53394511",
                 }
-            }
+            },
         },
         400: {"description": "Invalid mesh code format"},
         404: {"description": "Building not found in mesh"},
-        500: {"description": "PLATEAU API or conversion error"}
-    }
+        500: {"description": "PLATEAU API or conversion error"},
+    },
 )
 async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest):
     """
@@ -1013,43 +1131,46 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
     if not OCCT_AVAILABLE:
         raise HTTPException(
             status_code=503,
-            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。"
+            detail="OpenCASCADE が利用できません。STEPファイルの変換には OpenCASCADE が必要です。",
         )
 
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/fetch-by-id-and-mesh")
         print(f"[API] Building ID: {request.building_id}")
         print(f"[API] Mesh Code: {request.mesh_code}")
         print(f"[API] Precision Mode: {request.precision_mode}")
         print(f"[API] Shape Fix Level: {request.shape_fix_level}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID + mesh code
-        search_result = search_building_by_id_and_mesh(
-            request.building_id,
-            request.mesh_code,
-            debug=request.debug
+        loop = asyncio.get_event_loop()
+        search_result = await loop.run_in_executor(
+            None,
+            partial(
+                search_building_by_id_and_mesh,
+                request.building_id,
+                request.mesh_code,
+                debug=request.debug,
+            ),
         )
 
         if not search_result["success"]:
             error_msg = search_result.get("error", "Building not found")
             error_details = search_result.get("error_details", "")
-            raise HTTPException(
-                status_code=404,
-                detail=f"{error_msg}. {error_details}"
-            )
+            raise HTTPException(status_code=404, detail=f"{error_msg}. {error_details}")
 
         # Step 2: Convert to STEP
         citygml_xml = search_result.get("citygml_xml")
         if not citygml_xml:
             raise HTTPException(
-                status_code=500,
-                detail="CityGML data is missing from search result"
+                status_code=500, detail="CityGML data is missing from search result"
             )
 
         # Save CityGML to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.gml', delete=False, encoding='utf-8') as tmp_gml:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".gml", delete=False, encoding="utf-8"
+        ) as tmp_gml:
             tmp_gml.write(citygml_xml)
             tmp_gml_path = tmp_gml.name
 
@@ -1059,33 +1180,42 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
         try:
             # Export to STEP with specified building ID filter
-            success, message = export_step_from_citygml(
-                tmp_gml_path,
-                tmp_step_path,
-                building_ids=[request.building_id],
-                filter_attribute="gml:id",
-                method=request.method,
-                auto_reproject=request.auto_reproject,
-                precision_mode=request.precision_mode,
-                shape_fix_level=request.shape_fix_level,
-                merge_building_parts=request.merge_building_parts,
-                debug=request.debug
+            success, message = await loop.run_in_executor(
+                None,
+                partial(
+                    export_step_from_citygml,
+                    tmp_gml_path,
+                    tmp_step_path,
+                    building_ids=[request.building_id],
+                    filter_attribute="gml:id",
+                    method=request.method,
+                    auto_reproject=request.auto_reproject,
+                    precision_mode=request.precision_mode,
+                    shape_fix_level=request.shape_fix_level,
+                    merge_building_parts=request.merge_building_parts,
+                    debug=request.debug,
+                ),
             )
 
             if not success:
-                raise HTTPException(status_code=500, detail=f"CityGML to STEP conversion failed: {message}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"CityGML to STEP conversion failed: {message}",
+                )
 
             # Verify STEP file exists
             if not os.path.exists(tmp_step_path):
                 raise HTTPException(status_code=500, detail="STEP file was not created")
 
             # Return STEP file
-            print(f"[API] Success: Returning STEP file for building {request.building_id}")
+            print(
+                f"[API] Success: Returning STEP file for building {request.building_id}"
+            )
             return FileResponse(
                 path=tmp_step_path,
                 media_type="application/octet-stream",
                 filename=step_file_name,
-                background=BackgroundTasks()
+                background=BackgroundTasks(),
             )
 
         finally:
@@ -1097,8 +1227,227 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         raise
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+
+
+@router.post(
+    "/api/plateau/unfold-textured-by-id-and-mesh",
+    summary="PLATEAU Textured Unfold by ID + Mesh (Beta)",
+    tags=["PLATEAU Integration"],
+    responses={
+        200: {
+            "description": "JSON response with textured SVG unfold result",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "svg_content": "<svg>...</svg>",
+                        "face_numbers": [{"faceIndex": 0, "faceNumber": 1}],
+                        "texture_mappings": [
+                            {
+                                "faceNumber": 1,
+                                "patternId": "plateau_deadbeef",
+                                "tileCount": 1,
+                                "rotation": 0,
+                            }
+                        ],
+                        "stats": {"page_count": 1},
+                    }
+                }
+            },
+        },
+        404: {"description": "Building not found in specified mesh"},
+        500: {"description": "Conversion or textured unfold generation error"},
+    },
+)
+async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldRequest):
+    """
+    建物ID＋メッシュコードから、建物テクスチャ付き展開図を生成（ベータ）。
+
+    Pipeline:
+    1. Search target building in 1km mesh
+    2. Convert the target building from CityGML to STEP
+    3. Extract ParameterizedTexture from CityGML and map to STEP faces
+    4. Generate unfold SVG (JSON response) using existing StepUnfold pipeline
+    """
+    if not OCCT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenCASCADE が利用できません。展開図生成には OpenCASCADE が必要です。",
+        )
+
+    tmp_gml_path = None
+    tmp_step_path = None
+    output_tmpdir = None
+
+    try:
+        print(f"\n{'=' * 60}")
+        print(f"[API] /api/plateau/unfold-textured-by-id-and-mesh")
+        print(f"[API] Building ID: {request.building_id}")
+        print(f"[API] Mesh Code: {request.mesh_code}")
+        print(
+            f"[API] Layout: {request.layout_mode}, Page: {request.page_format}/{request.page_orientation}"
+        )
+        print(f"{'=' * 60}\n")
+
+        # Step 1: Search building by ID + mesh code
+        loop = asyncio.get_event_loop()
+        search_result = await loop.run_in_executor(
+            None,
+            partial(
+                search_building_by_id_and_mesh,
+                request.building_id,
+                request.mesh_code,
+                debug=request.debug or False,
+            ),
+        )
+        if not search_result["success"]:
+            error_msg = search_result.get("error", "Building not found")
+            error_details = search_result.get("error_details", "")
+            raise HTTPException(status_code=404, detail=f"{error_msg}. {error_details}")
+
+        citygml_xml = search_result.get("citygml_xml")
+        if not citygml_xml:
+            raise HTTPException(
+                status_code=500, detail="CityGML data is missing from search result"
+            )
+
+        # Use resolved gml:id from search result to ensure filtering correctness.
+        building_data = search_result.get("building")
+        target_gml_id = building_data.gml_id if building_data else request.building_id
+        source_urls = search_result.get("citygml_source_urls") or []
+
+        # Step 2: CityGML -> STEP (target building only)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".gml", delete=False, encoding="utf-8"
+        ) as tmp_gml:
+            tmp_gml.write(citygml_xml)
+            tmp_gml_path = tmp_gml.name
+
+        tmp_step_path = os.path.join(
+            tempfile.gettempdir(), f"plateau_textured_unfold_{uuid.uuid4()}.step"
+        )
+
+        success, message = await loop.run_in_executor(
+            None,
+            partial(
+                export_step_from_citygml,
+                tmp_gml_path,
+                tmp_step_path,
+                building_ids=[target_gml_id],
+                filter_attribute="gml:id",
+                method=request.method or "solid",
+                auto_reproject=request.auto_reproject
+                if request.auto_reproject is not None
+                else True,
+                precision_mode=request.precision_mode or "ultra",
+                shape_fix_level=request.shape_fix_level or "minimal",
+                merge_building_parts=request.merge_building_parts or False,
+                debug=request.debug or False,
+            ),
+        )
+        if not success:
+            raise HTTPException(
+                status_code=500, detail=f"CityGML to STEP conversion failed: {message}"
+            )
+        if not os.path.exists(tmp_step_path):
+            raise HTTPException(status_code=500, detail="STEP file was not created")
+
+        # Step 3: Analyze STEP faces and build texture mappings from CityGML appearance
+        generator = StepUnfoldGenerator()
+        load_ok = await loop.run_in_executor(
+            None, partial(generator.load_from_file, tmp_step_path)
+        )
+        if not load_ok:
+            raise HTTPException(
+                status_code=500, detail="Generated STEP file could not be loaded"
+            )
+
+        await loop.run_in_executor(None, generator.analyze_brep_topology)
+        texture_result = await loop.run_in_executor(
+            None,
+            partial(
+                build_plateau_texture_mappings,
+                citygml_xml=citygml_xml,
+                building_gml_id=target_gml_id,
+                step_faces_data=generator.faces_data,
+                source_urls=source_urls,
+                auto_reproject=request.auto_reproject
+                if request.auto_reproject is not None
+                else True,
+            ),
+        )
+        texture_mappings = texture_result.get("texture_mappings") or []
+        if texture_mappings:
+            generator.set_texture_mappings(texture_mappings)
+            print(f"[API] Applied {len(texture_mappings)} texture mappings")
+        else:
+            print(
+                "[API] No texture mappings generated; fallback to non-textured unfold"
+            )
+
+        # Step 4: Generate unfold SVG as JSON response
+        unfold_request = BrepPapercraftRequest(
+            layout_mode=request.layout_mode or "paged",
+            page_format=request.page_format or "A4",
+            page_orientation=request.page_orientation or "portrait",
+            scale_factor=request.scale_factor or 10.0,
+            mirror_horizontal=request.mirror_horizontal or False,
+            max_faces=request.max_faces or 20,
+        )
+
+        output_tmpdir = tempfile.mkdtemp()
+        svg_path = os.path.join(
+            output_tmpdir, f"plateau_textured_unfold_{uuid.uuid4()}.svg"
+        )
+        generated_svg_path, stats = await loop.run_in_executor(
+            None,
+            partial(generator.generate_brep_papercraft, unfold_request, svg_path),
+        )
+
+        with open(generated_svg_path, "r", encoding="utf-8") as f:
+            svg_content = f.read()
+
+        response_data: Dict[str, Any] = {
+            "svg_content": svg_content,
+            "stats": stats,
+            "texture_mappings": texture_mappings,
+            "texture_stats": texture_result.get("stats", {}),
+            "building": {
+                "gml_id": target_gml_id,
+                "mesh_code": request.mesh_code,
+            },
+        }
+
+        if request.return_face_numbers:
+            response_data["face_numbers"] = generator.get_face_numbers()
+
+        combined_warnings = []
+        combined_warnings.extend(texture_result.get("warnings") or [])
+        if stats.get("warnings"):
+            combined_warnings.extend(stats.get("warnings"))
+        if combined_warnings:
+            response_data["warnings"] = combined_warnings
+
+        return response_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")
+    finally:
+        import shutil
+
+        if tmp_gml_path and os.path.exists(tmp_gml_path):
+            os.remove(tmp_gml_path)
+        if tmp_step_path and os.path.exists(tmp_step_path):
+            os.remove(tmp_step_path)
+        if output_tmpdir and os.path.exists(output_tmpdir):
+            shutil.rmtree(output_tmpdir, ignore_errors=True)
 
 
 # --- PLATEAU Mesh to 3D Tiles Converter ---
@@ -1118,17 +1467,17 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                                 "mesh_code": "53394511",
                                 "tileset_url": "https://assets.cms.plateau.reearth.io/assets/.../tileset.json",
                                 "municipality_name": "千代田区",
-                                "municipality_code": "13101"
+                                "municipality_code": "13101",
                             }
                         ],
                         "total_requested": 9,
                         "total_found": 1,
-                        "total_not_found": 8
+                        "total_not_found": 8,
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResponse:
     """
@@ -1176,12 +1525,12 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
     - 同じ市区町村の重複したURLは除外されます
     """
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/mesh-to-tilesets")
         print(f"[API] Mesh Codes: {request.mesh_codes}")
         print(f"[API] LOD: {request.lod}")
         print(f"[API] Prefer no texture: {request.prefer_no_texture}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         if request.municipality_code:
             dataset = await fetch_plateau_dataset_by_municipality(
@@ -1190,13 +1539,17 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                 request.prefer_no_texture,
             )
             if dataset:
-                mesh_code = request.mesh_codes[0] if request.mesh_codes else request.municipality_code
+                mesh_code = (
+                    request.mesh_codes[0]
+                    if request.mesh_codes
+                    else request.municipality_code
+                )
                 tilesets = [
                     TilesetInfo(
                         mesh_code=mesh_code,
                         tileset_url=dataset["tileset_url"],
                         municipality_name=dataset.get("municipality_name"),
-                        municipality_code=request.municipality_code
+                        municipality_code=request.municipality_code,
                     )
                 ]
                 total_requested = len(request.mesh_codes)
@@ -1212,7 +1565,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                     tilesets=tilesets,
                     total_requested=total_requested,
                     total_found=total_found,
-                    total_not_found=total_not_found
+                    total_not_found=total_not_found,
                 )
 
             print(
@@ -1233,7 +1586,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                 mesh_code=data["mesh_code"],
                 tileset_url=data["tileset_url"],
                 municipality_name=data.get("municipality_name"),
-                municipality_code=data.get("municipality_code")
+                municipality_code=data.get("municipality_code"),
             )
             for data in tilesets_data
         ]
@@ -1248,10 +1601,11 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
             tilesets=tilesets,
             total_requested=total_requested,
             total_found=total_found,
-            total_not_found=total_not_found
+            total_not_found=total_not_found,
         )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"予期しないエラー: {str(e)}")

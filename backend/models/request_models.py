@@ -270,6 +270,97 @@ class PlateauBuildingIdWithMeshRequest(BaseModel):
     )
 
 
+class PlateauTexturedUnfoldRequest(BaseModel):
+    """Request to generate textured unfold from PLATEAU building ID + mesh code (beta)."""
+
+    building_id: str = Field(
+        description="建物ID / Building ID (通常はgml:id形式 bldg_...)",
+        min_length=1,
+        example="bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86"
+    )
+    mesh_code: str = Field(
+        description="3次メッシュコード（8桁、1km区画） / 3rd mesh code (8 digits)",
+        pattern="^[0-9]{8}$",
+        example="53394511"
+    )
+    merge_building_parts: Optional[bool] = Field(
+        default=False,
+        description="BuildingPartを結合 / Merge BuildingPart into main building",
+        example=False
+    )
+    precision_mode: Optional[str] = Field(
+        default="ultra",
+        description="精度モード / Precision mode (standard/high/maximum/ultra)",
+        pattern="^(standard|high|maximum|ultra)$",
+        example="ultra"
+    )
+    shape_fix_level: Optional[str] = Field(
+        default="minimal",
+        description="形状修正レベル / Shape fixing level (minimal/standard/aggressive/ultra)",
+        pattern="^(minimal|standard|aggressive|ultra)$",
+        example="minimal"
+    )
+    method: Optional[str] = Field(
+        default="solid",
+        description="変換方法 / Conversion method (solid/sew/extrude/auto)",
+        pattern="^(solid|sew|extrude|auto)$",
+        example="solid"
+    )
+    auto_reproject: Optional[bool] = Field(
+        default=True,
+        description="平面直角座標系へ自動変換 / Auto-reproject to planar CRS",
+        example=True
+    )
+    debug: Optional[bool] = Field(
+        default=False,
+        description="デバッグモード / Debug mode",
+        example=False
+    )
+
+    # Unfold settings (compatible with BrepPapercraftRequest)
+    layout_mode: Optional[str] = Field(
+        default="paged",
+        description="レイアウトモード / Layout mode (canvas/paged)",
+        pattern="^(canvas|paged)$",
+        example="paged"
+    )
+    page_format: Optional[str] = Field(
+        default="A4",
+        description="ページフォーマット / Page format (A4/A3/Letter)",
+        pattern="^(A4|A3|Letter)$",
+        example="A4"
+    )
+    page_orientation: Optional[str] = Field(
+        default="portrait",
+        description="ページ向き / Page orientation (portrait/landscape)",
+        pattern="^(portrait|landscape)$",
+        example="portrait"
+    )
+    scale_factor: Optional[float] = Field(
+        default=10.0,
+        description="縮尺倍率 / Scale factor (例: 150=1/150)",
+        gt=0,
+        example=150.0
+    )
+    mirror_horizontal: Optional[bool] = Field(
+        default=False,
+        description="左右反転モード / Mirror horizontally",
+        example=False
+    )
+    max_faces: Optional[int] = Field(
+        default=20,
+        description="1グループあたりの最大面数 / Maximum faces per group",
+        ge=1,
+        le=100,
+        example=20
+    )
+    return_face_numbers: Optional[bool] = Field(
+        default=True,
+        description="面番号データを返却 / Return face number mapping",
+        example=True
+    )
+
+
 class PlateauBuildingIdSearchResponse(BaseModel):
     """Response from building ID search"""
     success: bool

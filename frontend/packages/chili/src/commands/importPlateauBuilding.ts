@@ -21,6 +21,19 @@ import type { PlateauCesiumPickerResult } from "chili-ui/src/plateauCesiumPicker
 export class ImportPlateauBuilding implements ICommand {
     private cityGMLService: CityGMLService;
 
+    private resolveSearchMeshCode(meshCode: string, rawMeshCode?: string): string {
+        const normalizedRaw = rawMeshCode?.trim();
+        if (normalizedRaw) {
+            if (/^\d{8}$/.test(normalizedRaw)) {
+                return normalizedRaw;
+            }
+            if (/^\d{9,10}$/.test(normalizedRaw)) {
+                return normalizedRaw.slice(0, 8);
+            }
+        }
+        return meshCode;
+    }
+
     constructor() {
         console.log("[ImportPlateauBuilding] Command registered and constructor called");
         // Use the configured API URL from environment
@@ -41,18 +54,64 @@ export class ImportPlateauBuilding implements ICommand {
             }
 
             const buildings = data.selectedBuildings;
+            const action = data.action ?? "import";
             console.log(`[ImportPlateauBuilding] User selected ${buildings.length} building(s):`, buildings);
-
-            // Get or create document
-            let document =
-                application.activeView?.document ??
-                (await application.newDocument("PLATEAU Building Import"));
 
             // Convert and import buildings
             PubSub.default.pub(
                 "showPermanent",
                 async () => {
                     try {
+                        if (action === "unfoldBeta") {
+                            const targetBuilding = buildings[0];
+                            if (!targetBuilding) {
+                                return;
+                            }
+                            if (buildings.length > 1) {
+                                console.warn(
+                                    "[ImportPlateauBuilding] unfoldBeta currently uses first selected building only",
+                                );
+                            }
+
+                            const unfoldOptions = await this.getCurrentUnfoldOptions();
+                            const targetMeshCode = this.resolveSearchMeshCode(
+                                targetBuilding.meshCode,
+                                targetBuilding.properties.meshcode,
+                            );
+                            const unfoldResult = await this.cityGMLService.unfoldTexturedByBuildingIdAndMesh(
+                                targetBuilding.gmlId,
+                                targetMeshCode,
+                                {
+                                    debug: false,
+                                    mergeBuildingParts: false,
+                                    scaleFactor: unfoldOptions.scale,
+                                    layoutMode: unfoldOptions.layoutMode,
+                                    pageFormat: unfoldOptions.pageFormat,
+                                    pageOrientation: unfoldOptions.pageOrientation,
+                                    mirrorHorizontal: unfoldOptions.mirrorHorizontal,
+                                },
+                            );
+
+                            if (!unfoldResult.isOk) {
+                                console.error(
+                                    `[ImportPlateauBuilding] Textured unfold failed:`,
+                                    unfoldResult.error,
+                                );
+                                PubSub.default.pub("showToast", "toast.stepUnfold.error");
+                                return;
+                            }
+
+                            (PubSub.default as any).pub("stepUnfold.showResult", unfoldResult.value);
+                            PubSub.default.pub("showToast", "toast.stepUnfold.success");
+                            console.log("[ImportPlateauBuilding] Textured unfold generated");
+                            return;
+                        }
+
+                        // Import mode (default)
+                        const document =
+                            application.activeView?.document ??
+                            (await application.newDocument("PLATEAU Building Import"));
+
                         PubSub.default.pub(
                             "showToast",
                             "toast.plateau.converting:{0}",
@@ -70,9 +129,13 @@ export class ImportPlateauBuilding implements ICommand {
                             );
 
                             try {
+                                const meshCodeForFetch = this.resolveSearchMeshCode(
+                                    building.meshCode,
+                                    building.properties.meshcode,
+                                );
                                 const result = await this.cityGMLService.fetchAndConvertByBuildingIdAndMesh(
                                     building.gmlId,
-                                    building.meshCode,
+                                    meshCodeForFetch,
                                     {
                                         debug: false,
                                         mergeBuildingParts: false,
@@ -146,8 +209,12 @@ export class ImportPlateauBuilding implements ICommand {
                         });
                     } catch (error) {
                         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                        PubSub.default.pub("showToast", "toast.plateau.importFailed:{0}", errorMessage);
-                        console.error("[ImportPlateauBuilding] Import failed:", error);
+                        if (action === "unfoldBeta") {
+                            PubSub.default.pub("showToast", "toast.stepUnfold.error");
+                        } else {
+                            PubSub.default.pub("showToast", "toast.plateau.importFailed:{0}", errorMessage);
+                        }
+                        console.error("[ImportPlateauBuilding] Process failed:", error);
                     }
                 },
                 "toast.excuting{0}",
@@ -161,5 +228,40 @@ export class ImportPlateauBuilding implements ICommand {
             import("chili-ui/src/react/PlateauCesiumPickerReact"),
         ]);
         cleanup = renderReactDialog(PlateauCesiumPickerReact, { onClose: handleDialogResult });
+    }
+
+    private async getCurrentUnfoldOptions(): Promise<{
+        scale: number;
+        layoutMode: "canvas" | "paged";
+        pageFormat: "A4" | "A3" | "Letter";
+        pageOrientation: "portrait" | "landscape";
+        mirrorHorizontal: boolean;
+    }> {
+        const defaults = {
+            scale: 10,
+            layoutMode: "paged" as const,
+            pageFormat: "A4" as const,
+            pageOrientation: "portrait" as const,
+            mirrorHorizontal: false,
+        };
+
+        try {
+            const { StepUnfoldPanel } = await import("chili-ui");
+            const panel = StepUnfoldPanel.getInstance();
+            if (!panel) {
+                return defaults;
+            }
+            const options = panel.getCurrentOptions();
+            return {
+                scale: options.scale ?? defaults.scale,
+                layoutMode: options.layoutMode ?? defaults.layoutMode,
+                pageFormat: options.pageFormat ?? defaults.pageFormat,
+                pageOrientation: options.pageOrientation ?? defaults.pageOrientation,
+                mirrorHorizontal: options.mirrorHorizontal ?? defaults.mirrorHorizontal,
+            };
+        } catch (error) {
+            console.warn("[ImportPlateauBuilding] Failed to load unfold options; using defaults:", error);
+            return defaults;
+        }
     }
 }

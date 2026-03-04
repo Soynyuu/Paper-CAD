@@ -3,14 +3,13 @@
 
 import { button, div, input, span } from "chili-controls";
 import {
+    I18n,
+    I18nKeys,
     IApplication,
-    IDocument,
     PubSub,
     StepUnfoldService,
     ShapeNode,
-    I18n,
     UnfoldOptions,
-    IView,
 } from "chili-core";
 import { config } from "chili-core/src/config/config";
 import { FaceNumberDisplay } from "chili-three/src/faceNumberDisplay";
@@ -31,22 +30,29 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import panzoom, { PanZoom } from "panzoom";
 import style from "./assemblyPanel.module.css";
 
+type FaceNumberData = Array<{ faceIndex: number; faceNumber: number }>;
+
 export class AssemblyPanel extends HTMLElement {
     private static _instance: AssemblyPanel | null = null;
-    private readonly _app: IApplication;
+
     private readonly _service: StepUnfoldService;
-    private _view3D: HTMLDivElement;
-    private _view2D: HTMLDivElement;
-    private _svgContainer: HTMLDivElement;
-    private _statusBar: HTMLDivElement;
-    private _selectedFaceIndex: number | null = null;
-    private _faceMapping: Map<number, string> = new Map(); // 3D face index to 2D element ID
+    private readonly _view3D: HTMLDivElement;
+    private readonly _view2D: HTMLDivElement;
+    private readonly _svgContainer: HTMLDivElement;
+    private readonly _statusValue: HTMLSpanElement;
+    private readonly _selectedFaceValue: HTMLSpanElement;
+    private readonly _faceCountValue: HTMLSpanElement;
+    private readonly _faceNumberInput: HTMLInputElement;
+    private readonly _view3DLoading: HTMLDivElement;
+    private readonly _view2DLoading: HTMLDivElement;
+
+    private readonly _raycaster: Raycaster = new Raycaster();
+    private readonly _mouse: Vector2 = new Vector2();
+    private readonly _faceElementsByNumber: Map<number, SVGElement[]> = new Map();
+
     private _nodes: ShapeNode[] = [];
-    private _svgContent: string = "";
+    private _selectedFaceNumber: number | null = null;
     private _faceNumberDisplay: FaceNumberDisplay | null = null;
-    private _faceNumberInput: HTMLInputElement | null = null;
-    private _raycaster: Raycaster = new Raycaster();
-    private _mouse: Vector2 = new Vector2();
     private _panzoomInstance: PanZoom | null = null;
 
     // Three.js environment
@@ -57,93 +63,145 @@ export class AssemblyPanel extends HTMLElement {
     private _animationFrameId: number | null = null;
     private _resizeHandler: (() => void) | null = null;
 
-    constructor(app: IApplication) {
+    private _defaultCameraPosition: Vector3 | null = null;
+    private _defaultControlTarget: Vector3 | null = null;
+    private _windowKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
+
+    constructor(_app: IApplication) {
         super();
-        this._app = app;
         AssemblyPanel._instance = this;
 
+        this.className = style.host;
         this._service = new StepUnfoldService(config.stepUnfoldApiUrl);
 
-        this._view3D = div({
-            className: style.view3D,
+        this._view3D = div({ className: style.view3D });
+        this._svgContainer = div({ className: style.svgContainer });
+        this._view2D = div({ className: style.view2D }, this._svgContainer);
+
+        this._view3DLoading = div({ className: style.loadingOverlay });
+        this._view2DLoading = div({ className: style.loadingOverlay });
+
+        this._statusValue = span({
+            className: style.statusValue,
+            textContent: I18n.translate("assembly.ready"),
         });
 
-        this._svgContainer = div({
-            className: style.svgContainer,
+        this._selectedFaceValue = span({
+            className: style.statusValue,
+            textContent: "-",
         });
 
-        this._view2D = div(
-            {
-                className: style.view2D,
-            },
-            this._svgContainer,
-        );
+        this._faceCountValue = span({
+            className: style.statusValue,
+            textContent: "0",
+        });
 
-        this._statusBar = div(
-            {
-                className: style.statusBar,
-            },
-            div(
-                {
-                    className: style.statusItem,
-                },
-                span({ className: style.statusLabel, textContent: I18n.translate("assembly.status") + ":" }),
-                span({ className: style.statusValue, textContent: I18n.translate("assembly.ready") }),
-            ),
-            div(
-                {
-                    className: style.statusItem,
-                },
-                span({
-                    className: style.statusLabel,
-                    textContent: I18n.translate("assembly.selectedFace") + ":",
-                }),
-                span({ className: style.statusValue, textContent: "-", id: "selected-face-display" }),
-            ),
-        );
-
-        this._render();
-        this._setupEventListeners();
-
-        console.log("AssemblyPanel initialized");
-    }
-
-    private _render() {
-        // 面番号入力フィールド
         this._faceNumberInput = input({
             type: "number",
             min: "1",
             className: style.faceNumberInput,
             placeholder: I18n.translate("assembly.enterFaceNumber"),
-            onkeydown: (e: KeyboardEvent) => {
-                if (e.key === "Enter") {
+            onkeydown: (event: KeyboardEvent) => {
+                if (event.key === "Enter" && !event.isComposing) {
+                    event.preventDefault();
                     this._highlightByFaceNumber();
                 }
             },
         }) as HTMLInputElement;
 
-        // 面番号入力グループ
-        const faceNumberInputGroup = div(
-            { className: style.inputGroup },
-            span({ className: style.inputLabel, textContent: I18n.translate("assembly.faceNumberInput") }),
-            this._faceNumberInput,
-            button({
-                textContent: I18n.translate("assembly.highlight"),
-                className: style.highlightButton,
-                onclick: () => this._highlightByFaceNumber(),
-            }),
-        );
+        this._render();
+        this._setupEventListeners();
+    }
 
+    private _render() {
         const closeButton = button({
-            textContent: "✕ " + I18n.translate("assembly.close"),
-            className: style.closeButton,
+            textContent: I18n.translate("assembly.close"),
+            className: `${style.button} ${style.buttonDanger}`,
             onclick: () => this._close(),
         });
 
-        const helpText = div({
-            className: style.helpText,
-            textContent: I18n.translate("assembly.helpText"),
+        const highlightButton = button({
+            textContent: I18n.translate("assembly.highlight"),
+            className: `${style.button} ${style.buttonPrimary}`,
+            onclick: () => this._highlightByFaceNumber(),
         });
+
+        const clearButton = button({
+            textContent: I18n.translate("assembly.clearSelection"),
+            className: `${style.button} ${style.buttonSecondary}`,
+            onclick: () => this._clearSelection(),
+        });
+
+        const reset3DButton = button({
+            textContent: I18n.translate("assembly.reset3DView"),
+            className: `${style.button} ${style.buttonSecondary}`,
+            onclick: () => this._reset3DView(),
+        });
+
+        const zoomOutButton = button({
+            textContent: "−",
+            className: `${style.button} ${style.iconButton}`,
+            title: I18n.translate("assembly.zoomOut"),
+            onclick: () => this._zoom2D(0.85),
+        });
+
+        const zoomInButton = button({
+            textContent: "+",
+            className: `${style.button} ${style.iconButton}`,
+            title: I18n.translate("assembly.zoomIn"),
+            onclick: () => this._zoom2D(1.15),
+        });
+
+        const reset2DButton = button({
+            textContent: I18n.translate("assembly.reset2DView"),
+            className: `${style.button} ${style.buttonSecondary}`,
+            onclick: () => this._reset2DView(),
+        });
+
+        const statusBar = div(
+            { className: style.statusBar },
+            div(
+                { className: style.statusItem },
+                span({ className: style.statusLabel, textContent: I18n.translate("assembly.status") + ":" }),
+                this._statusValue,
+            ),
+            div(
+                { className: style.statusItem },
+                span({
+                    className: style.statusLabel,
+                    textContent: I18n.translate("assembly.selectedFace") + ":",
+                }),
+                this._selectedFaceValue,
+            ),
+            div(
+                { className: style.statusItem },
+                span({
+                    className: style.statusLabel,
+                    textContent: I18n.translate("assembly.faceCount") + ":",
+                }),
+                this._faceCountValue,
+            ),
+        );
+
+        const faceInputGroup = div(
+            { className: style.controlGroup },
+            span({ className: style.inputLabel, textContent: I18n.translate("assembly.faceNumberInput") }),
+            this._faceNumberInput,
+            highlightButton,
+            clearButton,
+        );
+
+        const viewControlGroup = div(
+            { className: style.controlGroup },
+            reset3DButton,
+            zoomOutButton,
+            zoomInButton,
+            reset2DButton,
+        );
+
+        const view3DBody = div({ className: style.viewBody }, this._view3D, this._view3DLoading);
+
+        const view2DBody = div({ className: style.viewBody }, this._view2D, this._view2DLoading);
 
         this.append(
             div(
@@ -151,37 +209,49 @@ export class AssemblyPanel extends HTMLElement {
                 div(
                     { className: style.header },
                     div(
-                        { className: style.title },
-                        span({ className: style.titleIcon, textContent: "🔧" }),
-                        span({ textContent: I18n.translate("assembly.title") }),
+                        { className: style.titleBlock },
+                        span({ className: style.title, textContent: I18n.translate("assembly.title") }),
+                        span({
+                            className: style.subtitle,
+                            textContent: I18n.translate("assembly.helpText"),
+                        }),
                     ),
-                    div({ className: style.controls }, faceNumberInputGroup, helpText, closeButton),
+                    closeButton,
+                ),
+                div(
+                    { className: style.toolbar },
+                    div({ className: style.toolbarLeft }, faceInputGroup, viewControlGroup),
+                    span({
+                        className: style.toolbarHint,
+                        textContent: I18n.translate("assembly.shortcutHint"),
+                    }),
                 ),
                 div(
                     { className: style.content },
                     div(
-                        { className: style.viewContainer },
+                        { className: style.viewPanel },
                         div({ className: style.viewHeader }, I18n.translate("assembly.3dModel")),
-                        this._view3D,
+                        view3DBody,
                     ),
                     div(
-                        { className: style.viewContainer },
+                        { className: style.viewPanel },
                         div({ className: style.viewHeader }, I18n.translate("assembly.2dUnfold")),
-                        this._view2D,
+                        view2DBody,
                     ),
                 ),
-                this._statusBar,
+                statusBar,
             ),
         );
     }
 
     private _setupEventListeners() {
-        // Listen for assembly mode activation
-        PubSub.default.sub("assemblyMode.showPanel", async (data: any) => {
-            await this._initialize(data);
-        });
+        PubSub.default.sub(
+            "assemblyMode.showPanel",
+            async (data: { nodes: ShapeNode[]; stepData: Blob }) => {
+                await this._initialize(data);
+            },
+        );
 
-        // Setup 3D view click handler
         this._view3D.addEventListener("click", (event) => {
             this._handle3DClick(event);
         });
@@ -190,145 +260,144 @@ export class AssemblyPanel extends HTMLElement {
     private async _initialize(data: { nodes: ShapeNode[]; stepData: Blob }) {
         this._nodes = data.nodes;
 
-        // Remove existing panel if any
         const existingPanel = document.querySelector("chili-assembly-panel");
         if (existingPanel && existingPanel !== this) {
-            console.log("Removing existing assembly panel");
             existingPanel.remove();
         }
 
-        // Show the panel with explicit styles
-        this.style.display = "block";
-        this.style.position = "fixed";
-        this.style.top = "0";
-        this.style.left = "0";
-        this.style.width = "100vw";
-        this.style.height = "100vh";
-        this.style.zIndex = "9999";
-
-        // Add to DOM if not already connected
         if (!this.isConnected) {
             document.body.appendChild(this);
         }
-        console.log("Assembly panel added to DOM:", this.isConnected);
 
-        // Initialize 3D view with the current document's view
+        this._attachWindowListeners();
+        this._clearSelection();
+        this._updateFaceCount(0);
+        this._prepareFreshViews();
+
+        this._setLoading(this._view3DLoading, true, "assembly.loadingModel");
+        this._setLoading(this._view2DLoading, true, "assembly.loadingUnfold");
+        this._setStatus("assembly.loadingModel");
+
         await this._setup3DView();
+        const unfoldReady = await this._generateUnfold(data.stepData);
+        if (unfoldReady) {
+            this._setStatus("assembly.ready");
+        }
+    }
 
-        // Generate and display 2D unfold
-        await this._generateUnfold(data.stepData);
+    private _prepareFreshViews() {
+        this._disposePanzoom();
+        this._dispose3DView();
 
-        console.log("Assembly mode initialized with nodes:", this._nodes);
+        this._view3D.replaceChildren();
+        this._svgContainer.replaceChildren();
+
+        this._faceElementsByNumber.clear();
+        this._faceNumberInput.value = "";
     }
 
     private async _setup3DView() {
         try {
-            // Wait for DOM to be fully rendered
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            // Get actual dimensions
             const width = this._view3D.clientWidth || 800;
             const height = this._view3D.clientHeight || 600;
 
-            console.log(`3D view dimensions: ${width}x${height}`);
-
-            // Create new Three.js scene
             this._scene = new Scene();
-            this._scene.background = null; // Transparent background
 
-            // Create camera
             const aspect = width / height;
             this._camera = new PerspectiveCamera(50, aspect, 0.1, 10000);
             this._camera.position.set(5, 5, 5);
 
-            // Create renderer
             this._renderer = new WebGLRenderer({ antialias: true, alpha: true });
             this._renderer.setSize(width, height);
             this._renderer.setPixelRatio(window.devicePixelRatio);
             this._view3D.appendChild(this._renderer.domElement);
 
-            // Create orbit controls
             this._controls = new OrbitControls(this._camera, this._renderer.domElement);
             this._controls.enableDamping = true;
-            this._controls.dampingFactor = 0.05;
+            this._controls.dampingFactor = 0.06;
 
-            // Add lights
-            const ambientLight = new AmbientLight(0xffffff, 0.5);
-            this._scene.add(ambientLight);
-
-            const directionalLight = new DirectionalLight(0xffffff, 0.8);
+            this._scene.add(new AmbientLight(0xffffff, 0.58));
+            const directionalLight = new DirectionalLight(0xffffff, 0.82);
             directionalLight.position.set(5, 10, 7.5);
             this._scene.add(directionalLight);
 
-            // Add shape meshes from selected nodes
             const boundingBox = new Box3();
+            let firstShape: any = null;
+
             for (const node of this._nodes) {
-                if (node instanceof ShapeNode) {
-                    const shapeResult = node.shape;
-                    if (shapeResult && shapeResult.isOk) {
-                        const shape = shapeResult.value;
+                const shapeResult = node.shape;
+                if (!shapeResult?.isOk) {
+                    continue;
+                }
 
-                        // Get mesh data and create Three.js geometries
-                        const meshData = shape.mesh;
+                const shape = shapeResult.value;
+                if (!firstShape) {
+                    firstShape = shape;
+                }
 
-                        // Create face geometry
-                        if (meshData.faces) {
-                            const faceMesh = ThreeGeometryFactory.createFaceGeometry(meshData.faces);
-                            this._scene.add(faceMesh);
-                            faceMesh.geometry.computeBoundingBox();
-                            if (faceMesh.geometry.boundingBox) {
-                                boundingBox.union(faceMesh.geometry.boundingBox);
-                            }
-                        }
+                const meshData = shape.mesh;
 
-                        // Create edge geometry
-                        if (meshData.edges) {
-                            const edgeMesh = ThreeGeometryFactory.createEdgeGeometry(meshData.edges);
-                            this._scene.add(edgeMesh);
-                        }
-
-                        // Create FaceNumberDisplay
-                        this._faceNumberDisplay = new FaceNumberDisplay();
-                        this._faceNumberDisplay.generateFromShape(shape);
-                        this._faceNumberDisplay.setVisible(true);
-                        this._scene.add(this._faceNumberDisplay);
+                if (meshData.faces) {
+                    const faceMesh = ThreeGeometryFactory.createFaceGeometry(meshData.faces);
+                    this._scene.add(faceMesh);
+                    faceMesh.geometry.computeBoundingBox();
+                    if (faceMesh.geometry.boundingBox) {
+                        boundingBox.union(faceMesh.geometry.boundingBox);
                     }
+                }
+
+                if (meshData.edges) {
+                    const edgeMesh = ThreeGeometryFactory.createEdgeGeometry(meshData.edges);
+                    this._scene.add(edgeMesh);
                 }
             }
 
-            // Fit camera to view all objects
+            if (firstShape) {
+                this._faceNumberDisplay = new FaceNumberDisplay();
+                this._faceNumberDisplay.generateFromShape(firstShape);
+                this._faceNumberDisplay.setVisible(true);
+                this._scene.add(this._faceNumberDisplay);
+            }
+
             if (!boundingBox.isEmpty()) {
                 const center = boundingBox.getCenter(new Vector3());
                 const size = boundingBox.getSize(new Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const fov = this._camera.fov * (Math.PI / 180);
+
                 let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-                cameraZ *= 1.5; // Add some padding
+                cameraZ *= 1.45;
 
                 this._camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
                 this._camera.lookAt(center);
                 this._controls.target.copy(center);
                 this._controls.update();
+
+                this._defaultCameraPosition = this._camera.position.clone();
+                this._defaultControlTarget = center.clone();
             }
 
-            // Setup resize handler
             this._resizeHandler = () => {
-                if (this._camera && this._renderer) {
-                    const width = this._view3D.clientWidth || 800;
-                    const height = this._view3D.clientHeight || 600;
-                    this._camera.aspect = width / height;
-                    this._camera.updateProjectionMatrix();
-                    this._renderer.setSize(width, height);
+                if (!this._camera || !this._renderer) {
+                    return;
                 }
+
+                const nextWidth = this._view3D.clientWidth || 800;
+                const nextHeight = this._view3D.clientHeight || 600;
+                this._camera.aspect = nextWidth / nextHeight;
+                this._camera.updateProjectionMatrix();
+                this._renderer.setSize(nextWidth, nextHeight);
             };
             window.addEventListener("resize", this._resizeHandler);
 
-            // Start animation loop
             this._animate();
-
-            console.log("3D view setup complete with", this._nodes.length, "nodes");
         } catch (error) {
             console.error("Failed to setup 3D view:", error);
+            PubSub.default.pub("showToast", "toast.assemblyMode.error");
+        } finally {
+            this._setLoading(this._view3DLoading, false, "assembly.loadingModel");
         }
     }
 
@@ -344,9 +413,10 @@ export class AssemblyPanel extends HTMLElement {
         }
     };
 
-    private async _generateUnfold(stepData: Blob) {
+    private async _generateUnfold(stepData: Blob): Promise<boolean> {
+        this._setStatus("assembly.loadingUnfold");
+
         try {
-            // Generate unfold with face numbers
             const options: UnfoldOptions = {
                 scale: 1,
                 layoutMode: "paged",
@@ -356,403 +426,355 @@ export class AssemblyPanel extends HTMLElement {
             };
 
             const result = await this._service.unfoldStepFromData(stepData, options);
-
-            if (result.isOk) {
-                const responseData = result.value as any;
-                console.log("🔍 API Response structure:", {
-                    hasResponse: !!responseData,
-                    keys: Object.keys(responseData || {}),
-                    hasSvgContent: "svg_content" in (responseData || {}),
-                    hasSvgContentCamel: "svgContent" in (responseData || {}),
-                    hasFaceNumbers: "face_numbers" in (responseData || {}),
-                    hasFaceNumbersCamel: "faceNumbers" in (responseData || {}),
-                });
-
-                this._svgContent = responseData.svg_content || responseData.svgContent || "";
-                console.log("🔍 SVG Content length:", this._svgContent.length);
-                if (this._svgContent.length > 0) {
-                    console.log(
-                        "🔍 SVG Content preview (first 200 chars):",
-                        this._svgContent.substring(0, 200),
-                    );
-                } else {
-                    console.error("❌ SVG content is empty!");
-                }
-
-                // Display SVG
-                this._displaySVG(this._svgContent);
-
-                // Setup face mapping
-                const faceNumbers = responseData.face_numbers || responseData.faceNumbers;
-                if (faceNumbers) {
-                    this._setupFaceMapping(faceNumbers);
-
-                    // Set face numbers to FaceNumberDisplay for 3D highlighting
-                    if (this._faceNumberDisplay) {
-                        this._faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
-                        console.log("Face numbers set to FaceNumberDisplay:", faceNumbers);
-                    }
-                }
-
-                console.log("Unfold generated successfully");
-            } else {
-                console.error("Failed to generate unfold:", result.error);
+            if (!result.isOk) {
                 PubSub.default.pub("showToast", "toast.assemblyMode.unfoldError");
+                this._showEmptySVGState(I18n.translate("toast.assemblyMode.unfoldError"));
+                this._setStatus("toast.assemblyMode.unfoldError");
+                return false;
             }
+
+            const responseData = result.value as {
+                svg_content?: string;
+                svgContent?: string;
+                face_numbers?: FaceNumberData;
+                faceNumbers?: FaceNumberData;
+            };
+
+            const svgContent = responseData.svg_content ?? responseData.svgContent ?? "";
+            if (!svgContent.trim()) {
+                this._showEmptySVGState(I18n.translate("toast.assemblyMode.unfoldError"));
+                this._setStatus("toast.assemblyMode.unfoldError");
+                return false;
+            }
+
+            this._displaySVG(svgContent);
+
+            const faceNumbers = responseData.face_numbers ?? responseData.faceNumbers;
+            if (faceNumbers && this._faceNumberDisplay) {
+                this._faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
+            }
+
+            const faceCount = Math.max(
+                this._faceElementsByNumber.size,
+                this._faceNumberDisplay?.getAllFaceNumbers().length ?? 0,
+            );
+            this._updateFaceCount(faceCount);
+            return true;
         } catch (error) {
             console.error("Error generating unfold:", error);
+            PubSub.default.pub("showToast", "toast.assemblyMode.unfoldError");
+            this._showEmptySVGState(I18n.translate("toast.assemblyMode.unfoldError"));
+            this._setStatus("toast.assemblyMode.unfoldError");
+            return false;
+        } finally {
+            this._setLoading(this._view2DLoading, false, "assembly.loadingUnfold");
         }
     }
 
     private _displaySVG(svgContent: string) {
-        console.log("🔍 _displaySVG called");
-        console.log("🔍 SVG container dimensions:", {
-            width: this._svgContainer.clientWidth,
-            height: this._svgContainer.clientHeight,
-            offsetWidth: this._svgContainer.offsetWidth,
-            offsetHeight: this._svgContainer.offsetHeight,
-        });
-        console.log("🔍 SVG content length:", svgContent.length);
+        this._svgContainer.replaceChildren();
+        this._faceElementsByNumber.clear();
 
-        if (!svgContent || svgContent.length === 0) {
-            console.error("❌ Cannot display SVG: content is empty");
-            this._svgContainer.innerHTML =
-                '<div style="padding: 20px; color: red;">Error: SVG content is empty</div>';
+        const wrapper = document.createElement("div");
+        wrapper.className = style.svgContent;
+        wrapper.innerHTML = svgContent;
+
+        const svg = wrapper.querySelector("svg");
+        if (!svg) {
+            this._showEmptySVGState(I18n.translate("toast.assemblyMode.unfoldError"));
             return;
         }
 
-        // Clear existing content
-        this._svgContainer.innerHTML = "";
-
-        // Create a wrapper for the SVG
-        const wrapper = document.createElement("div");
-        wrapper.innerHTML = svgContent;
-        console.log("🔍 Wrapper created, children count:", wrapper.children.length);
-
-        // Make SVG responsive
-        const svg = wrapper.querySelector("svg");
-        if (svg) {
-            console.log("🔍 SVG element found");
-            console.log("🔍 SVG original attributes:", {
-                width: svg.getAttribute("width"),
-                height: svg.getAttribute("height"),
-                viewBox: svg.getAttribute("viewBox"),
-            });
-            svg.setAttribute("width", "100%");
-            svg.setAttribute("height", "100%");
-            svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-            console.log("🔍 SVG attributes updated");
-        } else {
-            console.error("❌ No SVG element found in content");
-            console.log("🔍 Wrapper HTML preview:", wrapper.innerHTML.substring(0, 500));
-        }
+        svg.setAttribute("width", "100%");
+        svg.setAttribute("height", "100%");
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
         this._svgContainer.appendChild(wrapper);
-        console.log("🔍 SVG wrapper appended to container");
-
-        // Initialize panzoom for interactive zoom/pan
-        if (svg) {
-            // Dispose existing panzoom instance if any
-            if (this._panzoomInstance) {
-                this._panzoomInstance.dispose();
-                this._panzoomInstance = null;
-            }
-
-            // Create new panzoom instance on the wrapper div instead of SVG
-            // This allows SVG elements to receive click events normally
-            const wrapper = svg.parentElement;
-            if (wrapper) {
-                this._panzoomInstance = panzoom(svg, {
-                    maxZoom: 10,
-                    minZoom: 0.1,
-                    initialZoom: 1,
-                    zoomSpeed: 0.1,
-                    smoothScroll: false,
-                    bounds: true,
-                    boundsPadding: 0.1,
-                    // Use beforeWheel to always allow zoom, but filter mousedown for panning
-                    beforeMouseDown: function (e) {
-                        const target = e.target as SVGElement;
-                        const className =
-                            typeof target.className === "string"
-                                ? target.className
-                                : target.className.baseVal;
-                        console.log("🐭 Mouse down on:", target.tagName, "class:", className);
-
-                        // Allow panning only when NOT clicking on face polygons
-                        const shouldPreventPan = className.includes("face-polygon");
-
-                        if (shouldPreventPan) {
-                            console.log("🚫 Preventing pan to allow click on face polygon");
-                            return false;
-                        }
-                        console.log("✅ Allowing pan");
-                        return true;
-                    },
-                });
-            }
-
-            console.log("🔍 Panzoom initialized for SVG");
-        }
-
-        // Add click handlers to SVG elements
+        this._initializePanZoom(svg);
         this._setupSVGInteraction();
     }
 
-    private _setupFaceMapping(faceNumbers: Array<{ faceIndex: number; faceNumber: number }>) {
-        // Create mapping between 3D face indices and 2D SVG elements
-        faceNumbers.forEach(({ faceIndex, faceNumber }) => {
-            // SVG elements might have IDs like "face-1", "face-2", etc.
-            this._faceMapping.set(faceIndex, `face-${faceNumber}`);
-        });
+    private _initializePanZoom(svg: SVGElement) {
+        this._disposePanzoom();
 
-        console.log("Face mapping established:", this._faceMapping);
+        this._panzoomInstance = panzoom(svg, {
+            maxZoom: 10,
+            minZoom: 0.1,
+            initialZoom: 1,
+            zoomSpeed: 0.1,
+            smoothScroll: false,
+            bounds: true,
+            boundsPadding: 0.15,
+            beforeMouseDown: (event) => {
+                const target = event.target as Element | null;
+                if (!target) {
+                    return true;
+                }
+
+                return !target.classList.contains(style.interactiveFace);
+            },
+        });
     }
 
     private _setupSVGInteraction() {
-        console.log("🔧 Setting up SVG interaction handlers");
+        const faceSelector =
+            "path.face-polygon, path.face-polygon-textured, polygon.face-polygon, polygon.face-polygon-textured";
 
-        // Add hover and click effects to SVG faces
-        // Only select face polygons, not tabs or other elements
-        const svgFaces = this._svgContainer.querySelectorAll(
-            "path.face-polygon, path.face-polygon-textured, polygon.face-polygon, polygon.face-polygon-textured",
-        );
-
-        console.log(`📊 Found ${svgFaces.length} SVG face elements to set up`);
-
-        // Debug: log all SVG elements to see what we have
-        const allSvgElements = this._svgContainer.querySelectorAll("path, polygon");
-        console.log(`📊 Total SVG path/polygon elements: ${allSvgElements.length}`);
-        allSvgElements.forEach((el, idx) => {
-            const svgEl = el as SVGElement;
-            const className =
-                typeof svgEl.className === "string" ? svgEl.className : svgEl.className.baseVal;
-            console.log(
-                `  Element ${idx}: <${svgEl.tagName}> classes="${className}" data-face-number="${svgEl.getAttribute("data-face-number")}"`,
-            );
-        });
+        let svgFaces = Array.from(this._svgContainer.querySelectorAll<SVGElement>(faceSelector));
+        if (svgFaces.length === 0) {
+            svgFaces = Array.from(this._svgContainer.querySelectorAll<SVGElement>("[data-face-number]"));
+        }
 
         svgFaces.forEach((element, index) => {
-            // Add data attributes for identification
-            element.setAttribute("data-face-index", index.toString());
+            const faceNumber = this._resolveFaceNumber(element, index);
+            element.setAttribute("data-face-number", faceNumber.toString());
+            element.classList.add(style.interactiveFace);
 
-            // Use backend's data-face-number if available, otherwise fallback to index + 1
-            let faceNumber: number;
-            const existingFaceNumber = element.getAttribute("data-face-number");
-            if (existingFaceNumber) {
-                faceNumber = parseInt(existingFaceNumber, 10);
-                console.log(`SVG element ${index}: Using backend face number ${faceNumber}`);
-            } else {
-                // Fallback: Use index + 1 for backward compatibility
-                faceNumber = index + 1;
-                element.setAttribute("data-face-number", faceNumber.toString());
-                console.log(`SVG element ${index}: Fallback to index-based face number ${faceNumber}`);
-            }
+            const faces = this._faceElementsByNumber.get(faceNumber) ?? [];
+            faces.push(element);
+            this._faceElementsByNumber.set(faceNumber, faces);
 
-            // Add hover effect
-            element.addEventListener("mouseenter", () => {
-                (element as SVGElement).style.opacity = "0.7";
-                (element as SVGElement).style.cursor = "pointer";
-            });
-
-            element.addEventListener("mouseleave", () => {
-                if (!element.classList.contains("highlighted")) {
-                    (element as SVGElement).style.opacity = "1";
-                }
-            });
-
-            // Add click handler
-            element.addEventListener("click", (e) => {
-                console.log(`🖱️ 2D SVG face clicked: ${faceNumber}`);
-                e.stopPropagation(); // Prevent event bubbling
+            element.addEventListener("click", (event) => {
+                event.stopPropagation();
                 this._handle2DClick(faceNumber);
             });
-
-            console.log(`  ✅ Registered click handler for face ${faceNumber} (element ${index})`);
         });
+    }
 
-        console.log(`🔧 SVG interaction setup complete: ${svgFaces.length} faces registered`);
+    private _resolveFaceNumber(element: SVGElement, fallbackIndex: number): number {
+        const rawValue = element.getAttribute("data-face-number");
+        if (rawValue) {
+            const parsed = Number.parseInt(rawValue, 10);
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+
+        return fallbackIndex + 1;
     }
 
     private _handle3DClick(event: MouseEvent) {
-        console.log(`🖱️ 3D view clicked`);
-
-        // Use raycasting to detect which face was clicked
-        if (!this._scene || !this._camera) {
-            console.warn("Scene or camera not available for 3D click");
+        if (!this._scene || !this._camera || !this._faceNumberDisplay) {
             return;
         }
 
         const rect = this._view3D.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+            return;
+        }
+
         this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Perform raycasting
         this._raycaster.setFromCamera(this._mouse, this._camera);
         const intersects = this._raycaster.intersectObjects(this._scene.children, true);
+        const faceHit = intersects.find((intersect) => typeof intersect.faceIndex === "number");
 
-        console.log(`🎯 Raycasting found ${intersects.length} intersections`);
-
-        if (intersects.length > 0) {
-            const intersect = intersects[0];
-            console.log(`🎯 First intersection:`, {
-                object: intersect.object.type,
-                hasFace: !!intersect.face,
-                faceIndex: intersect.faceIndex,
-            });
-
-            // Try to get face number from the intersected object
-            if (intersect.face && this._faceNumberDisplay) {
-                const faceIndex = intersect.faceIndex ?? 0;
-                const faceNumber = this._faceNumberDisplay.getFaceNumberByIndex(faceIndex);
-                if (faceNumber !== undefined) {
-                    console.log(`✅ 3D face clicked: index=${faceIndex}, number=${faceNumber}`);
-                    this._highlightFace(faceNumber);
-                } else {
-                    console.warn(`❌ Could not find face number for face index ${faceIndex}`);
-                }
-            } else {
-                console.warn(`❌ No face or FaceNumberDisplay available`);
-            }
-        } else {
-            console.log(`ℹ️ No 3D object clicked (empty space)`);
+        if (!faceHit || faceHit.faceIndex === undefined) {
+            return;
         }
-    }
 
-    private _handle2DClick(faceNumber: number) {
-        // Highlight the corresponding face in both 2D and 3D
-        console.log(`2D SVG face ${faceNumber} clicked`);
+        const faceIndex = faceHit.faceIndex;
+        if (faceIndex === undefined || faceIndex === null) {
+            return;
+        }
+
+        const faceNumber = this._faceNumberDisplay.getFaceNumberByIndex(faceIndex);
+        if (faceNumber === undefined) {
+            return;
+        }
+
         this._highlightFace(faceNumber);
     }
 
-    /**
-     * 面番号入力フィールドからハイライト
-     */
-    private _highlightByFaceNumber() {
-        if (!this._faceNumberInput) return;
+    private _handle2DClick(faceNumber: number) {
+        this._highlightFace(faceNumber);
+    }
 
-        const faceNumber = parseInt(this._faceNumberInput.value);
-        if (isNaN(faceNumber) || faceNumber < 1) {
+    private _highlightByFaceNumber() {
+        const faceNumber = Number.parseInt(this._faceNumberInput.value, 10);
+        if (Number.isNaN(faceNumber) || faceNumber < 1) {
             PubSub.default.pub("showToast", "toast.assemblyMode.invalidFaceNumber");
             return;
         }
 
-        console.log(`Highlighting face number: ${faceNumber}`);
         this._highlightFace(faceNumber);
     }
 
-    /**
-     * 指定された面番号をハイライト（3DとSVG両方）
-     */
     private _highlightFace(faceNumber: number) {
-        console.log(`🎨 Highlighting face number: ${faceNumber}`);
-
-        // Clear previous highlights
-        this._clearHighlights();
-
-        // Update status
-        this._selectedFaceIndex = faceNumber - 1; // Convert to 0-indexed
-        const statusValue = document.getElementById("selected-face-display");
-        if (statusValue) {
-            statusValue.textContent = `Face ${faceNumber}`;
+        if (!this._isFaceAvailable(faceNumber)) {
+            PubSub.default.pub("showToast", "toast.assemblyMode.faceNotFound:{0}", faceNumber.toString());
+            return;
         }
 
-        // Highlight in 3D view using FaceNumberDisplay
+        this._clearHighlights(false);
+
         if (this._faceNumberDisplay) {
             this._faceNumberDisplay.highlightFace(faceNumber);
-            console.log(`✅ 3D face ${faceNumber} highlighted via FaceNumberDisplay`);
-        } else {
-            console.warn("❌ FaceNumberDisplay not available for 3D highlighting");
         }
 
-        // Highlight in 2D view (SVG)
         this._highlightSVGFace(faceNumber);
+        this._selectedFaceNumber = faceNumber;
+        this._selectedFaceValue.textContent = faceNumber.toString();
+        this._faceNumberInput.value = faceNumber.toString();
+        this._setStatus("assembly.faceSelected:{0}", faceNumber.toString());
     }
 
-    /**
-     * SVG展開図の指定された面をハイライト
-     */
     private _highlightSVGFace(faceNumber: number) {
-        console.log(`🔍 Searching for SVG face ${faceNumber}`);
-
-        // Try to find SVG element by data-face-number attribute
-        const svgElement = this._svgContainer.querySelector(`[data-face-number="${faceNumber}"]`);
-        if (svgElement) {
-            svgElement.classList.add("highlighted");
-            (svgElement as SVGElement).style.fill = "rgba(255, 220, 0, 0.5)";
-            (svgElement as SVGElement).style.stroke = "#ffa500";
-            (svgElement as SVGElement).style.strokeWidth = "3";
-            console.log(`✅ 2D SVG face ${faceNumber} highlighted by data-face-number`);
-        } else {
-            console.log(`⚠️ No element found with data-face-number="${faceNumber}", trying fallback`);
-            // Fallback: highlight by index (faceNumber - 1)
-            const svgElements = this._svgContainer.querySelectorAll("path, polygon");
-            console.log(`📊 Found ${svgElements.length} total SVG path/polygon elements`);
-            if (svgElements[faceNumber - 1]) {
-                const element = svgElements[faceNumber - 1] as SVGElement;
-                element.classList.add("highlighted");
-                element.style.fill = "rgba(255, 220, 0, 0.5)";
-                element.style.stroke = "#ffa500";
-                element.style.strokeWidth = "3";
-                console.log(
-                    `✅ 2D SVG face ${faceNumber} highlighted (fallback by index ${faceNumber - 1})`,
-                );
-            } else {
-                console.warn(
-                    `❌ Could not find SVG element for face ${faceNumber} (index ${faceNumber - 1} out of ${svgElements.length})`,
-                );
-            }
+        const elements = this._faceElementsByNumber.get(faceNumber);
+        if (!elements || elements.length === 0) {
+            return;
         }
-    }
 
-    private _highlightCorrespondingFace(faceIndex: number, source: "2d" | "3d") {
-        // Convert faceIndex to faceNumber (1-indexed)
-        const faceNumber = faceIndex + 1;
-        this._highlightFace(faceNumber);
-    }
-
-    private _clearHighlights() {
-        // Clear 2D highlights
-        const highlightedElements = this._svgContainer.querySelectorAll(".highlighted");
-        console.log(`🧹 Clearing ${highlightedElements.length} highlighted 2D elements`);
-        highlightedElements.forEach((element) => {
-            element.classList.remove("highlighted");
-            (element as SVGElement).style.fill = "";
-            (element as SVGElement).style.stroke = "";
-            (element as SVGElement).style.strokeWidth = "";
-            (element as SVGElement).style.opacity = "1";
+        elements.forEach((element) => {
+            element.classList.add(style.faceHighlighted);
         });
 
-        // Clear 3D highlights using FaceNumberDisplay
-        if (this._faceNumberDisplay) {
-            this._faceNumberDisplay.clearHighlights();
-            console.log("✅ 3D highlights cleared");
+        elements[0].scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "center",
+        });
+    }
+
+    private _isFaceAvailable(faceNumber: number): boolean {
+        if (this._faceElementsByNumber.has(faceNumber)) {
+            return true;
+        }
+
+        if (!this._faceNumberDisplay) {
+            return false;
+        }
+
+        return this._faceNumberDisplay.getAllFaceNumbers().includes(faceNumber);
+    }
+
+    private _clearSelection() {
+        this._clearHighlights();
+        this._setStatus("assembly.ready");
+    }
+
+    private _clearHighlights(resetSelection: boolean = true) {
+        const highlighted = this._svgContainer.querySelectorAll<SVGElement>(`.${style.faceHighlighted}`);
+        highlighted.forEach((element) => {
+            element.classList.remove(style.faceHighlighted);
+        });
+
+        this._faceNumberDisplay?.clearHighlights();
+
+        if (resetSelection) {
+            this._selectedFaceNumber = null;
+            this._selectedFaceValue.textContent = "-";
+            this._faceNumberInput.value = "";
         }
     }
 
-    private _close() {
-        // Clean up and close the panel
-        this._clearHighlights();
-
-        // Dispose panzoom instance
-        if (this._panzoomInstance) {
-            this._panzoomInstance.dispose();
-            this._panzoomInstance = null;
+    private _zoom2D(scaleMultiplier: number) {
+        if (!this._panzoomInstance) {
+            return;
         }
 
-        // Remove resize handler
+        const rect = this._view2D.getBoundingClientRect();
+        this._panzoomInstance.smoothZoom(rect.width / 2, rect.height / 2, scaleMultiplier);
+    }
+
+    private _reset2DView() {
+        if (!this._panzoomInstance) {
+            return;
+        }
+
+        const rect = this._view2D.getBoundingClientRect();
+        this._panzoomInstance.zoomAbs(rect.width / 2, rect.height / 2, 1);
+        this._panzoomInstance.moveTo(0, 0);
+    }
+
+    private _reset3DView() {
+        if (
+            !this._camera ||
+            !this._controls ||
+            !this._defaultCameraPosition ||
+            !this._defaultControlTarget
+        ) {
+            return;
+        }
+
+        this._camera.position.copy(this._defaultCameraPosition);
+        this._controls.target.copy(this._defaultControlTarget);
+        this._controls.update();
+    }
+
+    private _showEmptySVGState(message: string) {
+        this._svgContainer.replaceChildren(
+            div(
+                {
+                    className: style.emptyState,
+                },
+                span({ textContent: message }),
+            ),
+        );
+    }
+
+    private _setStatus(key: I18nKeys, ...args: any[]) {
+        this._statusValue.textContent = I18n.translate(key, ...args);
+    }
+
+    private _setLoading(target: HTMLDivElement, visible: boolean, messageKey: I18nKeys) {
+        target.textContent = I18n.translate(messageKey);
+        target.classList.toggle(style.visible, visible);
+    }
+
+    private _updateFaceCount(faceCount: number) {
+        this._faceCountValue.textContent = faceCount.toString();
+    }
+
+    private _attachWindowListeners() {
+        if (this._windowKeydownHandler) {
+            return;
+        }
+
+        this._windowKeydownHandler = (event: KeyboardEvent) => {
+            if (!this.isConnected) {
+                return;
+            }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                this._close();
+            }
+        };
+
+        window.addEventListener("keydown", this._windowKeydownHandler);
+    }
+
+    private _detachWindowListeners() {
+        if (!this._windowKeydownHandler) {
+            return;
+        }
+
+        window.removeEventListener("keydown", this._windowKeydownHandler);
+        this._windowKeydownHandler = null;
+    }
+
+    private _disposePanzoom() {
+        if (!this._panzoomInstance) {
+            return;
+        }
+
+        this._panzoomInstance.dispose();
+        this._panzoomInstance = null;
+    }
+
+    private _dispose3DView() {
         if (this._resizeHandler) {
             window.removeEventListener("resize", this._resizeHandler);
             this._resizeHandler = null;
         }
 
-        // Stop animation loop
         if (this._animationFrameId !== null) {
             cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
 
-        // Dispose Three.js resources
         if (this._controls) {
             this._controls.dispose();
             this._controls = null;
@@ -780,15 +802,20 @@ export class AssemblyPanel extends HTMLElement {
 
         this._camera = null;
         this._faceNumberDisplay = null;
+        this._defaultCameraPosition = null;
+        this._defaultControlTarget = null;
+    }
 
-        // Remove from DOM
+    private _close() {
+        this._clearHighlights();
+        this._disposePanzoom();
+        this._dispose3DView();
+        this._detachWindowListeners();
+
         this.remove();
 
-        // Notify that assembly mode is closed
         PubSub.default.pub("assemblyMode.closed");
         PubSub.default.pub("showToast", "toast.assemblyMode.closed");
-
-        console.log("Assembly panel closed");
     }
 
     public static getInstance(): AssemblyPanel | null {

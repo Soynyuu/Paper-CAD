@@ -32,6 +32,11 @@ export interface ICityGMLService extends IService {
         meshCode: string,
         options?: PlateauBuildingIdWithMeshSearchOptions,
     ): Promise<Result<PlateauBuildingIdSearchResponse>>;
+    unfoldTexturedByBuildingIdAndMesh(
+        buildingId: string,
+        meshCode: string,
+        options?: PlateauTexturedUnfoldOptions,
+    ): Promise<Result<PlateauTexturedUnfoldResponse>>;
     batchSearchByBuildingIds(
         requests: BatchBuildingRequest[],
     ): Promise<Result<PlateauBatchBuildingResponse>>;
@@ -105,6 +110,20 @@ export interface PlateauBuildingIdWithMeshSearchOptions {
     mergeBuildingParts?: boolean;
 }
 
+export interface PlateauTexturedUnfoldOptions extends PlateauBuildingIdWithMeshSearchOptions {
+    precisionMode?: "standard" | "high" | "maximum" | "ultra";
+    shapeFixLevel?: "minimal" | "standard" | "aggressive" | "ultra";
+    method?: "auto" | "solid" | "sew" | "extrude";
+    autoReproject?: boolean;
+    layoutMode?: "canvas" | "paged";
+    pageFormat?: "A4" | "A3" | "Letter";
+    pageOrientation?: "portrait" | "landscape";
+    scaleFactor?: number;
+    mirrorHorizontal?: boolean;
+    maxFaces?: number;
+    returnFaceNumbers?: boolean;
+}
+
 export interface PlateauBuildingIdSearchResponse {
     success: boolean;
     building?: BuildingInfo;
@@ -126,6 +145,24 @@ export interface PlateauBatchBuildingResponse {
     total_requested: number;
     total_success: number;
     total_failed: number;
+}
+
+export interface PlateauTexturedUnfoldResponse {
+    svg_content: string;
+    stats?: any;
+    face_numbers?: Array<{ faceIndex: number; faceNumber: number }>;
+    texture_mappings?: Array<{
+        faceNumber: number;
+        patternId: string;
+        tileCount: number;
+        rotation?: number;
+    }>;
+    warnings?: Array<{
+        type: string;
+        message: string;
+        details?: any;
+    }>;
+    texture_stats?: any;
 }
 
 export class CityGMLService implements ICityGMLService {
@@ -533,6 +570,71 @@ export class CityGMLService implements ICityGMLService {
                 return Result.err(error.message);
             }
             return Result.err("Unknown error during PLATEAU fetch and convert");
+        }
+    }
+
+    async unfoldTexturedByBuildingIdAndMesh(
+        buildingId: string,
+        meshCode: string,
+        options?: PlateauTexturedUnfoldOptions,
+    ): Promise<Result<PlateauTexturedUnfoldResponse>> {
+        try {
+            const requestBody = {
+                building_id: buildingId,
+                mesh_code: meshCode,
+                merge_building_parts: options?.mergeBuildingParts ?? false,
+                debug: options?.debug ?? false,
+                precision_mode: options?.precisionMode ?? "ultra",
+                shape_fix_level: options?.shapeFixLevel ?? "minimal",
+                method: options?.method ?? "solid",
+                auto_reproject: options?.autoReproject ?? true,
+                layout_mode: options?.layoutMode ?? "paged",
+                page_format: options?.pageFormat ?? "A4",
+                page_orientation: options?.pageOrientation ?? "portrait",
+                scale_factor: options?.scaleFactor ?? 10,
+                mirror_horizontal: options?.mirrorHorizontal ?? false,
+                max_faces: options?.maxFaces ?? 20,
+                return_face_numbers: options?.returnFaceNumbers ?? true,
+            };
+
+            const response = await fetch(`${this.baseUrl}/plateau/unfold-textured-by-id-and-mesh`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                let errorMessage: string;
+                if (response.status === 404) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Building not found in mesh area";
+                } else if (response.status === 400 || response.status === 422) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Invalid request parameters";
+                } else if (response.status === 500) {
+                    const errorData = await response.json().catch(() => null);
+                    errorMessage = errorData?.detail || "Textured unfold generation failed";
+                } else {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                return Result.err(errorMessage);
+            }
+
+            const data: PlateauTexturedUnfoldResponse = await response.json();
+            return Result.ok(data);
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("fetch")) {
+                    return Result.err(
+                        "Cannot connect to PLATEAU textured unfold service. Please ensure the backend is running on " +
+                            this.baseUrl,
+                    );
+                }
+                return Result.err(error.message);
+            }
+            return Result.err("Unknown error during PLATEAU textured unfold");
         }
     }
 

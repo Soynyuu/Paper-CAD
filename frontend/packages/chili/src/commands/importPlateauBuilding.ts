@@ -55,7 +55,13 @@ export class ImportPlateauBuilding implements ICommand {
 
             const buildings = data.selectedBuildings;
             const action = data.action ?? "import";
-            console.log(`[ImportPlateauBuilding] User selected ${buildings.length} building(s):`, buildings);
+            const targetLod = data.targetLod ?? null;
+            console.log(
+                `[ImportPlateauBuilding] User selected ${buildings.length} building(s)` +
+                    (targetLod ? ` (LOD: ${targetLod})` : " (LOD: auto)") +
+                    `:`,
+                buildings,
+            );
 
             // Convert and import buildings
             PubSub.default.pub(
@@ -84,6 +90,7 @@ export class ImportPlateauBuilding implements ICommand {
                                 {
                                     debug: false,
                                     mergeBuildingParts: false,
+                                    lod: targetLod,
                                     scaleFactor: unfoldOptions.scale,
                                     layoutMode: unfoldOptions.layoutMode,
                                     pageFormat: unfoldOptions.pageFormat,
@@ -139,6 +146,7 @@ export class ImportPlateauBuilding implements ICommand {
                                     {
                                         debug: false,
                                         mergeBuildingParts: false,
+                                        lod: targetLod,
                                     },
                                 );
 

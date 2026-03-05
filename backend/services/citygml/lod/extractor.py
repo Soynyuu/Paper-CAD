@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 from ..core.types import CoordinateTransform3D, IDIndex, LODExtractionResult
 from ..utils.logging import log
+from ..geometry.tolerance import compute_building_tolerance
 from .lod3_strategy import extract_lod3_geometry
 from .lod2_strategy import extract_lod2_geometry
 from .lod1_strategy import extract_lod1_geometry
@@ -22,7 +23,8 @@ def extract_building_geometry(
     elem: ET.Element,
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
-    debug: bool = False
+    debug: bool = False,
+    precision_mode: str = "standard",
 ) -> LODExtractionResult:
     """
     Extract building geometry using LOD3→LOD2→LOD1 fallback chain.
@@ -44,6 +46,9 @@ def extract_building_geometry(
         xyz_transform: Optional coordinate transformation function
         id_index: XLink resolution index (from build_id_index())
         debug: Enable debug output
+        precision_mode: Precision level ("standard", "high", "maximum", "ultra").
+            Used to precompute tolerance once per building instead of per polygon.
+            Issue #192: Performance optimization.
 
     Returns:
         LODExtractionResult with extracted faces and metadata.
@@ -73,27 +78,51 @@ def extract_building_geometry(
         - Debug logging provides detailed extraction progress
     """
     # Get building ID for logging
-    elem_id = elem.get(f"{{{id_index.get('gml', 'http://www.opengis.net/gml')}}}id") if id_index else "unknown"
+    elem_id = (
+        elem.get(f"{{{id_index.get('gml', 'http://www.opengis.net/gml')}}}id")
+        if id_index
+        else "unknown"
+    )
     if not elem_id or elem_id == "unknown":
         # Try alternative ID lookup
         elem_id = elem.get("gml:id", "unknown")
 
+    # =========================================================================
+    # Precompute tolerance once per building (Issue #192 optimization)
+    # =========================================================================
+    # Instead of calling compute_tolerance_from_coords() per polygon inside
+    # surface_extractors.py, we compute a single tolerance from the building's
+    # bounding box. This is both faster and more accurate.
+    building_tolerance = compute_building_tolerance(elem, xyz_transform, precision_mode)
+
     # Log extraction start
     if debug:
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:1] LOD STRATEGY SELECTION")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Building ID: {elem_id}")
         log(f"[INFO] Strategy: LOD3 → LOD2 → LOD1 (with fallback to boundedBy)")
+        log(
+            f"[INFO] Precomputed tolerance: {building_tolerance:.2e} (precision_mode={precision_mode})"
+        )
         log(f"")
 
     # =========================================================================
     # LOD3 Extraction - Highest detail level (architectural models)
     # =========================================================================
-    result = extract_lod3_geometry(elem, xyz_transform, id_index, elem_id, debug=debug)
+    result = extract_lod3_geometry(
+        elem,
+        xyz_transform,
+        id_index,
+        elem_id,
+        tolerance=building_tolerance,
+        debug=debug,
+    )
     if result.exterior_faces:
         if debug:
-            log(f"[PHASE:1] ✓ LOD3 extraction succeeded with {len(result.exterior_faces)} faces")
+            log(
+                f"[PHASE:1] ✓ LOD3 extraction succeeded with {len(result.exterior_faces)} faces"
+            )
             log(f"[PHASE:1] Method: {result.method}")
         return result
 
@@ -105,13 +134,24 @@ def extract_building_geometry(
     # LOD2 Extraction - PLATEAU's primary use case
     # =========================================================================
     # ⚠️ CRITICAL: LOD2 includes Issue #48 fix for boundedBy vs lod2Solid comparison
-    result = extract_lod2_geometry(elem, xyz_transform, id_index, elem_id, debug=debug)
+    result = extract_lod2_geometry(
+        elem,
+        xyz_transform,
+        id_index,
+        elem_id,
+        tolerance=building_tolerance,
+        debug=debug,
+    )
     if result.exterior_faces:
         if debug:
-            log(f"[PHASE:1] ✓ LOD2 extraction succeeded with {len(result.exterior_faces)} faces")
+            log(
+                f"[PHASE:1] ✓ LOD2 extraction succeeded with {len(result.exterior_faces)} faces"
+            )
             log(f"[PHASE:1] Method: {result.method}")
             if result.prefer_bounded_by:
-                log(f"[PHASE:1] Note: boundedBy was preferred over lod2Solid (Issue #48 fix)")
+                log(
+                    f"[PHASE:1] Note: boundedBy was preferred over lod2Solid (Issue #48 fix)"
+                )
         return result
 
     # LOD2 failed, log and continue
@@ -121,10 +161,19 @@ def extract_building_geometry(
     # =========================================================================
     # LOD1 Extraction - Simple block models (last resort)
     # =========================================================================
-    result = extract_lod1_geometry(elem, xyz_transform, id_index, elem_id, debug=debug)
+    result = extract_lod1_geometry(
+        elem,
+        xyz_transform,
+        id_index,
+        elem_id,
+        tolerance=building_tolerance,
+        debug=debug,
+    )
     if result.exterior_faces:
         if debug:
-            log(f"[PHASE:1] ✓ LOD1 extraction succeeded with {len(result.exterior_faces)} faces")
+            log(
+                f"[PHASE:1] ✓ LOD1 extraction succeeded with {len(result.exterior_faces)} faces"
+            )
             log(f"[PHASE:1] Method: {result.method}")
         return result
 
@@ -138,5 +187,5 @@ def extract_building_geometry(
         exterior_faces=[],
         interior_shells=[],
         lod_level="LOD1",  # Default to LOD1 level for failed extractions
-        method="All strategies failed"
+        method="All strategies failed",
     )

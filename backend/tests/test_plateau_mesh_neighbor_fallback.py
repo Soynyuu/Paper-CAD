@@ -7,23 +7,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from services.plateau_fetcher import BuildingInfo, search_building_by_id_and_mesh  # noqa: E402
+from services.plateau_fetcher import search_building_by_id_and_mesh  # noqa: E402
 
 
-def _make_building(gml_id: str) -> BuildingInfo:
-    return BuildingInfo(
-        building_id=None,
-        gml_id=gml_id,
-        latitude=35.65806,
-        longitude=139.70028,
-        distance_meters=0.0,
-        height=35.0,
-    )
-
-
-@patch("services.plateau_fetcher.parse_buildings_from_citygml")
+@patch("services.plateau_fetcher._find_building_id_in_xml")
 @patch("services.plateau_fetcher._fetch_citygml_by_mesh_code_with_sources")
-def test_search_building_by_id_and_mesh_falls_back_to_neighbor_mesh(mock_fetch, mock_parse):
+def test_search_building_by_id_and_mesh_falls_back_to_neighbor_mesh(
+    mock_fetch, mock_find
+):
     """When the requested mesh misses, nearby meshes should be checked before failing."""
     target_id = "bldg_3ad6aaeb-26f8-4716-a8ec-cb2504b94674"
     requested_mesh = "53393585"
@@ -39,21 +30,19 @@ def test_search_building_by_id_and_mesh_falls_back_to_neighbor_mesh(mock_fetch, 
             return None
         return xml, [f"https://example.invalid/{mesh_code}.gml"]
 
-    def fake_parse(xml_content: str):
-        if xml_content == xml_by_mesh[requested_mesh]:
-            return [_make_building("bldg_other")]
+    def fake_find(xml_content: str, target_id_arg: str, debug: bool = False):
+        """Return gml:id only when the neighbor XML contains the target building."""
         if xml_content == xml_by_mesh[neighbor_mesh]:
-            return [_make_building(target_id)]
-        return []
+            return target_id
+        return None
 
     mock_fetch.side_effect = fake_fetch
-    mock_parse.side_effect = fake_parse
+    mock_find.side_effect = fake_find
 
     result = search_building_by_id_and_mesh(target_id, requested_mesh)
 
     assert result["success"] is True
-    assert result["building"] is not None
-    assert result["building"].gml_id == target_id
+    assert result["matched_gml_id"] == target_id
     assert result["mesh_code"] == neighbor_mesh
 
     called_meshes = [call.args[0] for call in mock_fetch.call_args_list]

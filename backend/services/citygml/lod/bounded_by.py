@@ -42,12 +42,12 @@ def find_bounded_surfaces(elem: ET.Element) -> List[ET.Element]:
         42
     """
     bounded_surfaces = (
-        elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS) +
-        elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
+        elem.findall(".//bldg:boundedBy/bldg:WallSurface", NS)
+        + elem.findall(".//bldg:boundedBy/bldg:RoofSurface", NS)
+        + elem.findall(".//bldg:boundedBy/bldg:GroundSurface", NS)
+        + elem.findall(".//bldg:boundedBy/bldg:OuterCeilingSurface", NS)
+        + elem.findall(".//bldg:boundedBy/bldg:OuterFloorSurface", NS)
+        + elem.findall(".//bldg:boundedBy/bldg:ClosureSurface", NS)
     )
     return bounded_surfaces
 
@@ -57,7 +57,8 @@ def extract_faces_from_bounded_surface(
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
     extract_faces_from_surface_container: Any,  # Function
-    debug: bool = False
+    tolerance: Optional[float] = None,
+    debug: bool = False,
 ) -> Tuple[List[Any], str, int]:  # List[TopoDS_Face], method_name, face_count
     """
     Extract faces from a single boundedBy surface using progressive fallback.
@@ -104,19 +105,26 @@ def extract_faces_from_bounded_surface(
 
     # ===== Method 1: LOD-specific wrappers (LOD3 has priority) =====
     # Fix for issue #48: Support LOD3 WallSurface extraction to prevent wall omissions
-    for lod_tag in [".//bldg:lod3MultiSurface", ".//bldg:lod3Geometry",
-                   ".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
+    for lod_tag in [
+        ".//bldg:lod3MultiSurface",
+        ".//bldg:lod3Geometry",
+        ".//bldg:lod2MultiSurface",
+        ".//bldg:lod2Geometry",
+    ]:
         surf_geom = surf.find(lod_tag, NS)
         if surf_geom is not None:
             faces_before = len(faces)
 
             # Look for MultiSurface or CompositeSurface containers
-            for surface_container in (
-                surf_geom.findall(".//gml:MultiSurface", NS) +
-                surf_geom.findall(".//gml:CompositeSurface", NS)
-            ):
+            for surface_container in surf_geom.findall(
+                ".//gml:MultiSurface", NS
+            ) + surf_geom.findall(".//gml:CompositeSurface", NS):
                 faces_extracted = extract_faces_from_surface_container(
-                    surface_container, xyz_transform, id_index, debug
+                    surface_container,
+                    xyz_transform,
+                    id_index,
+                    tolerance=tolerance,
+                    debug=debug,
                 )
                 faces.extend(faces_extracted)
 
@@ -125,7 +133,9 @@ def extract_faces_from_bounded_surface(
                 found_geometry = True
                 method_used = f"Method 1 ({lod_tag.split(':')[-1]})"
                 if debug:
-                    log(f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces")
+                    log(
+                        f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces"
+                    )
                 break  # Successfully extracted, no need to try other LOD tags
 
     # ===== Method 2: Direct MultiSurface or CompositeSurface children =====
@@ -133,12 +143,15 @@ def extract_faces_from_bounded_surface(
     if not found_geometry:
         faces_before = len(faces)
 
-        for direct_container in (
-            surf.findall("./gml:MultiSurface", NS) +
-            surf.findall("./gml:CompositeSurface", NS)
+        for direct_container in surf.findall("./gml:MultiSurface", NS) + surf.findall(
+            "./gml:CompositeSurface", NS
         ):
             faces_extracted = extract_faces_from_surface_container(
-                direct_container, xyz_transform, id_index, debug
+                direct_container,
+                xyz_transform,
+                id_index,
+                tolerance=tolerance,
+                debug=debug,
             )
             faces.extend(faces_extracted)
 
@@ -146,7 +159,9 @@ def extract_faces_from_bounded_surface(
             found_geometry = True
             method_used = "Method 2 (direct MultiSurface)"
             if debug:
-                log(f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces")
+                log(
+                    f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces"
+                )
 
     # ===== Method 3: Direct Polygon children =====
     if not found_geometry:
@@ -160,9 +175,14 @@ def extract_faces_from_bounded_surface(
             # Apply coordinate transformation if provided
             if xyz_transform:
                 try:
-                    ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+                    ext = [
+                        tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext
+                    ]
                     holes = [
-                        [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ring]
+                        [
+                            tuple(map(float, xyz_transform(x, y, z)))
+                            for (x, y, z) in ring
+                        ]
                         for ring in holes
                     ]
                 except Exception as e:
@@ -178,7 +198,9 @@ def extract_faces_from_bounded_surface(
             found_geometry = True
             method_used = "Method 3 (direct Polygon)"
             if debug:
-                log(f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces")
+                log(
+                    f"  [{surf_type}] {method_used}: extracted {len(faces) - faces_before} faces"
+                )
 
     # Log failure if no geometry found
     if not found_geometry and debug:
@@ -192,7 +214,8 @@ def extract_faces_from_all_bounded_surfaces(
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
     extract_faces_from_surface_container: Any,  # Function
-    debug: bool = False
+    tolerance: Optional[float] = None,
+    debug: bool = False,
 ) -> List[Any]:  # List[TopoDS_Face]
     """
     Extract faces from all boundedBy surfaces in a building element.
@@ -236,11 +259,17 @@ def extract_faces_from_all_bounded_surfaces(
 
     if debug:
         elem_id = elem.get(f"{{{NS['gml']}}}id") or "unknown"
-        log(f"[LOD2/LOD3] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}")
+        log(
+            f"[LOD2/LOD3] Found {len(bounded_surfaces)} boundedBy surfaces in {elem_id}"
+        )
 
     # Initialize statistics tracking
-    surface_stats: Dict[str, int] = {surf_type: 0 for surf_type in BOUNDARY_SURFACE_TYPES}
-    faces_by_type: Dict[str, int] = {surf_type: 0 for surf_type in BOUNDARY_SURFACE_TYPES}
+    surface_stats: Dict[str, int] = {
+        surf_type: 0 for surf_type in BOUNDARY_SURFACE_TYPES
+    }
+    faces_by_type: Dict[str, int] = {
+        surf_type: 0 for surf_type in BOUNDARY_SURFACE_TYPES
+    }
 
     all_faces = []
 
@@ -254,7 +283,12 @@ def extract_faces_from_all_bounded_surfaces(
 
         # Extract faces from this surface
         faces, method, face_count = extract_faces_from_bounded_surface(
-            surf, xyz_transform, id_index, extract_faces_from_surface_container, debug
+            surf,
+            xyz_transform,
+            id_index,
+            extract_faces_from_surface_container,
+            tolerance=tolerance,
+            debug=debug,
         )
 
         all_faces.extend(faces)
@@ -267,20 +301,24 @@ def extract_faces_from_all_bounded_surfaces(
     # Log summary statistics
     if debug:
         log(f"[LOD2] boundedBy extraction summary:")
-        log(f"  - Total surfaces: {len(bounded_surfaces)} "
+        log(
+            f"  - Total surfaces: {len(bounded_surfaces)} "
             f"(Wall: {surface_stats.get('WallSurface', 0)}, "
             f"Roof: {surface_stats.get('RoofSurface', 0)}, "
             f"Ground: {surface_stats.get('GroundSurface', 0)}, "
             f"OuterCeiling: {surface_stats.get('OuterCeilingSurface', 0)}, "
             f"OuterFloor: {surface_stats.get('OuterFloorSurface', 0)}, "
-            f"Closure: {surface_stats.get('ClosureSurface', 0)})")
-        log(f"  - Total faces extracted: {len(all_faces)} "
+            f"Closure: {surface_stats.get('ClosureSurface', 0)})"
+        )
+        log(
+            f"  - Total faces extracted: {len(all_faces)} "
             f"(Wall: {faces_by_type.get('WallSurface', 0)}, "
             f"Roof: {faces_by_type.get('RoofSurface', 0)}, "
             f"Ground: {faces_by_type.get('GroundSurface', 0)}, "
             f"OuterCeiling: {faces_by_type.get('OuterCeilingSurface', 0)}, "
             f"OuterFloor: {faces_by_type.get('OuterFloorSurface', 0)}, "
-            f"Closure: {faces_by_type.get('ClosureSurface', 0)})")
+            f"Closure: {faces_by_type.get('ClosureSurface', 0)})"
+        )
 
     return all_faces
 
@@ -321,14 +359,17 @@ def count_bounded_by_faces(elem: ET.Element) -> int:
 
         # Try all 3 methods like in full extraction
         # Method 1: LOD-specific wrappers
-        for lod_tag in [".//bldg:lod3MultiSurface", ".//bldg:lod3Geometry",
-                       ".//bldg:lod2MultiSurface", ".//bldg:lod2Geometry"]:
+        for lod_tag in [
+            ".//bldg:lod3MultiSurface",
+            ".//bldg:lod3Geometry",
+            ".//bldg:lod2MultiSurface",
+            ".//bldg:lod2Geometry",
+        ]:
             surf_geom = surf.find(lod_tag, NS)
             if surf_geom is not None:
-                for container in (
-                    surf_geom.findall(".//gml:MultiSurface", NS) +
-                    surf_geom.findall(".//gml:CompositeSurface", NS)
-                ):
+                for container in surf_geom.findall(
+                    ".//gml:MultiSurface", NS
+                ) + surf_geom.findall(".//gml:CompositeSurface", NS):
                     polys = container.findall(".//gml:Polygon", NS)
                     surf_count += len(polys)
                 if surf_count > 0:
@@ -336,9 +377,8 @@ def count_bounded_by_faces(elem: ET.Element) -> int:
 
         # Method 2: Direct containers
         if surf_count == 0:
-            for container in (
-                surf.findall("./gml:MultiSurface", NS) +
-                surf.findall("./gml:CompositeSurface", NS)
+            for container in surf.findall("./gml:MultiSurface", NS) + surf.findall(
+                "./gml:CompositeSurface", NS
             ):
                 polys = container.findall(".//gml:Polygon", NS)
                 surf_count += len(polys)

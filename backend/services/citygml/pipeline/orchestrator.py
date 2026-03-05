@@ -7,6 +7,7 @@ It preserves 100% compatibility with the original monolithic implementation.
 
 from typing import Optional, List, Tuple, Any
 import os
+import time
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
@@ -21,10 +22,12 @@ from ..lod.extractor import extract_building_geometry
 from ..geometry.solid_builder import make_solid_with_cavities, is_valid_shape
 from ..geometry.building_part_merger import merge_building_parts as merge_parts_fn
 from ..geometry.sew_builder import build_sewn_shape_from_building
+from .shape_cache import get_shape_cache
+from .parallel import process_buildings_parallel
 from ..lod.footprint_extractor import (
     parse_citygml_footprints,
     extrude_footprint,
-    Footprint
+    Footprint,
 )
 
 # Import streaming parser (NEW: Issue #131 - Performance Optimization)
@@ -36,20 +39,26 @@ try:
     from services.coordinate_utils import (
         is_geographic_crs,
         recommend_projected_crs,
-        get_crs_info
+        get_crs_info,
     )
 except ImportError:
     try:
         from coordinate_utils import (
             is_geographic_crs,
             recommend_projected_crs,
-            get_crs_info
+            get_crs_info,
         )
     except ImportError:
         # Fallback stubs
-        def is_geographic_crs(crs): return "EPSG:4" in str(crs)
-        def recommend_projected_crs(src, lat, lon): return None
-        def get_crs_info(crs): return {"name": crs}
+        def is_geographic_crs(crs):
+            return "EPSG:4" in str(crs)
+
+        def recommend_projected_crs(src, lat, lon):
+            return None
+
+        def get_crs_info(crs):
+            return {"name": crs}
+
 
 # Check OCCT availability
 try:
@@ -61,6 +70,7 @@ try:
     from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
     from OCC.Core.IFSelect import IFSelect_ReturnStatus
     from OCC.Core.Interface import Interface_Static
+
     OCCT_AVAILABLE = True
 except ImportError:
     OCCT_AVAILABLE = False
@@ -72,10 +82,11 @@ except ImportError:
 # Internal Helper Functions
 # ============================================================================
 
+
 def _filter_buildings(
     buildings: List[ET.Element],
     building_ids: Optional[List[str]] = None,
-    filter_attribute: str = "gml:id"
+    filter_attribute: str = "gml:id",
 ) -> List[ET.Element]:
     """Filter buildings by IDs using specified attribute."""
     if not building_ids:
@@ -109,7 +120,7 @@ def _filter_buildings_by_coordinates(
     target_latitude: float,
     target_longitude: float,
     radius_meters: float,
-    debug: bool = False
+    debug: bool = False,
 ) -> List[ET.Element]:
     """Filter buildings by distance from target coordinates."""
     try:
@@ -166,7 +177,9 @@ def _filter_buildings_by_coordinates(
     return filtered
 
 
-def _compute_bounding_box(shape: Any) -> Tuple[float, float, float, float, float, float]:
+def _compute_bounding_box(
+    shape: Any,
+) -> Tuple[float, float, float, float, float, float]:
     """Compute bounding box of a shape."""
     if not OCCT_AVAILABLE:
         return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -182,9 +195,9 @@ def _log_geometry_diagnostics(shapes: List[Any], debug: bool = False) -> None:
     if not shapes:
         return
 
-    log(f"\n{'='*80}")
+    log(f"\n{'=' * 80}")
     log(f"[DIAGNOSTICS] GEOMETRY ANALYSIS")
-    log(f"{'='*80}")
+    log(f"{'=' * 80}")
 
     for i, shape in enumerate(shapes):
         xmin, ymin, zmin, xmax, ymax, zmax = _compute_bounding_box(shape)
@@ -197,7 +210,7 @@ def _log_geometry_diagnostics(shapes: List[Any], debug: bool = False) -> None:
         center_z = (zmin + zmax) / 2
         distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
 
-        log(f"\n[SHAPE {i+1}/{len(shapes)}] Bounding box analysis:")
+        log(f"\n[SHAPE {i + 1}/{len(shapes)}] Bounding box analysis:")
         log(f"  Position (center): ({center_x:.3f}, {center_y:.3f}, {center_z:.3f})")
         log(f"  Size: {width:.3f} × {depth:.3f} × {height:.3f} (W×D×H)")
         log(f"  Range X: [{xmin:.3f}, {xmax:.3f}]")
@@ -206,14 +219,18 @@ def _log_geometry_diagnostics(shapes: List[Any], debug: bool = False) -> None:
         log(f"  Distance from origin: {distance_from_origin:.3f}")
 
         if distance_from_origin > 100000:
-            log(f"  ⚠ WARNING: Geometry is very far from origin ({distance_from_origin/1000:.1f} km)")
+            log(
+                f"  ⚠ WARNING: Geometry is very far from origin ({distance_from_origin / 1000:.1f} km)"
+            )
         if max(width, depth, height) < 1:
             log(f"  ⚠ WARNING: Geometry is very small (< 1 unit)")
         if max(width, depth, height) > 1000000:
             log(f"  ⚠ WARNING: Geometry is extremely large (> 1000 km)")
 
 
-def export_step_compound_local(shapes: List[Any], out_step: str, debug: bool = False) -> Tuple[bool, str]:
+def export_step_compound_local(
+    shapes: List[Any], out_step: str, debug: bool = False
+) -> Tuple[bool, str]:
     """Export shapes to STEP file using local STEP writer."""
     if not OCCT_AVAILABLE:
         return False, "OCCT not available"
@@ -270,7 +287,7 @@ def export_step_compound_local(shapes: List[Any], out_step: str, debug: bool = F
         file_size = os.path.getsize(out_step)
         log(f"[STEP EXPORT] ✓ File written successfully")
         log(f"  - File: {out_step}")
-        log(f"  - Size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+        log(f"  - Size: {file_size:,} bytes ({file_size / 1024:.1f} KB)")
 
         if file_size == 0:
             log(f"[STEP EXPORT] ⚠ WARNING: File size is 0 bytes")
@@ -285,6 +302,7 @@ def export_step_compound_local(shapes: List[Any], out_step: str, debug: bool = F
 # ============================================================================
 # Main Export Function
 # ============================================================================
+
 
 def export_step_from_citygml(
     gml_path: str,
@@ -360,7 +378,7 @@ def export_step_from_citygml(
 
     # Determine whether to use streaming parser
     # Coordinate filtering requires full tree access, so force legacy mode
-    has_coordinate_filter = (target_latitude is not None and target_longitude is not None)
+    has_coordinate_filter = target_latitude is not None and target_longitude is not None
     use_streaming_actual = use_streaming and not has_coordinate_filter
 
     if debug and has_coordinate_filter and use_streaming:
@@ -370,12 +388,16 @@ def export_step_from_citygml(
     if use_streaming_actual:
         print(f"[STREAMING] Using streaming parser (memory-optimized)")
         print(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
-        print(f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}")
+        print(
+            f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}"
+        )
 
         if debug:
             log(f"[STREAMING] Using streaming parser (memory-optimized)")
             log(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
-            log(f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}")
+            log(
+                f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}"
+            )
 
         # Track buildings for processing
         buildings_to_process = []
@@ -394,31 +416,40 @@ def export_step_from_citygml(
             limit=limit,
             building_ids=building_ids,
             filter_attribute=filter_attribute,
-            debug=debug
+            debug=debug,
         ):
             # Store building with its XLink index
             buildings_to_process.append((building_elem, local_xlink_index))
             building_count += 1
 
             # Progress logging (every 10 buildings or when target found)
-            if building_count % 10 == 0 or (expected_count and building_count >= expected_count):
+            if building_count % 10 == 0 or (
+                expected_count and building_count >= expected_count
+            ):
                 print(f"[STREAMING] Progress: {building_count} building(s) found")
 
             # Early termination: If we found all requested buildings, stop
             if expected_count and building_count >= expected_count:
-                print(f"[STREAMING] Found all {expected_count} requested building(s), stopping parse")
+                print(
+                    f"[STREAMING] Found all {expected_count} requested building(s), stopping parse"
+                )
                 break
 
         print(f"[STREAMING] Parse complete: {building_count} building(s) loaded")
 
         if not buildings_to_process:
             if building_ids:
-                return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
+                return (
+                    False,
+                    f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})",
+                )
             else:
                 return False, "No buildings found in CityGML file"
 
         if debug:
-            log(f"[STREAMING] Loaded {len(buildings_to_process)} buildings for processing")
+            log(
+                f"[STREAMING] Loaded {len(buildings_to_process)} buildings for processing"
+            )
 
         # Extract building elements for compatibility with existing code
         bldgs = [b for b, _ in buildings_to_process]
@@ -447,9 +478,14 @@ def export_step_from_citygml(
                 bldgs, target_latitude, target_longitude, radius_meters, debug
             )
             if debug:
-                log(f"[COORD FILTER] Result: {original_count} → {len(bldgs)} buildings within {radius_meters}m")
+                log(
+                    f"[COORD FILTER] Result: {original_count} → {len(bldgs)} buildings within {radius_meters}m"
+                )
             if not bldgs:
-                return False, f"No buildings found within {radius_meters}m of ({target_latitude}, {target_longitude})"
+                return (
+                    False,
+                    f"No buildings found within {radius_meters}m of ({target_latitude}, {target_longitude})",
+                )
 
         # Apply building ID filtering
         elif building_ids:
@@ -460,7 +496,10 @@ def export_step_from_citygml(
                 log(f"Filter attribute: {filter_attribute}")
                 log(f"Requested IDs: {building_ids}")
             if not bldgs:
-                return False, f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})"
+                return (
+                    False,
+                    f"No buildings found matching IDs: {building_ids} (filter_attribute: {filter_attribute})",
+                )
 
         if not bldgs:
             return False, "No buildings found in CityGML file"
@@ -480,40 +519,44 @@ def export_step_from_citygml(
     try:
         log_file = open(log_path, "w", encoding="utf-8")
         # Write header (preserved from original)
-        log_file.write(f"{'='*80}\n")
+        log_file.write(f"{'=' * 80}\n")
         log_file.write(f"CITYGML TO STEP CONVERSION LOG\n")
-        log_file.write(f"{'='*80}\n")
+        log_file.write(f"{'=' * 80}\n")
         log_file.write(f"Building ID: {first_building_id}\n")
         log_file.write(f"Timestamp: {datetime.now().isoformat()}\n")
         log_file.write(f"Precision mode: {precision_mode}\n")
         log_file.write(f"Shape fix level: {shape_fix_level}\n")
-        log_file.write(f"Debug mode: {'Enabled' if debug else 'Always enabled for detailed diagnostics'}\n")
-        log_file.write(f"{'='*80}\n\n")
+        log_file.write(
+            f"Debug mode: {'Enabled' if debug else 'Always enabled for detailed diagnostics'}\n"
+        )
+        log_file.write(f"{'=' * 80}\n\n")
         log_file.write(f"LOG LEGEND (for AI/LLM Analysis and Debugging):\n")
-        log_file.write(f"{'-'*80}\n")
+        log_file.write(f"{'-' * 80}\n")
         log_file.write(f"  [PHASE:N]       = Major processing phase (1-7)\n")
         log_file.write(f"  ✓ SUCCESS       = Operation completed successfully\n")
         log_file.write(f"  ✗ FAILED        = Operation failed\n")
         log_file.write(f"  ⚠ WARNING       = Potential issue detected\n")
-        log_file.write(f"{'-'*80}\n\n")
+        log_file.write(f"{'-' * 80}\n\n")
         log_file.write(f"PROCESSING PHASES:\n")
-        log_file.write(f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n")
+        log_file.write(
+            f"  [PHASE:1] LOD Strategy Selection (LOD3→LOD2→LOD1 fallback)\n"
+        )
         log_file.write(f"  [PHASE:2] Geometry Extraction\n")
         log_file.write(f"  [PHASE:3] Shell Construction\n")
         log_file.write(f"  [PHASE:4] Solid Validation\n")
         log_file.write(f"  [PHASE:5] Automatic Repair\n")
         log_file.write(f"  [PHASE:6] BuildingPart Merging\n")
         log_file.write(f"  [PHASE:7] STEP Export\n")
-        log_file.write(f"{'='*80}\n\n")
+        log_file.write(f"{'=' * 80}\n\n")
         set_log_file(log_file)
     except Exception as e:
         print(f"Warning: Failed to create log file: {e}")
         log_file = None
 
     # Detect CRS (PHASE:1.5)
-    log(f"\n{'='*80}")
+    log(f"\n{'=' * 80}")
     log(f"[PHASE:1.5] COORDINATE SYSTEM DETECTION")
-    log(f"{'='*80}")
+    log(f"{'=' * 80}")
 
     # For CRS detection, use first building element (works for both streaming and legacy)
     crs_detection_elem = bldgs[0] if bldgs else None
@@ -560,7 +603,12 @@ def export_step_from_citygml(
 
     # PHASE:0 - Coordinate recentering (⚠️ CRITICAL)
     print(f"[PHASE:0] Computing coordinate offset for {len(bldgs)} building(s)...")
-    xyz_transform, coord_offset = compute_offset_and_wrap_transform(bldgs, xyz_transform, debug)
+    t_phase0 = time.time()
+    xyz_transform, coord_offset = compute_offset_and_wrap_transform(
+        bldgs, xyz_transform, debug
+    )
+    phase0_ms = (time.time() - t_phase0) * 1000
+    log(f"[TIMING] PHASE:0 (recentering): {phase0_ms:.0f}ms")
     print(f"[PHASE:0] Coordinate offset computed: {coord_offset}")
 
     # =========================================================================
@@ -573,7 +621,9 @@ def export_step_from_citygml(
     # Helper function for solid extraction with BuildingPart merging
     def extract_single_solid(building_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
         """Extract solid from single building element using LOD extractor."""
-        result = extract_building_geometry(building_elem, xyz_tx, id_idx, dbg)
+        result = extract_building_geometry(
+            building_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode
+        )
         if not result.exterior_faces:
             return None
 
@@ -584,7 +634,7 @@ def export_step_from_citygml(
             None,  # auto-compute tolerance
             dbg,
             prec_mode,
-            fix_level
+            fix_level,
         )
 
     # -------------------------------------------------------------------------
@@ -594,63 +644,144 @@ def export_step_from_citygml(
         tried_solid = True
         count = 0
 
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Solid Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Total buildings to process: {len(bldgs)}")
         log(f"[INFO] Limit: {limit if limit else 'unlimited'}")
-        log(f"[INFO] BuildingPart merging: {'enabled' if merge_building_parts else 'disabled'}")
+        log(
+            f"[INFO] BuildingPart merging: {'enabled' if merge_building_parts else 'disabled'}"
+        )
         log(f"")
 
-        for i, (b, local_id_index) in enumerate(buildings_to_process):
-            if limit is not None and count >= limit:
-                log(f"\n[INFO] Reached limit of {limit} buildings, stopping extraction")
-                break
+        t_phase2 = time.time()
 
-            building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
-            print(f"[PHASE:2] Processing building {i+1}/{len(bldgs)}: {building_id[:40]}...")
-            log(f"\n{'─'*80}")
-            log(f"[BUILDING {i+1}/{len(bldgs)}] Processing: {building_id[:60]}")
+        # Issue #192: Use parallel processing for 3+ buildings when CRS transform is available
+        effective_count = (
+            min(len(buildings_to_process), limit)
+            if limit
+            else len(buildings_to_process)
+        )
+        use_parallel = effective_count >= 3 and reproject_to is not None
 
-            try:
-                # Use BuildingPart merger for complete extraction
-                # Note: Use local XLink index for streaming mode, shared index for legacy
-                print(f"[PHASE:2]   Extracting geometry (merge_building_parts={merge_building_parts})...")
-                shp = merge_parts_fn(
-                    b,
-                    extract_single_solid,
-                    xyz_transform,
-                    local_id_index,  # Use local index from buildings_to_process
-                    debug,
-                    precision_mode,
-                    shape_fix_level,
-                    merge_building_parts
+        if use_parallel:
+            log(f"[PARALLEL] Using parallel processing for {effective_count} buildings")
+            parallel_input = buildings_to_process[:effective_count]
+            parallel_results = process_buildings_parallel(
+                parallel_input,
+                source_crs=src,
+                target_crs=reproject_to,
+                coord_offset=coord_offset,
+                precision_mode=precision_mode,
+                shape_fix_level=shape_fix_level,
+                merge_building_parts=merge_building_parts,
+                debug=debug,
+            )
+
+            shape_cache = get_shape_cache()
+            for building_id, shp in parallel_results:
+                if shp is not None and not shp.IsNull():
+                    if is_valid_shape(shp):
+                        shapes.append(shp)
+                        count += 1
+                        shape_cache.put(
+                            (building_id, precision_mode, shape_fix_level), shp
+                        )
+                        log(f"[PARALLEL] ✓ {building_id[:40]}: Added (total: {count})")
+                    else:
+                        shapes.append(shp)
+                        count += 1
+                        log(f"[PARALLEL] ⚠ {building_id[:40]}: Added invalid shape")
+
+        else:
+            # Sequential processing (original path, used for 1-2 buildings or no CRS transform)
+            for i, (b, local_id_index) in enumerate(buildings_to_process):
+                if limit is not None and count >= limit:
+                    log(
+                        f"\n[INFO] Reached limit of {limit} buildings, stopping extraction"
+                    )
+                    break
+
+                building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
+                print(
+                    f"[PHASE:2] Processing building {i + 1}/{len(bldgs)}: {building_id[:40]}..."
                 )
-                print(f"[PHASE:2]   Geometry extraction complete")
+                log(f"\n{'─' * 80}")
+                log(f"[BUILDING {i + 1}/{len(bldgs)}] Processing: {building_id[:60]}")
 
-                if shp is None or shp.IsNull():
-                    log(f"└─ [RESULT] Skipping (extraction returned None/Null)")
+                try:
+                    t_building = time.time()
+
+                    # Issue #192: Check shape cache before expensive computation
+                    shape_cache = get_shape_cache()
+                    cache_key = (building_id, precision_mode, shape_fix_level)
+                    cached_shape = shape_cache.get(cache_key)
+
+                    if cached_shape is not None:
+                        log(f"├─ [CACHE] ✓ Cache hit for {building_id[:40]}")
+                        shp = cached_shape
+                    else:
+                        # Use BuildingPart merger for complete extraction
+                        # Note: Use local XLink index for streaming mode, shared index for legacy
+                        print(
+                            f"[PHASE:2]   Extracting geometry (merge_building_parts={merge_building_parts})..."
+                        )
+                        shp = merge_parts_fn(
+                            b,
+                            extract_single_solid,
+                            xyz_transform,
+                            local_id_index,  # Use local index from buildings_to_process
+                            debug,
+                            precision_mode,
+                            shape_fix_level,
+                            merge_building_parts,
+                        )
+                        print(f"[PHASE:2]   Geometry extraction complete")
+
+                        # Store in cache for future requests
+                        if shp is not None and not shp.IsNull():
+                            shape_cache.put(cache_key, shp)
+
+                    if shp is None or shp.IsNull():
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] Skipping (extraction returned None/Null) [{building_ms:.0f}ms]"
+                        )
+                        continue
+
+                    # Validate
+                    if is_valid_shape(shp):
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] ✓ Successfully added (total: {count + 1}) [{building_ms:.0f}ms]"
+                        )
+                        shapes.append(shp)
+                        count += 1
+                    else:
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] ⚠ Added invalid shape (will attempt export) [{building_ms:.0f}ms]"
+                        )
+                        shapes.append(shp)
+                        count += 1
+
+                except Exception as e:
+                    log(f"├─ [ERROR] ✗ Exception: {type(e).__name__}: {str(e)}")
+                    log(f"└─ [RESULT] ✗ Failed, skipping")
                     continue
 
-                # Validate
-                if is_valid_shape(shp):
-                    log(f"└─ [RESULT] ✓ Successfully added (total: {count+1})")
-                    shapes.append(shp)
-                    count += 1
-                else:
-                    log(f"└─ [RESULT] ⚠ Added invalid shape (will attempt export)")
-                    shapes.append(shp)
-                    count += 1
-
-            except Exception as e:
-                log(f"├─ [ERROR] ✗ Exception: {type(e).__name__}: {str(e)}")
-                log(f"└─ [RESULT] ✗ Failed, skipping")
-                continue
-
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] EXTRACTION SUMMARY (Solid Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Shapes extracted: {count}")
+        phase2_ms = (time.time() - t_phase2) * 1000
+        log(f"[TIMING] PHASE:2 (geometry extraction): {phase2_ms:.0f}ms")
+        if count > 0:
+            log(f"[TIMING] PHASE:2 avg per building: {phase2_ms / count:.0f}ms")
+        cache_stats = get_shape_cache().stats
+        log(
+            f"[INFO] Shape cache: {cache_stats['size']} entries, {cache_stats['hits']} hits, {cache_stats['misses']} misses ({cache_stats['hit_rate']})"
+        )
         log(f"")
 
     # -------------------------------------------------------------------------
@@ -660,9 +791,9 @@ def export_step_from_citygml(
         tried_sew = True
         count = 0
 
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Sew Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Total buildings to process: {len(bldgs)}")
         log(f"[INFO] Limit: {limit if limit else 'unlimited'}")
         log(f"")
@@ -673,8 +804,8 @@ def export_step_from_citygml(
                 break
 
             building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
-            log(f"\n{'─'*80}")
-            log(f"[BUILDING {i+1}/{len(bldgs)}] Sewing: {building_id[:60]}")
+            log(f"\n{'─' * 80}")
+            log(f"[BUILDING {i + 1}/{len(bldgs)}] Sewing: {building_id[:60]}")
 
             try:
                 shp = build_sewn_shape_from_building(
@@ -683,7 +814,7 @@ def export_step_from_citygml(
                     debug=debug,
                     xyz_transform=xyz_transform,
                     precision_mode=precision_mode,
-                    shape_fix_level=shape_fix_level
+                    shape_fix_level=shape_fix_level,
                 )
 
                 if shp is not None and not shp.IsNull():
@@ -698,9 +829,9 @@ def export_step_from_citygml(
                 log(f"└─ [RESULT] ✗ Failed, skipping")
                 continue
 
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] EXTRACTION SUMMARY (Sew Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Shapes sewn: {count}")
         log(f"")
 
@@ -708,9 +839,9 @@ def export_step_from_citygml(
     # Method 3: Footprint extrusion (LOD0/LOD1 fallback)
     # -------------------------------------------------------------------------
     if not shapes and method in ("extrude", "auto"):
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] BUILDING GEOMETRY EXTRACTION (Extrude Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
 
         # Note: Use xy_transform for 2D footprints, not xyz_transform
         xy_transform = None
@@ -719,6 +850,7 @@ def export_step_from_citygml(
             def xy_tx(x, y):
                 X, Y, _ = xyz_transform(x, y, 0.0)
                 return X, Y
+
             xy_transform = xy_tx
 
         # Parse footprints from CityGML file
@@ -740,22 +872,26 @@ def export_step_from_citygml(
                 shapes.append(shp)
                 count += 1
                 if debug:
-                    log(f"[EXTRUDE] {i+1}/{len(fplist)}: {fp.building_id} → height {fp.height}m")
+                    log(
+                        f"[EXTRUDE] {i + 1}/{len(fplist)}: {fp.building_id} → height {fp.height}m"
+                    )
             except Exception as e:
                 if debug:
-                    log(f"[EXTRUDE] {i+1}/{len(fplist)}: {fp.building_id} FAILED: {e}")
+                    log(
+                        f"[EXTRUDE] {i + 1}/{len(fplist)}: {fp.building_id} FAILED: {e}"
+                    )
                 continue
 
-        log(f"\n{'='*80}")
+        log(f"\n{'=' * 80}")
         log(f"[PHASE:2] EXTRACTION SUMMARY (Extrude Method)")
-        log(f"{'='*80}")
+        log(f"{'=' * 80}")
         log(f"[INFO] Shapes extruded: {count}")
         log(f"")
 
     # PHASE:7 - STEP Export
-    log(f"\n{'='*80}")
+    log(f"\n{'=' * 80}")
     log(f"[PHASE:7] STEP EXPORT PREPARATION")
-    log(f"{'='*80}")
+    log(f"{'=' * 80}")
     log(f"[INFO] Total shapes extracted: {len(shapes)}")
 
     if not shapes:
@@ -767,9 +903,15 @@ def export_step_from_citygml(
         close_log_file()
 
         if method == "auto":
-            return False, "No shapes created via solid extraction, sewing, or extrusion."
+            return (
+                False,
+                "No shapes created via solid extraction, sewing, or extrusion.",
+            )
         elif method == "solid":
-            return False, "Solid method produced no shapes (no LOD1/LOD2/LOD3 solid data found)."
+            return (
+                False,
+                "Solid method produced no shapes (no LOD1/LOD2/LOD3 solid data found).",
+            )
         elif method == "sew":
             return False, "Sew method produced no shapes (insufficient LOD2 surfaces)."
         elif method == "extrude":
@@ -788,7 +930,10 @@ def export_step_from_citygml(
 
     # Export using legacy function (delegates to core STEPExporter)
     print(f"[PHASE:7] Exporting {len(shapes)} shape(s) to STEP file...")
+    t_phase7 = time.time()
     result = export_step_compound_local(shapes, out_step, debug=debug)
+    phase7_ms = (time.time() - t_phase7) * 1000
+    log(f"[TIMING] PHASE:7 (STEP export): {phase7_ms:.0f}ms")
     print(f"[PHASE:7] STEP export complete: {out_step}")
 
     close_log_file()

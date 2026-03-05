@@ -45,6 +45,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from mesh_utils import latlon_to_mesh_3rd, get_neighboring_meshes_3rd
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 # CityGML namespaces (same as citygml_to_step.py)
 NS = {
@@ -113,18 +117,20 @@ def _load_mesh_index() -> Dict[str, Any]:
     try:
         mesh_index_path = config["mesh_index_path"]
         if not mesh_index_path.exists():
-            print(f"[CACHE] Mesh index not found: {mesh_index_path}")
+            logger.info(f"[CACHE] Mesh index not found: {mesh_index_path}")
             _MESH_INDEX_CACHE = {}
             return _MESH_INDEX_CACHE
 
         with open(mesh_index_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             _MESH_INDEX_CACHE = data.get("index", {})
-            print(f"[CACHE] Loaded mesh index with {len(_MESH_INDEX_CACHE)} entries")
+            logger.info(
+                f"[CACHE] Loaded mesh index with {len(_MESH_INDEX_CACHE)} entries"
+            )
             return _MESH_INDEX_CACHE
 
     except Exception as e:
-        print(f"[CACHE] Failed to load mesh index: {e}")
+        logger.error(f"[CACHE] Failed to load mesh index: {e}")
         _MESH_INDEX_CACHE = {}
         return _MESH_INDEX_CACHE
 
@@ -173,7 +179,7 @@ def _find_cached_gml_files(
     # Find ward directory: {area_code}_*
     ward_dirs = list(cache_dir.glob(f"{area_code}_*"))
     if not ward_dirs:
-        print(f"[CACHE] No ward directory found for area code: {area_code}")
+        logger.info(f"[CACHE] No ward directory found for area code: {area_code}")
         return []
 
     ward_dir = ward_dirs[0]
@@ -183,10 +189,12 @@ def _find_cached_gml_files(
     gml_files = [Path(p) for p in glob.glob(gml_pattern)]
 
     if not gml_files:
-        print(f"[CACHE] No GML files found for mesh {mesh_code} in {ward_dir.name}")
+        logger.info(
+            f"[CACHE] No GML files found for mesh {mesh_code} in {ward_dir.name}"
+        )
         return []
 
-    print(
+    logger.info(
         f"[CACHE] Found {len(gml_files)} GML file(s) for mesh {mesh_code} in {ward_dir.name}"
     )
     return gml_files
@@ -215,14 +223,14 @@ def _load_gml_from_cache(mesh_code: str, area_code: str) -> Optional[str]:
             with open(gml_files[0], "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
-            print(f"[CACHE] Failed to read GML file: {e}")
+            logger.error(f"[CACHE] Failed to read GML file: {e}")
             return None
 
     # Multiple files: combine them
     try:
         return _combine_gml_files(gml_files)
     except Exception as e:
-        print(f"[CACHE] Failed to combine GML files: {e}")
+        logger.error(f"[CACHE] Failed to combine GML files: {e}")
         return None
 
 
@@ -247,7 +255,7 @@ def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optiona
         seen.add(key)
         unique_files.append(path)
 
-    print(
+    logger.info(
         f"[CACHE] Found {len(unique_files)} GML file(s) across wards for mesh {mesh_code}"
     )
 
@@ -256,13 +264,13 @@ def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optiona
             with open(unique_files[0], "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
-            print(f"[CACHE] Failed to read GML file: {e}")
+            logger.error(f"[CACHE] Failed to read GML file: {e}")
             return None
 
     try:
         return _combine_gml_files(unique_files)
     except Exception as e:
-        print(f"[CACHE] Failed to combine GML files: {e}")
+        logger.error(f"[CACHE] Failed to combine GML files: {e}")
         return None
 
 
@@ -573,13 +581,13 @@ def geocode_address(
         data = response.json()
 
         if not data or len(data) == 0:
-            print(f"[GEOCODING] No results found for query: {query}")
-            print(
+            logger.info(f"[GEOCODING] No results found for query: {query}")
+            logger.info(
                 f"[GEOCODING] Suggestion: Try using a landmark or area name instead of detailed address"
             )
             return None
 
-        print(f"[GEOCODING] Found {len(data)} candidate(s) for: {query}")
+        logger.info(f"[GEOCODING] Found {len(data)} candidate(s) for: {query}")
 
         # Filter and rank results
         valid_results = []
@@ -590,7 +598,9 @@ def geocode_address(
 
                 # Validate Japan coordinates
                 if not (20 <= lat <= 50 and 120 <= lon <= 155):
-                    print(f"[GEOCODING]   Candidate {i + 1}: Outside Japan, skipping")
+                    logger.info(
+                        f"[GEOCODING]   Candidate {i + 1}: Outside Japan, skipping"
+                    )
                     continue
 
                 # Calculate relevance score
@@ -600,19 +610,19 @@ def geocode_address(
                     {"result": result, "lat": lat, "lon": lon, "score": score}
                 )
 
-                print(
+                logger.info(
                     f"[GEOCODING]   Candidate {i + 1}: {result.get('display_name', 'N/A')[:80]}"
                 )
-                print(
+                logger.info(
                     f"[GEOCODING]     Type: {result.get('class', 'N/A')}/{result.get('type', 'N/A')}, Score: {score:.2f}"
                 )
 
             except (KeyError, ValueError) as e:
-                print(f"[GEOCODING]   Candidate {i + 1}: Parse error, skipping")
+                logger.info(f"[GEOCODING]   Candidate {i + 1}: Parse error, skipping")
                 continue
 
         if not valid_results:
-            print(f"[GEOCODING] No valid results in Japan for query: {query}")
+            logger.info(f"[GEOCODING] No valid results in Japan for query: {query}")
             return None
 
         # Sort by score and select best match
@@ -629,19 +639,19 @@ def geocode_address(
             osm_id=result.get("osm_id"),
         )
 
-        print(f"[GEOCODING] ✓ Selected best match (score: {best['score']:.2f})")
-        print(
+        logger.info(f"[GEOCODING] ✓ Selected best match (score: {best['score']:.2f})")
+        logger.info(
             f"[GEOCODING]   Coordinates: ({geocoding_result.latitude}, {geocoding_result.longitude})"
         )
-        print(f"[GEOCODING]   Address: {geocoding_result.display_name}")
+        logger.info(f"[GEOCODING]   Address: {geocoding_result.display_name}")
 
         return geocoding_result
 
     except requests.exceptions.RequestException as e:
-        print(f"[GEOCODING] Request failed: {e}")
+        logger.info(f"[GEOCODING] Request failed: {e}")
         return None
     except (KeyError, ValueError) as e:
-        print(f"[GEOCODING] Parse error: {e}")
+        logger.info(f"[GEOCODING] Parse error: {e}")
         return None
     finally:
         # CRITICAL: Enforce Nominatim rate limit (1 req/sec)
@@ -716,16 +726,16 @@ def fetch_citygml_from_plateau(
         >>> if xml:
         ...     print(f"Fetched {len(xml)} bytes of CityGML data")
     """
-    print(f"[PLATEAU] Fetching CityGML for ({latitude}, {longitude})")
+    logger.info(f"[PLATEAU] Fetching CityGML for ({latitude}, {longitude})")
 
     # Step 1: Calculate mesh code for center point
     # Note: Using only center mesh (1km x 1km) to avoid downloading too many files
     #       If radius > ~500m is needed, consider adding neighbors
     try:
         center_mesh = latlon_to_mesh_3rd(latitude, longitude)
-        print(f"[PLATEAU] Center mesh: {center_mesh} (1km x 1km area)")
+        logger.info(f"[PLATEAU] Center mesh: {center_mesh} (1km x 1km area)")
     except Exception as e:
-        print(f"[PLATEAU] Failed to calculate mesh code: {e}")
+        logger.error(f"[PLATEAU] Failed to calculate mesh code: {e}")
         return None
 
     # Step 1.5: Check cache if enabled
@@ -735,7 +745,7 @@ def fetch_citygml_from_plateau(
             area_codes = _get_wards_from_mesh(center_mesh)
             if area_codes:
                 if len(area_codes) > 1:
-                    print(
+                    logger.info(
                         f"[CACHE] Mesh {center_mesh} spans multiple wards: {area_codes}"
                     )
                     cached_xml = _load_gml_from_cache_multi(center_mesh, area_codes)
@@ -744,30 +754,32 @@ def fetch_citygml_from_plateau(
 
                 if cached_xml:
                     ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
-                    print(
+                    logger.info(
                         f"[PLATEAU] ✓ Cache HIT: mesh={center_mesh}, wards={ward_label}"
                     )
                     return cached_xml
 
                 ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
-                print(f"[PLATEAU] Cache MISS: mesh={center_mesh}, wards={ward_label}")
+                logger.info(
+                    f"[PLATEAU] Cache MISS: mesh={center_mesh}, wards={ward_label}"
+                )
         except Exception as e:
-            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+            logger.info(f"[PLATEAU] Cache error (falling back to API): {e}")
 
     # Step 2: Query PLATEAU API with mesh code (fallback)
     api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{center_mesh}"
 
-    print(f"[PLATEAU] Querying API...")
+    logger.info(f"[PLATEAU] Querying API...")
 
     try:
         response = requests.get(api_url, timeout=timeout)
         response.raise_for_status()
         catalog_data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"[PLATEAU] API request failed: {e}")
+        logger.info(f"[PLATEAU] API request failed: {e}")
         return None
     except ValueError as e:
-        print(f"[PLATEAU] Invalid JSON response: {e}")
+        logger.info(f"[PLATEAU] Invalid JSON response: {e}")
         return None
 
     # Step 3: Extract building CityGML file URLs
@@ -780,7 +792,7 @@ def fetch_citygml_from_plateau(
             files = city.get("files", {})
             bldg_files = files.get("bldg", [])
 
-            print(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
+            logger.info(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
 
             for bldg_file in bldg_files:
                 url = bldg_file.get("url")
@@ -793,24 +805,26 @@ def fetch_citygml_from_plateau(
                 break
 
     if not citygml_urls:
-        print(f"[PLATEAU] No CityGML files found in response")
+        logger.info(f"[PLATEAU] No CityGML files found in response")
         return None
 
     if len(citygml_urls) > MAX_FILES:
         citygml_urls = citygml_urls[:MAX_FILES]
-        print(f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues")
+        logger.info(
+            f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues"
+        )
 
-    print(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
 
     # Step 4: Download and combine CityGML files
     combined_xml = _download_and_combine_citygml(citygml_urls, timeout=timeout)
 
     if combined_xml:
-        print(
+        logger.info(
             f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)"
         )
     else:
-        print(f"[PLATEAU] Failed to download CityGML files")
+        logger.error(f"[PLATEAU] Failed to download CityGML files")
 
     return combined_xml
 
@@ -829,7 +843,7 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
     if not urls:
         return None
 
-    print(f"[PLATEAU] Downloading {len(urls)} file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(urls)} file(s)...")
 
     try:
         # Download first file as base document
@@ -841,7 +855,7 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
         try:
             root = ET.fromstring(base_xml)
         except ET.ParseError as e:
-            print(f"[PLATEAU] Failed to parse base XML: {e}")
+            logger.error(f"[PLATEAU] Failed to parse base XML: {e}")
             return None
 
         # If only one file, return it
@@ -851,7 +865,7 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
         # Download and merge remaining files
         for i, url in enumerate(urls[1:], 2):
             try:
-                print(f"[PLATEAU]   Downloading file {i}/{len(urls)}...")
+                logger.info(f"[PLATEAU]   Downloading file {i}/{len(urls)}...")
                 response = requests.get(url, timeout=timeout)
                 response.raise_for_status()
 
@@ -863,7 +877,7 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
                     root.append(member)
 
             except Exception as e:
-                print(f"[PLATEAU]   Warning: Failed to download file {i}: {e}")
+                logger.error(f"[PLATEAU]   Warning: Failed to download file {i}: {e}")
                 continue
 
         # Convert back to string
@@ -871,10 +885,10 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
         return combined_xml
 
     except requests.exceptions.RequestException as e:
-        print(f"[PLATEAU] Download failed: {e}")
+        logger.info(f"[PLATEAU] Download failed: {e}")
         return None
     except Exception as e:
-        print(f"[PLATEAU] Unexpected error: {e}")
+        logger.info(f"[PLATEAU] Unexpected error: {e}")
         return None
 
 
@@ -904,14 +918,14 @@ def parse_buildings_from_citygml(xml_content: str) -> List[BuildingInfo]:
     try:
         root = ET.fromstring(xml_content)
     except ET.ParseError as e:
-        print(f"[PARSE] XML parse error: {e}")
+        logger.info(f"[PARSE] XML parse error: {e}")
         return []
 
     buildings: List[BuildingInfo] = []
 
     # Find all bldg:Building elements
     building_elements = root.findall(".//bldg:Building", NS)
-    print(f"[PARSE] Found {len(building_elements)} building(s)")
+    logger.info(f"[PARSE] Found {len(building_elements)} building(s)")
 
     for building_elem in building_elements:
         # Extract gml:id (always present)
@@ -1017,15 +1031,15 @@ def parse_buildings_from_citygml(xml_content: str) -> List[BuildingInfo]:
     lod2_count = sum(1 for b in buildings if b.has_lod2 and not b.has_lod3)
     lod1_count = len(buildings) - lod3_count - lod2_count
 
-    print(f"[PARSE] Extracted {len(buildings)} valid building(s)")
-    print(f"[PARSE] LOD Summary:")
-    print(
+    logger.info(f"[PARSE] Extracted {len(buildings)} valid building(s)")
+    logger.info(f"[PARSE] LOD Summary:")
+    logger.info(
         f"[PARSE]   - LOD3: {lod3_count} building(s) ({100 * lod3_count / len(buildings) if buildings else 0:.1f}%)"
     )
-    print(
+    logger.info(
         f"[PARSE]   - LOD2: {lod2_count} building(s) ({100 * lod2_count / len(buildings) if buildings else 0:.1f}%)"
     )
-    print(
+    logger.info(
         f"[PARSE]   - LOD1 or lower: {lod1_count} building(s) ({100 * lod1_count / len(buildings) if buildings else 0:.1f}%)"
     )
 
@@ -1147,7 +1161,7 @@ def _detect_lod_levels(
             building_id
             or building_elem.get("{http://www.opengis.net/gml}id", "unknown")[:30]
         )
-        print(f"[LOD DEBUG] Checking building: {building_label}")
+        logger.debug(f"[LOD DEBUG] Checking building: {building_label}")
 
     # Check LOD3 indicators
     lod3_tags = [
@@ -1156,7 +1170,7 @@ def _detect_lod_levels(
         ".//bldg:lod3Geometry",
     ]
     if debug:
-        print(
+        logger.debug(
             f"[LOD DEBUG]   Searching for LOD3 tags: {[t.split(':')[1] for t in lod3_tags]}"
         )
     for tag in lod3_tags:
@@ -1166,7 +1180,7 @@ def _detect_lod_levels(
             tag_name = tag.split(":")[-1]
             found_tags.append(f"LOD3:{tag_name}")
             if debug:
-                print(f"[LOD DEBUG]   ✓ Found LOD3 tag: {tag_name}")
+                logger.debug(f"[LOD DEBUG]   ✓ Found LOD3 tag: {tag_name}")
             break
 
     # Check LOD2 indicators
@@ -1176,7 +1190,7 @@ def _detect_lod_levels(
         ".//bldg:lod2Geometry",
     ]
     if debug:
-        print(
+        logger.debug(
             f"[LOD DEBUG]   Searching for LOD2 tags: {[t.split(':')[1] for t in lod2_tags]}"
         )
     for tag in lod2_tags:
@@ -1186,14 +1200,14 @@ def _detect_lod_levels(
             tag_name = tag.split(":")[-1]
             found_tags.append(f"LOD2:{tag_name}")
             if debug:
-                print(f"[LOD DEBUG]   ✓ Found LOD2 tag: {tag_name}")
+                logger.debug(f"[LOD DEBUG]   ✓ Found LOD2 tag: {tag_name}")
             break
 
     # Alternative detection: Check for BoundarySurface types
     # LOD2/LOD3 buildings typically have WallSurface and RoofSurface
     if not has_lod2 and not has_lod3:
         if debug:
-            print(
+            logger.debug(
                 f"[LOD DEBUG]   No direct LOD2/LOD3 tags found, checking BoundarySurfaces..."
             )
         boundary_tags = [
@@ -1207,7 +1221,7 @@ def _detect_lod_levels(
                 tag_name = tag.split(":")[-1]
                 found_tags.append(f"Boundary:{tag_name}")
                 if debug:
-                    print(
+                    logger.debug(
                         f"[LOD DEBUG]   ✓ Found boundary surface: {tag_name} (implies LOD2)"
                     )
                 break
@@ -1221,7 +1235,7 @@ def _detect_lod_levels(
             result_str.append("LOD2")
         if not result_str:
             result_str.append("LOD1 or lower")
-        print(
+        logger.debug(
             f"[LOD DEBUG]   Result: {', '.join(result_str)} | Tags found: {found_tags or 'none'}"
         )
 
@@ -1274,19 +1288,21 @@ def find_nearest_building(
     # Validate search_mode
     valid_modes = ["distance", "name", "hybrid"]
     if search_mode not in valid_modes:
-        print(f"[RANK] Invalid search_mode '{search_mode}', defaulting to 'hybrid'")
+        logger.info(
+            f"[RANK] Invalid search_mode '{search_mode}', defaulting to 'hybrid'"
+        )
         search_mode = "hybrid"
 
     # If name mode but no query, fall back to distance mode
     if search_mode == "name" and not name_query:
-        print(
+        logger.info(
             f"[RANK] Name search mode requires name_query, falling back to distance mode"
         )
         search_mode = "distance"
 
-    print(f"[RANK] Search mode: {search_mode}")
+    logger.info(f"[RANK] Search mode: {search_mode}")
     if name_query:
-        print(f"[RANK] Name query: '{name_query}'")
+        logger.info(f"[RANK] Name query: '{name_query}'")
 
     # Step 1: Calculate distances and normalize (0.0 = far, 1.0 = very close)
     max_distance = 0.0
@@ -1318,7 +1334,7 @@ def find_nearest_building(
             if similarity > 0.3:  # Threshold for "significant" match
                 has_name_matches = True
 
-        print(
+        logger.info(
             f"[RANK] Found {sum(1 for s in name_scores.values() if s > 0.3)} building(s) with significant name matches"
         )
 
@@ -1379,9 +1395,9 @@ def find_nearest_building(
         unique_buildings.append(building)
 
     if duplicates_removed > 0:
-        print(f"[DEDUP] Removed {duplicates_removed} duplicate building(s)")
+        logger.info(f"[DEDUP] Removed {duplicates_removed} duplicate building(s)")
     if unknown_height_removed > 0:
-        print(
+        logger.info(
             f"[FILTER] Removed {unknown_height_removed} building(s) with unknown height"
         )
 
@@ -1395,17 +1411,19 @@ def find_nearest_building(
         unique_buildings.sort(key=lambda b: b.relevance_score or 0.0, reverse=True)
         sort_desc = "relevance score (descending)"
 
-    print(f"[SORT] Sorted {len(unique_buildings)} unique building(s) by {sort_desc}")
+    logger.info(
+        f"[SORT] Sorted {len(unique_buildings)} unique building(s) by {sort_desc}"
+    )
     if unique_buildings:
         best = unique_buildings[0]
         height_str = f"{best.measured_height or best.height or 'unknown'}m"
         name_str = f'"{best.name}"' if best.name else "unnamed"
-        print(f"[SORT] Best match: {best.building_id or best.gml_id[:20]}")
-        print(f"[SORT]   Name: {name_str}, Height: {height_str}")
-        print(
+        logger.info(f"[SORT] Best match: {best.building_id or best.gml_id[:20]}")
+        logger.info(f"[SORT]   Name: {name_str}, Height: {height_str}")
+        logger.info(
             f"[SORT]   Distance: {best.distance_meters:.1f}m, Relevance: {best.relevance_score:.3f}"
         )
-        print(f"[SORT]   Reason: {best.match_reason}")
+        logger.info(f"[SORT]   Reason: {best.match_reason}")
 
     return unique_buildings
 
@@ -1454,14 +1472,13 @@ def search_buildings_by_address(
     """
     # 渋谷フクラスの特別処理（ハードコーディング）
     if _is_shibuya_fukuras_query(query):
-        print(f"\n{'=' * 60}")
-        print(
+        logger.info(
             f"[SEARCH] Detected Shibuya Fukuras query - using hardcoded mesh/building ID"
         )
-        print(
+        logger.info(
             f"[SEARCH] Mesh code: 53393586, Building ID: bldg_3ad6aaeb-26f8-4716-a8ec-cb2504b94674"
         )
-        print(f"{'=' * 60}\n")
+        logger.info(f"{'=' * 60}\n")
 
         # 既存の search_building_by_id_and_mesh() 関数を使用
         result = search_building_by_id_and_mesh(
@@ -1501,10 +1518,9 @@ def search_buildings_by_address(
             if limit is not None and limit > 0:
                 buildings = buildings[:limit]
 
-            print(f"\n{'=' * 60}")
-            print(f"[SEARCH] Success: Found Shibuya Fukuras (hardcoded)")
-            print(f"[SEARCH] Building ID: {building.gml_id}")
-            print(f"{'=' * 60}\n")
+            logger.info(f"[SEARCH] Success: Found Shibuya Fukuras (hardcoded)")
+            logger.info(f"[SEARCH] Building ID: {building.gml_id}")
+            logger.info(f"{'=' * 60}\n")
 
             return {
                 "success": True,
@@ -1516,17 +1532,16 @@ def search_buildings_by_address(
             }
         else:
             # フォールバック：search_building_by_id_and_meshが失敗した場合は通常の検索に
-            print(
+            logger.warning(
                 f"[SEARCH] WARNING: Hardcoded search failed, falling back to normal search"
             )
-            print(f"[SEARCH] Error: {result.get('error')}")
+            logger.error(f"[SEARCH] Error: {result.get('error')}")
 
-    print(f"\n{'=' * 60}")
-    print(f"[SEARCH] Query: {query}")
-    print(f"[SEARCH] Radius: {radius} degrees (~{radius * 100000:.0f}m)")
-    print(f"[SEARCH] Name filter: {name_filter or 'None'}")
-    print(f"[SEARCH] Search mode: {search_mode}")
-    print(f"{'=' * 60}\n")
+    logger.info(f"[SEARCH] Query: {query}")
+    logger.info(f"[SEARCH] Radius: {radius} degrees (~{radius * 100000:.0f}m)")
+    logger.info(f"[SEARCH] Name filter: {name_filter or 'None'}")
+    logger.info(f"[SEARCH] Search mode: {search_mode}")
+    logger.info(f"{'=' * 60}\n")
 
     # Step 1: Geocode
     geocoding = geocode_address(query)
@@ -1579,15 +1594,14 @@ def search_buildings_by_address(
     if limit is not None and limit > 0:
         sorted_buildings = sorted_buildings[:limit]
 
-    print(f"\n{'=' * 60}")
-    print(f"[SEARCH] Success: Found {len(sorted_buildings)} building(s)")
+    logger.info(f"[SEARCH] Success: Found {len(sorted_buildings)} building(s)")
     if sorted_buildings:
         best = sorted_buildings[0]
-        print(f"[SEARCH] Top result: {best.name or best.gml_id[:30]}")
-        print(
+        logger.info(f"[SEARCH] Top result: {best.name or best.gml_id[:30]}")
+        logger.info(
             f"[SEARCH]   Relevance: {best.relevance_score:.3f}, Reason: {best.match_reason}"
         )
-    print(f"{'=' * 60}\n")
+    logger.info(f"{'=' * 60}\n")
 
     return {
         "success": True,
@@ -1676,15 +1690,17 @@ def fetch_citygml_by_municipality(
     Returns:
         Tuple of (xml_content, municipality_name, total_buildings) if successful, None otherwise
     """
-    print(f"[PLATEAU] Fetching CityGML for municipality: {municipality_code}")
+    logger.info(f"[PLATEAU] Fetching CityGML for municipality: {municipality_code}")
 
     # Step 1: Get municipality name
     municipality_name = _get_municipality_name_from_code(municipality_code)
     if not municipality_name:
-        print(f"[PLATEAU] Municipality code {municipality_code} not found in mapping")
+        logger.info(
+            f"[PLATEAU] Municipality code {municipality_code} not found in mapping"
+        )
         return None
 
-    print(f"[PLATEAU] Municipality: {municipality_name}")
+    logger.info(f"[PLATEAU] Municipality: {municipality_name}")
 
     # Step 1.5: Check if entire ward is cached
     config = _get_cache_config()
@@ -1709,7 +1725,7 @@ def fetch_citygml_by_municipality(
                         all_gml_files.extend(glob.glob(gml_pattern))
 
                     if all_gml_files:
-                        print(
+                        logger.info(
                             f"[PLATEAU] ✓ Cache HIT: Full ward cached ({len(all_gml_files)} files)"
                         )
                         combined_xml = _combine_gml_files(
@@ -1723,38 +1739,42 @@ def fetch_citygml_by_municipality(
                                 ".//{http://www.opengis.net/citygml/building/2.0}Building"
                             )
                             total_buildings = len(buildings)
-                            print(
+                            logger.info(
                                 f"[PLATEAU] Cache: Found {total_buildings} buildings in {municipality_name}"
                             )
                             return (combined_xml, municipality_name, total_buildings)
                         except ET.ParseError as e:
-                            print(f"[PLATEAU] Cache: Failed to parse combined XML: {e}")
+                            logger.error(
+                                f"[PLATEAU] Cache: Failed to parse combined XML: {e}"
+                            )
                             # Fall through to API download
         except Exception as e:
-            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+            logger.info(f"[PLATEAU] Cache error (falling back to API): {e}")
 
     # Step 2: Geocode city hall to get representative coordinates (fallback)
     geocode_query = f"{municipality_name}役所"
     geocoding = geocode_address(geocode_query)
 
     if not geocoding:
-        print(f"[PLATEAU] Failed to geocode municipality: {geocode_query}")
+        logger.error(f"[PLATEAU] Failed to geocode municipality: {geocode_query}")
         return None
 
-    print(
+    logger.info(
         f"[PLATEAU] Center coordinates: ({geocoding.latitude}, {geocoding.longitude})"
     )
 
     # Step 3: Calculate mesh codes (center + neighbors for wider coverage)
     try:
         center_mesh = latlon_to_mesh_3rd(geocoding.latitude, geocoding.longitude)
-        print(f"[PLATEAU] Center mesh: {center_mesh}")
+        logger.info(f"[PLATEAU] Center mesh: {center_mesh}")
 
         # Get neighboring meshes (3x3 grid = 9 meshes total, covering ~3km x 3km)
         mesh_codes = get_neighboring_meshes_3rd(center_mesh)
-        print(f"[PLATEAU] Searching {len(mesh_codes)} mesh(es) to cover municipality")
+        logger.info(
+            f"[PLATEAU] Searching {len(mesh_codes)} mesh(es) to cover municipality"
+        )
     except Exception as e:
-        print(f"[PLATEAU] Failed to calculate mesh codes: {e}")
+        logger.error(f"[PLATEAU] Failed to calculate mesh codes: {e}")
         return None
 
     # Step 4: Query PLATEAU API for each mesh and collect CityGML URLs
@@ -1766,7 +1786,9 @@ def fetch_citygml_by_municipality(
         api_url = (
             f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
         )
-        print(f"[PLATEAU] Mesh {i + 1}/{min(len(mesh_codes), MAX_MESHES)}: {mesh_code}")
+        logger.info(
+            f"[PLATEAU] Mesh {i + 1}/{min(len(mesh_codes), MAX_MESHES)}: {mesh_code}"
+        )
 
         try:
             response = requests.get(api_url, timeout=timeout)
@@ -1780,7 +1802,7 @@ def fetch_citygml_by_municipality(
                     files = city.get("files", {})
                     bldg_files = files.get("bldg", [])
 
-                    print(
+                    logger.info(
                         f"[PLATEAU]   {city_name}: {len(bldg_files)} building file(s)"
                     )
 
@@ -1790,24 +1812,24 @@ def fetch_citygml_by_municipality(
                             all_citygml_urls.append(url)
 
         except requests.exceptions.RequestException as e:
-            print(f"[PLATEAU]   API request failed: {e}")
+            logger.info(f"[PLATEAU]   API request failed: {e}")
             # Continue with next mesh
             continue
         except ValueError as e:
-            print(f"[PLATEAU]   Invalid JSON response: {e}")
+            logger.info(f"[PLATEAU]   Invalid JSON response: {e}")
             continue
 
     if not all_citygml_urls:
-        print(f"[PLATEAU] No CityGML files found for {municipality_name}")
+        logger.info(f"[PLATEAU] No CityGML files found for {municipality_name}")
         return None
 
-    print(f"[PLATEAU] Downloading {len(all_citygml_urls)} CityGML file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(all_citygml_urls)} CityGML file(s)...")
 
     # Step 5: Download and combine CityGML files
     combined_xml = _download_and_combine_citygml(all_citygml_urls, timeout=timeout)
 
     if not combined_xml:
-        print(f"[PLATEAU] Failed to download CityGML files")
+        logger.error(f"[PLATEAU] Failed to download CityGML files")
         return None
 
     # Count total buildings in XML
@@ -1817,11 +1839,11 @@ def fetch_citygml_by_municipality(
             ".//{http://www.opengis.net/citygml/building/2.0}Building"
         )
         total_buildings = len(buildings)
-        print(
+        logger.info(
             f"[PLATEAU] Success: Found {total_buildings} total buildings in {municipality_name}"
         )
     except ET.ParseError as e:
-        print(f"[PLATEAU] Failed to parse combined XML: {e}")
+        logger.error(f"[PLATEAU] Failed to parse combined XML: {e}")
         total_buildings = 0
 
     return (combined_xml, municipality_name, total_buildings)
@@ -1848,9 +1870,8 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
             "error_details": str or None
         }
     """
-    print(f"\n{'=' * 60}")
-    print(f"[BUILDING ID SEARCH] Searching for building: {building_id}")
-    print(f"{'=' * 60}\n")
+    logger.info(f"[BUILDING ID SEARCH] Searching for building: {building_id}")
+    logger.info(f"{'=' * 60}\n")
 
     # Step 1: Extract municipality code
     municipality_code = extract_municipality_code(building_id)
@@ -1867,7 +1888,9 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
             "error_details": f"Expected format: {{5-digit-code}}-bldg-{{number}}, got: {building_id}",
         }
 
-    print(f"[BUILDING ID SEARCH] Extracted municipality code: {municipality_code}")
+    logger.info(
+        f"[BUILDING ID SEARCH] Extracted municipality code: {municipality_code}"
+    )
 
     # Step 2: Fetch CityGML for municipality
     fetch_result = fetch_citygml_by_municipality(municipality_code)
@@ -1885,7 +1908,7 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
         }
 
     xml_content, municipality_name, total_buildings = fetch_result
-    print(
+    logger.info(
         f"[BUILDING ID SEARCH] Municipality: {municipality_name}, Total buildings: {total_buildings}"
     )
 
@@ -1946,17 +1969,16 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
             "error_details": f"Searched {len(buildings)} buildings in {municipality_name}, but building ID '{building_id}' was not found. Example IDs from this area: {', '.join(similar_ids[:3])}",
         }
 
-    print(f"\n{'=' * 60}")
-    print(f"[BUILDING ID SEARCH] Success: Found building!")
-    print(f"[BUILDING ID SEARCH]   ID: {target_building.gml_id}")
-    print(f"[BUILDING ID SEARCH]   Name: {target_building.name or 'N/A'}")
-    print(
+    logger.info(f"[BUILDING ID SEARCH] Success: Found building!")
+    logger.info(f"[BUILDING ID SEARCH]   ID: {target_building.gml_id}")
+    logger.info(f"[BUILDING ID SEARCH]   Name: {target_building.name or 'N/A'}")
+    logger.info(
         f"[BUILDING ID SEARCH]   Height: {target_building.height or target_building.measured_height or 'N/A'}m"
     )
-    print(
+    logger.info(
         f"[BUILDING ID SEARCH]   LOD2: {target_building.has_lod2}, LOD3: {target_building.has_lod3}"
     )
-    print(f"{'=' * 60}\n")
+    logger.info(f"{'=' * 60}\n")
 
     return {
         "success": True,
@@ -1980,11 +2002,13 @@ def _fetch_citygml_by_mesh_code_with_sources(
         Tuple[xml_content, source_urls] on success, otherwise None.
         source_urls may be empty when cache is used.
     """
-    print(f"[PLATEAU] Fetching CityGML for mesh code: {mesh_code}")
+    logger.info(f"[PLATEAU] Fetching CityGML for mesh code: {mesh_code}")
 
     # Validate mesh code format (8 digits for 3rd mesh)
     if not mesh_code.isdigit() or len(mesh_code) != 8:
-        print(f"[PLATEAU] Invalid mesh code format: {mesh_code} (expected 8 digits)")
+        logger.info(
+            f"[PLATEAU] Invalid mesh code format: {mesh_code} (expected 8 digits)"
+        )
         return None
 
     # Check cache if enabled
@@ -1994,7 +2018,7 @@ def _fetch_citygml_by_mesh_code_with_sources(
             area_codes = _get_wards_from_mesh(mesh_code)
             if area_codes:
                 if len(area_codes) > 1:
-                    print(
+                    logger.info(
                         f"[CACHE] Mesh {mesh_code} spans multiple wards: {area_codes}"
                     )
                     cached_xml = _load_gml_from_cache_multi(mesh_code, area_codes)
@@ -2003,7 +2027,7 @@ def _fetch_citygml_by_mesh_code_with_sources(
 
                 if cached_xml:
                     ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
-                    print(
+                    logger.info(
                         f"[PLATEAU] ✓ Cache HIT: mesh={mesh_code}, wards={ward_label}"
                     )
                     cache_dir = config["cache_dir"]
@@ -2024,24 +2048,26 @@ def _fetch_citygml_by_mesh_code_with_sources(
                     return cached_xml, dedup_paths
 
                 ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
-                print(f"[PLATEAU] Cache MISS: mesh={mesh_code}, wards={ward_label}")
+                logger.info(
+                    f"[PLATEAU] Cache MISS: mesh={mesh_code}, wards={ward_label}"
+                )
         except Exception as e:
-            print(f"[PLATEAU] Cache error (falling back to API): {e}")
+            logger.info(f"[PLATEAU] Cache error (falling back to API): {e}")
 
     # Query PLATEAU API with mesh code (fallback)
     api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
 
-    print(f"[PLATEAU] Querying API...")
+    logger.info(f"[PLATEAU] Querying API...")
 
     try:
         response = requests.get(api_url, timeout=timeout)
         response.raise_for_status()
         catalog_data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"[PLATEAU] API request failed: {e}")
+        logger.info(f"[PLATEAU] API request failed: {e}")
         return None
     except ValueError as e:
-        print(f"[PLATEAU] Invalid JSON response: {e}")
+        logger.info(f"[PLATEAU] Invalid JSON response: {e}")
         return None
 
     # Extract building CityGML file URLs
@@ -2054,7 +2080,7 @@ def _fetch_citygml_by_mesh_code_with_sources(
             files = city.get("files", {})
             bldg_files = files.get("bldg", [])
 
-            print(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
+            logger.info(f"[PLATEAU] {city_name}: {len(bldg_files)} building file(s)")
 
             for bldg_file in bldg_files:
                 url = bldg_file.get("url")
@@ -2067,25 +2093,27 @@ def _fetch_citygml_by_mesh_code_with_sources(
                 break
 
     if not citygml_urls:
-        print(f"[PLATEAU] No CityGML files found for mesh code: {mesh_code}")
+        logger.info(f"[PLATEAU] No CityGML files found for mesh code: {mesh_code}")
         return None
 
     if len(citygml_urls) > MAX_FILES:
         citygml_urls = citygml_urls[:MAX_FILES]
-        print(f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues")
+        logger.info(
+            f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues"
+        )
 
-    print(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
 
     # Download and combine CityGML files
     combined_xml = _download_and_combine_citygml(citygml_urls, timeout=timeout)
 
     if combined_xml:
-        print(
+        logger.info(
             f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)"
         )
         return combined_xml, citygml_urls
     else:
-        print(f"[PLATEAU] Failed to download CityGML files")
+        logger.error(f"[PLATEAU] Failed to download CityGML files")
         return None
 
 
@@ -2214,7 +2242,7 @@ def _find_building_id_in_xml(
                         ):
                             elapsed = (time.time() - start) * 1000
                             if debug:
-                                print(
+                                logger.debug(
                                     f"[ID SEARCH] Match on gml:id after {building_count} buildings ({elapsed:.0f}ms)"
                                 )
                             return current_gml_id
@@ -2246,7 +2274,7 @@ def _find_building_id_in_xml(
                     if legacy_id and _is_building_id_match(legacy_id, target_id):
                         elapsed = (time.time() - start) * 1000
                         if debug:
-                            print(
+                            logger.debug(
                                 f"[ID SEARCH] Match on legacy building_id after {building_count} buildings ({elapsed:.0f}ms)"
                             )
                         return current_gml_id  # Return gml:id (canonical identifier)
@@ -2259,12 +2287,12 @@ def _find_building_id_in_xml(
                 depth -= 1
 
     except ET.ParseError as e:
-        print(f"[ID SEARCH] XML parse error: {e}")
+        logger.info(f"[ID SEARCH] XML parse error: {e}")
         return None
 
     elapsed = (time.time() - start) * 1000
     if debug:
-        print(
+        logger.debug(
             f"[ID SEARCH] Not found after scanning {building_count} buildings ({elapsed:.0f}ms)"
         )
     return None
@@ -2311,9 +2339,8 @@ def search_building_by_id_and_mesh(
         >>> if result["success"]:
         ...     print(f"Found: {result['matched_gml_id']}")
     """
-    print(f"\n{'=' * 60}")
-    print(f"[BUILDING SEARCH] Building ID: {building_id}, Mesh Code: {mesh_code}")
-    print(f"{'=' * 60}\n")
+    logger.info(f"[BUILDING SEARCH] Building ID: {building_id}, Mesh Code: {mesh_code}")
+    logger.info(f"{'=' * 60}\n")
 
     # Step 1: Validate mesh code
     if not mesh_code.isdigit() or len(mesh_code) != 8:
@@ -2350,7 +2377,7 @@ def search_building_by_id_and_mesh(
     fetched = _fetch_citygml_by_mesh_code_with_sources(mesh_code)
     t_fetch_ms = (_time.time() - t_fetch_start) * 1000
     if not fetched:
-        print(f"[TIMING] CityGML fetch: {t_fetch_ms:.0f}ms (failed)")
+        logger.debug(f"[TIMING] CityGML fetch: {t_fetch_ms:.0f}ms (failed)")
         return {
             "success": False,
             "building": None,
@@ -2363,14 +2390,14 @@ def search_building_by_id_and_mesh(
         }
     xml_content, source_urls = fetched
     xml_size_mb = len(xml_content) / (1024 * 1024)
-    print(f"[TIMING] CityGML fetch: {t_fetch_ms:.0f}ms ({xml_size_mb:.1f} MB)")
+    logger.debug(f"[TIMING] CityGML fetch: {t_fetch_ms:.0f}ms ({xml_size_mb:.1f} MB)")
 
     # Step 4: Lightweight ID search (Phase 7 optimization)
     # Uses iterparse to scan gml:id attributes only — avoids full DOM parse,
     # coordinate extraction, height extraction, and LOD detection for all 4,500+
     # buildings.  Reduces ~2,700 ms → <100 ms for 168 MB XML.
     t_search_start = _time.time()
-    print(
+    logger.info(
         f"[BUILDING SEARCH] Searching for building_id: '{building_id}' (lightweight iterparse)"
     )
     matched_gml_id = _find_building_id_in_xml(xml_content, building_id, debug=debug)
@@ -2385,12 +2412,12 @@ def search_building_by_id_and_mesh(
             ]
         except Exception as e:
             neighboring_meshes = []
-            print(
+            logger.error(
                 f"[BUILDING SEARCH] Failed to calculate neighboring meshes for {mesh_code}: {e}"
             )
 
         if neighboring_meshes:
-            print(
+            logger.info(
                 f"[BUILDING SEARCH] Building not found in mesh {mesh_code}. "
                 f"Trying {len(neighboring_meshes)} neighboring meshes..."
             )
@@ -2410,7 +2437,7 @@ def search_building_by_id_and_mesh(
                 resolved_mesh_code = neighbor_mesh
                 xml_content = neighbor_xml
                 source_urls = neighbor_sources
-                print(
+                logger.info(
                     f"[BUILDING SEARCH] ✓ Match found in neighboring mesh {neighbor_mesh}: "
                     f"{matched_gml_id}"
                 )
@@ -2419,8 +2446,10 @@ def search_building_by_id_and_mesh(
     t_search_elapsed = (_time.time() - t_search_start) * 1000
 
     if not matched_gml_id:
-        print(f"[BUILDING SEARCH] ❌ Building not found! ({t_search_elapsed:.0f}ms)")
-        print(f"[BUILDING SEARCH] Searched: '{building_id}'")
+        logger.error(
+            f"[BUILDING SEARCH] ❌ Building not found! ({t_search_elapsed:.0f}ms)"
+        )
+        logger.info(f"[BUILDING SEARCH] Searched: '{building_id}'")
 
         return {
             "success": False,
@@ -2436,11 +2465,14 @@ def search_building_by_id_and_mesh(
             ),
         }
 
-    print(f"\n{'=' * 60}")
-    print(f"[BUILDING SEARCH] Success: Found building! ({t_search_elapsed:.0f}ms)")
-    print(f"[BUILDING SEARCH]   gml:id: {matched_gml_id}")
-    print(f"[BUILDING SEARCH]   Mesh: {resolved_mesh_code} (requested: {mesh_code})")
-    print(f"{'=' * 60}\n")
+    logger.debug(
+        f"[BUILDING SEARCH] Success: Found building! ({t_search_elapsed:.0f}ms)"
+    )
+    logger.info(f"[BUILDING SEARCH]   gml:id: {matched_gml_id}")
+    logger.info(
+        f"[BUILDING SEARCH]   Mesh: {resolved_mesh_code} (requested: {mesh_code})"
+    )
+    logger.info(f"{'=' * 60}\n")
 
     # Optionally construct full BuildingInfo for search/metadata endpoints.
     # This requires parsing all buildings from the XML (~2,700ms for large meshes)
@@ -2451,7 +2483,7 @@ def search_building_by_id_and_mesh(
         buildings = parse_buildings_from_citygml(xml_content)
         building_info = _find_building_by_id_match(buildings, matched_gml_id)
         t_bi_ms = (_time.time() - t_bi_start) * 1000
-        print(f"[TIMING] BuildingInfo construction: {t_bi_ms:.0f}ms")
+        logger.debug(f"[TIMING] BuildingInfo construction: {t_bi_ms:.0f}ms")
 
     return {
         "success": True,
@@ -2471,23 +2503,25 @@ if __name__ == "__main__":
     result = search_buildings_by_address("東京駅", radius=0.001, limit=5)
 
     if result["success"]:
-        print("\n" + "=" * 60)
-        print("SEARCH RESULTS")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("SEARCH RESULTS")
+        logger.info("=" * 60)
 
         geocoding = result["geocoding"]
-        print(f"\nGeocoded Location:")
-        print(f"  Query: {geocoding.query}")
-        print(f"  Address: {geocoding.display_name}")
-        print(f"  Coordinates: ({geocoding.latitude}, {geocoding.longitude})")
+        logger.info(f"\nGeocoded Location:")
+        logger.info(f"  Query: {geocoding.query}")
+        logger.info(f"  Address: {geocoding.display_name}")
+        logger.info(f"  Coordinates: ({geocoding.latitude}, {geocoding.longitude})")
 
-        print(f"\nBuildings Found: {len(result['buildings'])}")
+        logger.info(f"\nBuildings Found: {len(result['buildings'])}")
         for i, building in enumerate(result["buildings"], 1):
-            print(f"\n{i}. Building ID: {building.building_id or 'N/A'}")
-            print(f"   gml:id: {building.gml_id}")
-            print(f"   Distance: {building.distance_meters:.1f}m")
-            print(f"   Height: {building.height or building.measured_height or 'N/A'}m")
-            print(f"   Usage: {building.usage or 'N/A'}")
-            print(f"   Coordinates: ({building.latitude}, {building.longitude})")
+            logger.info(f"\n{i}. Building ID: {building.building_id or 'N/A'}")
+            logger.info(f"   gml:id: {building.gml_id}")
+            logger.info(f"   Distance: {building.distance_meters:.1f}m")
+            logger.info(
+                f"   Height: {building.height or building.measured_height or 'N/A'}m"
+            )
+            logger.info(f"   Usage: {building.usage or 'N/A'}")
+            logger.info(f"   Coordinates: ({building.latitude}, {building.longitude})")
     else:
-        print(f"\nError: {result['error']}")
+        logger.error(f"\nError: {result['error']}")

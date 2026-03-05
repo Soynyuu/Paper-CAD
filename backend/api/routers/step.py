@@ -12,22 +12,25 @@ from api.helpers import cleanup_temp_dir, save_upload_to_tmpdir
 from config import OCCT_AVAILABLE
 from models.request_models import BrepPapercraftRequest
 from services.step_processor import StepUnfoldGenerator
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
 
 def _log_pdf_parameters(request: BrepPapercraftRequest) -> None:
-    print("[PDF] Parameters set:")
-    print(f"  scale_factor: {request.scale_factor}")
-    print(f"  units: {request.units}")
-    print(f"  tab_width: {request.tab_width}")
-    print(f"  show_scale: {request.show_scale}")
-    print(f"  show_fold_lines: {request.show_fold_lines}")
-    print(f"  show_cut_lines: {request.show_cut_lines}")
-    print(f"  layout_mode: {request.layout_mode}")
-    print(f"  page_format: {request.page_format}")
-    print(f"  page_orientation: {request.page_orientation}")
-    print(f"  mirror_horizontal: {request.mirror_horizontal}")
+    logger.info("[PDF] Parameters set:")
+    logger.info(f"  scale_factor: {request.scale_factor}")
+    logger.info(f"  units: {request.units}")
+    logger.info(f"  tab_width: {request.tab_width}")
+    logger.info(f"  show_scale: {request.show_scale}")
+    logger.info(f"  show_fold_lines: {request.show_fold_lines}")
+    logger.info(f"  show_cut_lines: {request.show_cut_lines}")
+    logger.info(f"  layout_mode: {request.layout_mode}")
+    logger.info(f"  page_format: {request.page_format}")
+    logger.info(f"  page_orientation: {request.page_orientation}")
+    logger.info(f"  mirror_horizontal: {request.mirror_horizontal}")
 
 
 def _create_pdf_response_from_pages(
@@ -44,7 +47,7 @@ def _create_pdf_response_from_pages(
     result_path = generator.export_to_pdf_paged(paged_groups, pdf_path)
     resolved_page_count = page_count if page_count is not None else len(paged_groups)
 
-    print(f"[PDF] Generated PDF with {resolved_page_count} pages: {result_path}")
+    logger.info(f"[PDF] Generated PDF with {resolved_page_count} pages: {result_path}")
 
     response = FileResponse(
         path=result_path,
@@ -190,7 +193,7 @@ async def unfold_step_to_svg(
             raise HTTPException(
                 status_code=400, detail="アップロードされたファイルが空です。"
             )
-        print(f"[UPLOAD] /api/step/unfold: received {total} bytes -> {in_path}")
+        logger.info(f"[UPLOAD] /api/step/unfold: received {total} bytes -> {in_path}")
 
         # テクスチャマッピングのパース
         parsed_texture_mappings = []
@@ -199,9 +202,9 @@ async def unfold_step_to_svg(
                 import json
 
                 parsed_texture_mappings = json.loads(texture_mappings)
-                print(f"[TEXTURE] Received texture mappings: {parsed_texture_mappings}")
+                logger.info(f"[TEXTURE] Received texture mappings: {parsed_texture_mappings}")
             except json.JSONDecodeError as e:
-                print(f"[TEXTURE] Failed to parse texture mappings: {e}")
+                logger.error(f"[TEXTURE] Failed to parse texture mappings: {e}")
                 # エラーを無視してテクスチャなしで続行
 
         # StepUnfoldGeneratorインスタンスを作成
@@ -265,7 +268,7 @@ async def unfold_step_to_svg(
                 try:
                     os.unlink(svg_path)
                 except OSError as e:
-                    print(f"[CLEANUP] Warning: Failed to remove {svg_path}: {e}")
+                    logger.error(f"[CLEANUP] Warning: Failed to remove {svg_path}: {e}")
 
                 if return_face_numbers:
                     face_numbers = step_unfold_generator.get_face_numbers()
@@ -460,7 +463,7 @@ async def unfold_step_to_pdf(
                 status_code=400, detail="アップロードされたファイルが空です。"
             )
 
-        print(f"[UPLOAD] /api/step/unfold-pdf: received {total} bytes -> {in_path}")
+        logger.info(f"[UPLOAD] /api/step/unfold-pdf: received {total} bytes -> {in_path}")
 
         # テクスチャマッピングのパース
         parsed_texture_mappings = []
@@ -469,11 +472,11 @@ async def unfold_step_to_pdf(
                 import json
 
                 parsed_texture_mappings = json.loads(texture_mappings)
-                print(
+                logger.info(
                     f"[TEXTURE] Parsed {len(parsed_texture_mappings)} texture mappings"
                 )
             except json.JSONDecodeError as e:
-                print(f"[TEXTURE] Warning: Failed to parse texture_mappings: {e}")
+                logger.error(f"[TEXTURE] Warning: Failed to parse texture_mappings: {e}")
 
         generator = StepUnfoldGenerator()
         # CPU-bound: STEPファイル読み込みをスレッドプールで実行

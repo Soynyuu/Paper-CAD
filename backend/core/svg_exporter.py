@@ -3,6 +3,9 @@ import tempfile
 import uuid
 from typing import List, Dict, Optional
 import svgwrite
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SVGExporter:
@@ -70,7 +73,7 @@ class SVGExporter:
             texture_mappings: [{faceNumber: int, patternId: str, tileCount: int, rotation: float (optional)}, ...]
         """
         self.texture_mappings = texture_mappings
-        print(f"[SVGExporter] Set {len(texture_mappings)} texture mappings")
+        logger.info(f"[SVGExporter] Set {len(texture_mappings)} texture mappings")
 
     def export_to_svg(self, placed_groups: List[Dict], output_path: str,
                      layout_manager=None) -> str:
@@ -95,15 +98,15 @@ class SVGExporter:
         else:
             overall_bbox = self._calculate_overall_bbox(placed_groups)
         
-        print(f"ページフォーマット: {self.page_format}")
-        print(f"全体境界ボックス: {overall_bbox}")
+        logger.info(f"ページフォーマット: {self.page_format}")
+        logger.info(f"全体境界ボックス: {overall_bbox}")
         
         # scale_factorはAPIから渡される値を使用（自動調整しない）
         # scale_factor=150なら1/150スケール → 実際の描画倍率は基準倍率/scale_factor
         # 基準倍率を10とし、scale_factorで割る
         base_scale = 10.0  # 基準描画倍率
         actual_scale = base_scale / self.scale_factor if self.scale_factor > 0 else base_scale
-        print(f"縮尺: 1/{self.scale_factor:.0f} (描画倍率: {actual_scale:.2f})")
+        logger.info(f"縮尺: 1/{self.scale_factor:.0f} (描画倍率: {actual_scale:.2f})")
         
         # SVGサイズを内容に合わせて動的調整
         scaled_content_width = overall_bbox["width"] * actual_scale
@@ -118,7 +121,7 @@ class SVGExporter:
         svg_width = max(svg_width, 600)
         svg_height = max(svg_height, 400)
         
-        print(f"動的SVGサイズ: {svg_width:.1f} x {svg_height:.1f} px")
+        logger.info(f"動的SVGサイズ: {svg_width:.1f} x {svg_height:.1f} px")
         
         # SVG作成 (内容に合わせたサイズ)
         # debug=False でバリデーションを無効化し、カスタムdata-*属性を許可
@@ -154,8 +157,8 @@ class SVGExporter:
         polygon_count = 0
         
         for group_idx, group in enumerate(placed_groups):
-            print(f"グループ{group_idx}をSVGに描画中...")
-            print(f"  ポリゴン数: {len(group['polygons'])}")
+            logger.info(f"グループ{group_idx}をSVGに描画中...")
+            logger.info(f"  ポリゴン数: {len(group['polygons'])}")
 
             polygons = group["polygons"]
 
@@ -165,12 +168,12 @@ class SVGExporter:
             pattern_id = None
             if "face_numbers" in group and len(group["face_numbers"]) > 0:
                 face_number = group["face_numbers"][0]
-                print(f"  [TEXTURE_DEBUG] Group face_number: {face_number}")
-                print(f"  [TEXTURE_DEBUG] Available texture_mappings: {self.texture_mappings}")
+                logger.info(f"  [TEXTURE_DEBUG] Group face_number: {face_number}")
+                logger.info(f"  [TEXTURE_DEBUG] Available texture_mappings: {self.texture_mappings}")
                 # テクスチャマッピングを検索
                 for mapping in self.texture_mappings:
                     mapping_face_num = mapping.get("faceNumber")
-                    print(f"  [TEXTURE_DEBUG] Checking mapping faceNumber={mapping_face_num}, group face_number={face_number}, match={mapping_face_num == face_number}")
+                    logger.info(f"  [TEXTURE_DEBUG] Checking mapping faceNumber={mapping_face_num}, group face_number={face_number}, match={mapping_face_num == face_number}")
                     if mapping_face_num == face_number:
                         texture_mapping = mapping
                         # パターンIDを生成（rotation込み）
@@ -178,14 +181,14 @@ class SVGExporter:
                         pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
                         if rotation != 0:
                             pattern_id += f"_r{int(rotation)}"
-                        print(f"  [TEXTURE_DEBUG] ✓ MATCH FOUND! pattern_id={pattern_id}")
+                        logger.info(f"  [TEXTURE_DEBUG] ✓ MATCH FOUND! pattern_id={pattern_id}")
                         break
                 if not texture_mapping:
-                    print(f"  [TEXTURE_DEBUG] ✗ NO MATCH - No texture mapping found for face {face_number}")
+                    logger.info(f"  [TEXTURE_DEBUG] ✗ NO MATCH - No texture mapping found for face {face_number}")
 
             # 複数のポリゴンがある場合は穴付きポリゴンとして描画（SVG path使用）
             if len(polygons) > 1:
-                print(f"  複数ポリゴン検出（{len(polygons)}個）→ 穴付き形状として描画")
+                logger.info(f"  複数ポリゴン検出（{len(polygons)}個）→ 穴付き形状として描画")
                 path_parts = []
                 all_points = []  # 面番号配置用
 
@@ -201,7 +204,7 @@ class SVGExporter:
                             path_parts.append(f"L {x},{y}")
                         path_parts.append("Z")
 
-                        print(f"    ポリゴン{poly_idx}: {len(points)}点を追加（{'外形線' if poly_idx == 0 else '内形線（穴）'}）")
+                        logger.info(f"    ポリゴン{poly_idx}: {len(points)}点を追加（{'外形線' if poly_idx == 0 else '内形線（穴）'}）")
 
                 # pathを作成して描画
                 full_path = " ".join(path_parts)
@@ -218,7 +221,7 @@ class SVGExporter:
                     if face_number is not None:
                         path_elem.attribs['data-face-number'] = str(face_number)
                     dwg.add(path_elem)
-                    print(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd、face: {face_number}）")
+                    logger.info(f"  穴付きパスを描画（テクスチャ: {pattern_id}、fill-rule: evenodd、face: {face_number}）")
                 else:
                     path_elem = dwg.path(
                         d=full_path,
@@ -229,7 +232,7 @@ class SVGExporter:
                     if face_number is not None:
                         path_elem.attribs['data-face-number'] = str(face_number)
                     dwg.add(path_elem)
-                    print(f"  穴付きパスを描画（fill-rule: evenodd、face: {face_number}）")
+                    logger.info(f"  穴付きパスを描画（fill-rule: evenodd、face: {face_number}）")
 
                 polygon_count += 1
 
@@ -248,7 +251,7 @@ class SVGExporter:
                         style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
                         dominant_baseline="middle"
                     ))
-                    print(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
+                    logger.info(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
 
             else:
                 # 単一ポリゴンの場合は従来通り
@@ -270,14 +273,14 @@ class SVGExporter:
                             if face_number is not None:
                                 polygon_elem.attribs['data-face-number'] = str(face_number)
                             dwg.add(polygon_elem)
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}、face: {face_number}）")
+                            logger.info(f"  ポリゴン{poly_idx}: {len(points)}点を描画（テクスチャ: {pattern_id}、face: {face_number}）")
                         else:
                             polygon_elem = dwg.polygon(points=points, class_="face-polygon")
                             # カスタムデータ属性を追加
                             if face_number is not None:
                                 polygon_elem.attribs['data-face-number'] = str(face_number)
                             dwg.add(polygon_elem)
-                            print(f"  ポリゴン{poly_idx}: {len(points)}点を描画（face: {face_number}）")
+                            logger.info(f"  ポリゴン{poly_idx}: {len(points)}点を描画（face: {face_number}）")
 
                         polygon_count += 1
 
@@ -297,9 +300,9 @@ class SVGExporter:
                                 style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
                                 dominant_baseline="middle"  # 垂直中央揃え
                             ))
-                            print(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
+                            logger.info(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
                     else:
-                        print(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
+                        logger.info(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
             
             # タブ描画
             for tab_idx, tab in enumerate(group.get("tabs", [])):
@@ -307,9 +310,9 @@ class SVGExporter:
                     # スケールファクターを適用
                     points = [(x * actual_scale + content_offset_x, y * actual_scale + content_offset_y) for x, y in tab]
                     dwg.add(dwg.polygon(points=points, class_="tab-polygon"))
-                    print(f"  タブ{tab_idx}: {len(tab)}点を描画")
+                    logger.info(f"  タブ{tab_idx}: {len(tab)}点を描画")
         
-        print(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
+        logger.info(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
         
         # タイトル描画 (ページ上部中央)
         title = f"Paper-CAD(mitou-jr) - {len(placed_groups)} Groups"
@@ -429,7 +432,7 @@ class SVGExporter:
                     preserveAspectRatio="none"  # タイル全体を埋める（歪み防止）
                 )
                 pattern.add(image)
-                print(f"[SVGExporter] Generated pattern with embedded image: {pattern_id}, size={tile_size_px:.1f}px")
+                logger.info(f"[SVGExporter] Generated pattern with embedded image: {pattern_id}, size={tile_size_px:.1f}px")
             else:
                 # 画像データがない場合は簡易的なパターンを生成
                 if pattern_info['patternId'] == 'grass':
@@ -488,10 +491,10 @@ class SVGExporter:
                 center_y = pattern_info['tileCount'] / 2
                 transform = f"rotate({rotation_angle} {center_x} {center_y})"
                 pattern.attribs['patternTransform'] = transform
-                print(f"[SVGExporter] Applied rotation {rotation_angle}° to pattern: {pattern_id}")
+                logger.info(f"[SVGExporter] Applied rotation {rotation_angle}° to pattern: {pattern_id}")
 
             dwg.defs.add(pattern)
-            print(f"[SVGExporter] Generated pattern: {pattern_id}")
+            logger.info(f"[SVGExporter] Generated pattern: {pattern_id}")
 
     def _calculate_face_number_size(self, polygon_points):
         """
@@ -701,12 +704,12 @@ class SVGExporter:
                 pattern_id = None
                 if "face_numbers" in group and len(group["face_numbers"]) > 0:
                     face_number = group["face_numbers"][0]
-                    print(f"  [TEXTURE_DEBUG_PAGED] Group face_number: {face_number}")
-                    print(f"  [TEXTURE_DEBUG_PAGED] Available texture_mappings: {self.texture_mappings}")
+                    logger.info(f"  [TEXTURE_DEBUG_PAGED] Group face_number: {face_number}")
+                    logger.info(f"  [TEXTURE_DEBUG_PAGED] Available texture_mappings: {self.texture_mappings}")
                     # テクスチャマッピングを検索
                     for mapping in self.texture_mappings:
                         mapping_face_num = mapping.get("faceNumber")
-                        print(f"  [TEXTURE_DEBUG_PAGED] Checking mapping faceNumber={mapping_face_num}, group face_number={face_number}, match={mapping_face_num == face_number}")
+                        logger.info(f"  [TEXTURE_DEBUG_PAGED] Checking mapping faceNumber={mapping_face_num}, group face_number={face_number}, match={mapping_face_num == face_number}")
                         if mapping_face_num == face_number:
                             texture_mapping = mapping
                             # パターンIDを生成（rotation込み）
@@ -714,10 +717,10 @@ class SVGExporter:
                             pattern_id = f"pattern_{mapping['patternId']}_{mapping['tileCount']}"
                             if rotation != 0:
                                 pattern_id += f"_r{int(rotation)}"
-                            print(f"  [TEXTURE_DEBUG_PAGED] ✓ MATCH FOUND! pattern_id={pattern_id}")
+                            logger.info(f"  [TEXTURE_DEBUG_PAGED] ✓ MATCH FOUND! pattern_id={pattern_id}")
                             break
                     if not texture_mapping:
-                        print(f"  [TEXTURE_DEBUG_PAGED] ✗ NO MATCH - No texture mapping found for face {face_number}")
+                        logger.info(f"  [TEXTURE_DEBUG_PAGED] ✗ NO MATCH - No texture mapping found for face {face_number}")
 
                 # 複数のポリゴンがある場合は穴付きポリゴンとして描画
                 if len(polygons) > 1:
@@ -862,7 +865,7 @@ class SVGExporter:
         
         # SVG保存
         dwg.save()
-        print(f"単一SVGファイルに{len(paged_groups)}ページを出力: {output_path}")
+        logger.info(f"単一SVGファイルに{len(paged_groups)}ページを出力: {output_path}")
         return output_path
 
     def export_to_svg_paged(self, paged_groups: List[List[Dict]], output_dir: str) -> List[str]:
@@ -922,7 +925,7 @@ class SVGExporter:
             
             # ポリゴン座標はlayout_managerで既にmm単位でスケール調整済み
             # mm → px 変換のみを行う (export_to_svg_paged_single_fileと同じ方式)
-            print(f"[PDF Export] Scale calculation: mm_to_px={self.mm_to_px}, actual_scale={actual_scale:.4f}")
+            logger.info(f"[PDF Export] Scale calculation: mm_to_px={self.mm_to_px}, actual_scale={actual_scale:.4f}")
             
             # カットマークを追加（四隅）
             mark_length = 10
@@ -1128,7 +1131,7 @@ class SVGExporter:
             dwg.save()
             svg_paths.append(output_path)
             
-            print(f"ページ {page_num} を出力: {output_path}")
+            logger.info(f"ページ {page_num} を出力: {output_path}")
         
         return svg_paths
 

@@ -26,6 +26,9 @@ import gc
 
 # Import namespace dict from parent module
 from ..core.constants import NS
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -54,7 +57,7 @@ class StreamingConfig:
 def _log(message: str, debug: bool = False):
     """Internal logging function."""
     if debug:
-        print(f"[STREAM] {message}")
+        logger.info(f"[STREAM] {message}")
 
 
 def _build_local_xlink_index(building_elem: ET.Element) -> Dict[str, ET.Element]:
@@ -397,9 +400,9 @@ def estimate_memory_savings(
     Example:
         ```python
         estimates = estimate_memory_savings(5.0, 50000, limit=1000)
-        print(f"Legacy: {estimates['legacy_memory']:.1f}GB")
-        print(f"Streaming: {estimates['streaming_memory']:.1f}GB")
-        print(f"Reduction: {estimates['reduction_percent']:.1f}%")
+        logger.info(f"Legacy: {estimates['legacy_memory']:.1f}GB")
+        logger.info(f"Streaming: {estimates['streaming_memory']:.1f}GB")
+        logger.info(f"Reduction: {estimates['reduction_percent']:.1f}%")
         ```
     """
     # Legacy parser loads entire file into memory

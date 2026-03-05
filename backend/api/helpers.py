@@ -5,6 +5,9 @@ import uuid
 from typing import Optional, Union
 
 from fastapi import HTTPException, UploadFile
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 async def save_upload_to_tmpdir(
@@ -30,7 +33,7 @@ def cleanup_temp_dir(tmpdir: Optional[str], label: str = "tmpdir") -> None:
         try:
             shutil.rmtree(tmpdir)
         except Exception as e:
-            print(f"[CLEANUP] Failed to remove {label} {tmpdir}: {e}")
+            logger.error(f"[CLEANUP] Failed to remove {label} {tmpdir}: {e}")
 
 
 def parse_csv_ids(value: Optional[str]) -> Optional[list[str]]:

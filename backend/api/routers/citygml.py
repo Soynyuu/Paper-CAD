@@ -23,6 +23,9 @@ from api.helpers import (
 )
 from services.citygml import export_step_from_citygml
 from services.citygml.lod.footprint_extractor import parse_citygml_footprints
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -237,14 +240,16 @@ async def citygml_to_step(
                 raise HTTPException(
                     status_code=400, detail="アップロードされたファイルが空です。"
                 )
-            print(f"[UPLOAD] /api/citygml/to-step: received {total} bytes -> {in_path}")
+            logger.info(
+                f"[UPLOAD] /api/citygml/to-step: received {total} bytes -> {in_path}"
+            )
         else:
             in_path = normalized_gml_path  # type: ignore
             if not os.path.exists(in_path):
                 raise HTTPException(
                     status_code=404, detail=f"指定されたパスが見つかりません: {in_path}"
                 )
-            print(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
+            logger.info(f"[UPLOAD] /api/citygml/to-step: using local path {in_path}")
 
         # 出力パス
         out_dir = tempfile.mkdtemp()
@@ -282,7 +287,7 @@ async def citygml_to_step(
 
         # ファイルサイズを取得してログ出力
         file_size = os.path.getsize(out_path)
-        print(
+        logger.info(
             f"[RESPONSE] Generated STEP file: {output_filename} ({file_size:,} bytes)"
         )
 
@@ -293,9 +298,9 @@ async def citygml_to_step(
                     os.remove(out_path)
                 if os.path.exists(out_dir):
                     os.rmdir(out_dir)
-                print(f"[CLEANUP] Removed temporary files: {out_path}")
+                logger.info(f"[CLEANUP] Removed temporary files: {out_path}")
             except Exception as e:
-                print(f"[CLEANUP] Failed to remove temporary files: {e}")
+                logger.error(f"[CLEANUP] Failed to remove temporary files: {e}")
 
         # レスポンス送信後にクリーンアップをスケジュール
         background_tasks.add_task(cleanup_temp_files)
@@ -388,7 +393,7 @@ async def citygml_validate(
                 raise HTTPException(
                     status_code=400, detail="アップロードされたファイルが空です。"
                 )
-            print(
+            logger.info(
                 f"[UPLOAD] /api/citygml/validate: received {total} bytes -> {in_path}"
             )
         else:
@@ -397,7 +402,7 @@ async def citygml_validate(
                 raise HTTPException(
                     status_code=404, detail=f"指定されたパスが見つかりません: {in_path}"
                 )
-            print(f"[UPLOAD] /api/citygml/validate: using local path {in_path}")
+            logger.info(f"[UPLOAD] /api/citygml/validate: using local path {in_path}")
 
         loop = asyncio.get_event_loop()
         fps = await loop.run_in_executor(

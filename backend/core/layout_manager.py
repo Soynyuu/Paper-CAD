@@ -10,6 +10,9 @@ It provides functionality for:
 """
 
 from typing import List, Dict, Tuple, Optional
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 try:
     from shapely.geometry import Polygon, box as shapely_box
@@ -20,7 +23,7 @@ try:
     SHAPELY_AVAILABLE = True
 except ImportError:
     SHAPELY_AVAILABLE = False
-    print("Warning: Shapely not available. Using bounding box overlap detection only.")
+    logger.info("Warning: Shapely not available. Using bounding box overlap detection only.")
 
 
 class LayoutManager:
@@ -89,7 +92,7 @@ class LayoutManager:
             page_size["height"] - 2 * self.print_margin_mm - 25
         )  # タイトル分
 
-        print(f"印刷可能領域: {printable_width} x {printable_height} mm")
+        logger.info(f"印刷可能領域: {printable_width} x {printable_height} mm")
 
         # 重複回避配置アルゴリズム
         placed_groups = []
@@ -124,7 +127,7 @@ class LayoutManager:
             }
             occupied_areas.append(occupied_area)
 
-            print(
+            logger.info(
                 f"グループ配置: ({position['x']:.1f}, {position['y']:.1f}) サイズ: {bbox['width']:.1f}x{bbox['height']:.1f}mm"
             )
 
@@ -230,7 +233,7 @@ class LayoutManager:
                 polygon_points = polygon_points + [polygon_points[0]]
             return Polygon(polygon_points)
         except Exception as e:
-            print(f"ポリゴン作成エラー: {e}")
+            logger.info(f"ポリゴン作成エラー: {e}")
             return None
 
     def _merge_group_polygons(
@@ -655,13 +658,13 @@ class LayoutManager:
             original_height = bbox["height"]
 
             if bbox["width"] > self.printable_width_mm:
-                print(
+                logger.info(
                     f"警告: グループ横幅({bbox['width']:.1f}mm)が"
                     f"印刷可能エリア({self.printable_width_mm}mm)を超えています"
                 )
 
                 scale = self.printable_width_mm / bbox["width"]
-                print(f"横幅スケール調整: {scale:.3f}")
+                logger.info(f"横幅スケール調整: {scale:.3f}")
                 scale_applied = True
 
                 scaled_polygons = []
@@ -678,7 +681,7 @@ class LayoutManager:
 
                 bbox = self._calculate_group_bbox(group["polygons"])
                 group["bbox"] = bbox
-                print(
+                logger.info(
                     f"  -> スケール調整後: {bbox['width']:.1f}x{bbox['height']:.1f}mm"
                 )
 
@@ -719,10 +722,10 @@ class LayoutManager:
         for group in unfolded_groups:
             bbox = group["bbox"]
             if bbox["height"] > self.printable_height_mm:
-                print(
+                logger.info(
                     f"情報: グループ縦幅({bbox['height']:.1f}mm)が印刷可能エリア({self.printable_height_mm}mm)を超えています"
                 )
-                print(f"  -> 複数ページに分割されます")
+                logger.info(f"  -> 複数ページに分割されます")
 
         # 面積の大きい順にソート
         unfolded_groups.sort(
@@ -778,7 +781,7 @@ class LayoutManager:
         if current_page:
             paged_groups.append(current_page)
 
-        print(f"ページレイアウト完了: {len(paged_groups)}ページに分割")
+        logger.info(f"ページレイアウト完了: {len(paged_groups)}ページに分割")
         return paged_groups, warnings
 
     def _find_position_in_page(

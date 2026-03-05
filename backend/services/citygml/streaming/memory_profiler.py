@@ -15,6 +15,9 @@ import gc
 from typing import Callable, Any, Tuple, Optional
 from functools import wraps
 from contextlib import contextmanager
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class MemoryProfiler:
@@ -95,24 +98,23 @@ class MemoryProfiler:
     def print_snapshots(self):
         """Print all recorded snapshots."""
         if not self.snapshots:
-            print("[MEMORY] No snapshots recorded")
+            logger.info("[MEMORY] No snapshots recorded")
             return
 
-        print("\n" + "=" * 70)
-        print("Memory Usage Snapshots")
-        print("=" * 70)
+        logger.info("\n" + "=" * 70)
+        logger.info("Memory Usage Snapshots")
+        logger.info("=" * 70)
 
         for i, snap in enumerate(self.snapshots):
             label = snap['label'] or f"Snapshot {i+1}"
             current = self.format_bytes(snap['current'])
             peak = self.format_bytes(snap['peak'])
 
-            print(f"{label}:")
-            print(f"  Current: {current}")
-            print(f"  Peak:    {peak}")
-            print()
+            logger.info(f"{label}:")
+            logger.info(f"  Current: {current}")
+            logger.info(f"  Peak:    {peak}")
 
-        print("=" * 70 + "\n")
+        logger.info("=" * 70 + "\n")
 
 
 @contextmanager
@@ -147,9 +149,9 @@ def profile_memory(label: str = "Operation", verbose: bool = True):
 
         if verbose:
             profiler_instance = MemoryProfiler()
-            print(f"\n[MEMORY] {label}:")
-            print(f"  Current: {profiler_instance.format_bytes(current)}")
-            print(f"  Peak:    {profiler_instance.format_bytes(peak)}")
+            logger.info(f"\n[MEMORY] {label}:")
+            logger.info(f"  Current: {profiler_instance.format_bytes(current)}")
+            logger.info(f"  Peak:    {profiler_instance.format_bytes(peak)}")
 
 
 def profile(label: Optional[str] = None, verbose: bool = True):
@@ -214,7 +216,7 @@ def compare_memory_usage(
             func2_label="Streaming Parser"
         )
 
-        print(f"Memory reduction: {results['reduction_percent']:.1f}%")
+        logger.info(f"Memory reduction: {results['reduction_percent']:.1f}%")
         ```
     """
     # Profile function 1
@@ -252,19 +254,19 @@ def compare_memory_usage(
 
     # Print comparison
     formatter = MemoryProfiler()
-    print("\n" + "=" * 70)
-    print("Memory Usage Comparison")
-    print("=" * 70)
-    print(f"\n{func1_label}:")
-    print(f"  Current: {formatter.format_bytes(current1)}")
-    print(f"  Peak:    {formatter.format_bytes(peak1)}")
-    print(f"\n{func2_label}:")
-    print(f"  Current: {formatter.format_bytes(current2)}")
-    print(f"  Peak:    {formatter.format_bytes(peak2)}")
-    print(f"\nReduction:")
-    print(f"  Peak:    {peak_reduction:+.1f}%")
-    print(f"  Current: {current_reduction:+.1f}%")
-    print("=" * 70 + "\n")
+    logger.info("\n" + "=" * 70)
+    logger.info("Memory Usage Comparison")
+    logger.info("=" * 70)
+    logger.info(f"\n{func1_label}:")
+    logger.info(f"  Current: {formatter.format_bytes(current1)}")
+    logger.info(f"  Peak:    {formatter.format_bytes(peak1)}")
+    logger.info(f"\n{func2_label}:")
+    logger.info(f"  Current: {formatter.format_bytes(current2)}")
+    logger.info(f"  Peak:    {formatter.format_bytes(peak2)}")
+    logger.info(f"\nReduction:")
+    logger.info(f"  Peak:    {peak_reduction:+.1f}%")
+    logger.info(f"  Current: {current_reduction:+.1f}%")
+    logger.info("=" * 70 + "\n")
 
     return results
 

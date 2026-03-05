@@ -6,6 +6,9 @@ import re
 from typing import Dict, Any, Optional
 
 from config import OCCT_AVAILABLE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder
@@ -68,7 +71,7 @@ class FileLoader:
             from OCC.Core.StepData import StepData_StepModel
             
             # 詳細なSTEPファイル分析を表示
-            print(f"STEPファイル詳細分析: {file_path}")
+            logger.info(f"STEPファイル詳細分析: {file_path}")
             
             # 読み込み設定
             # STEPリーダーの詳細設定
@@ -83,33 +86,33 @@ class FileLoader:
             step_reader = STEPControl_Reader()
             
             # ファイル読み込み
-            print("STEPファイル読み込み開始...")
+            logger.info("STEPファイル読み込み開始...")
             status = step_reader.ReadFile(file_path)
             if status != IFSelect_RetDone:
                 raise ValueError(f"STEPファイルの読み込みに失敗: {file_path} - ステータス: {status}")
             
-            print("STEPファイル読み込み完了")
+            logger.info("STEPファイル読み込み完了")
             
             # モデル情報の取得
             step_model = step_reader.StepModel()
             if step_model:
                 nb_entities = step_model.NbEntities()
-                print(f"モデル内のエンティティ数: {nb_entities}")
+                logger.info(f"モデル内のエンティティ数: {nb_entities}")
                 
                 # モデル内容の詳細
                 if nb_entities > 0:
                     # 最初の10エンティティの情報を表示
                     max_display = min(10, nb_entities)
-                    print(f"最初の{max_display}エンティティのタイプ:")
+                    logger.info(f"最初の{max_display}エンティティのタイプ:")
                     for i in range(1, max_display + 1):
                         entity = step_model.Entity(i)
                         if entity:
                             entity_type = step_model.TypeName(entity)
-                            print(f"  エンティティ {i}: タイプ = {entity_type}")
+                            logger.info(f"  エンティティ {i}: タイプ = {entity_type}")
             
             # ファイル内のエンティティ数を確認
             nbr = step_reader.NbRootsForTransfer()
-            print(f"転送可能なルート数: {nbr}")
+            logger.info(f"転送可能なルート数: {nbr}")
             
             if nbr <= 0:
                 raise ValueError("STEPファイルに転送可能な形状が含まれていません")
@@ -117,33 +120,33 @@ class FileLoader:
             # 各ルートの情報表示
             for i in range(1, nbr + 1):
                 # STEPControl_ReaderにCheckTransientはないため、単純にルート番号を表示
-                print(f"  ルート {i}")
+                logger.info(f"  ルート {i}")
             
-            print("すべてのルートを転送中...")
+            logger.info("すべてのルートを転送中...")
             # すべてのルートを転送
             status = step_reader.TransferRoots()
-            print(f"転送完了: ステータス = {status}")
+            logger.info(f"転送完了: ステータス = {status}")
             
             # 転送されたオブジェクト数を確認
             nbs = step_reader.NbShapes()
-            print(f"転送された形状数: {nbs}")
+            logger.info(f"転送された形状数: {nbs}")
             
             # 形状が存在しない場合、個別に転送を試みる
             if nbs <= 0:
-                print("個別転送を試みます...")
+                logger.info("個別転送を試みます...")
                 for i in range(1, nbr + 1):
                     ok = step_reader.TransferRoot(i)
-                    print(f"  ルート {i} 転送: {ok}")
+                    logger.info(f"  ルート {i} 転送: {ok}")
                 
                 # 再度形状数を確認
                 nbs = step_reader.NbShapes()
-                print(f"個別転送後の形状数: {nbs}")
+                logger.info(f"個別転送後の形状数: {nbs}")
                 
                 # それでも形状がない場合は空の形状を作成
                 if nbs <= 0:
                     from OCC.Core.TopoDS import TopoDS_Compound
                     from OCC.Core.BRep import BRep_Builder
-                    print("空の形状を作成します")
+                    logger.info("空の形状を作成します")
                     compound = TopoDS_Compound()
                     builder = BRep_Builder()
                     builder.MakeCompound(compound)
@@ -155,7 +158,7 @@ class FileLoader:
             
             # シェイプの存在確認
             if shape is None:
-                print("OneShapeがNoneを返しました - 形状が存在しない可能性があります")
+                logger.info("OneShapeがNoneを返しました - 形状が存在しない可能性があります")
                 
                 # 個別に形状を取得してみる
                 from OCC.Core.TopoDS import TopoDS_Compound
@@ -185,7 +188,7 @@ class FileLoader:
             from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_FACE, TopAbs_EDGE
             from OCC.Core.TopExp import TopExp_Explorer
             
-            print("読み込んだ形状の情報:")
+            logger.info("読み込んだ形状の情報:")
             solids = TopExp_Explorer(self.solid_shape, TopAbs_SOLID)
             faces = TopExp_Explorer(self.solid_shape, TopAbs_FACE)
             edges = TopExp_Explorer(self.solid_shape, TopAbs_EDGE)
@@ -205,9 +208,9 @@ class FileLoader:
                 edge_count += 1
                 edges.Next()
                 
-            print(f"  ソリッド数: {solid_count}")
-            print(f"  面数: {face_count}")
-            print(f"  エッジ数: {edge_count}")
+            logger.info(f"  ソリッド数: {solid_count}")
+            logger.info(f"  面数: {face_count}")
+            logger.info(f"  エッジ数: {edge_count}")
             
             return face_count > 0  # 面が存在すれば成功とみなす
             
@@ -237,7 +240,7 @@ class FileLoader:
             failsonly = False
             mode = IFSelect_ItemsByEntity
             nbr = iges_reader.NbRootsForTransfer()
-            print(f"IGESファイル内のルート数: {nbr}")
+            logger.info(f"IGESファイル内のルート数: {nbr}")
             
             if nbr <= 0:
                 raise ValueError("IGESファイルに有効な形状が含まれていません")
@@ -338,9 +341,9 @@ class FileLoader:
                         dst.write(src.read())
                         
                     result["saved_path"] = debug_path
-                    print(f"デバッグ用にファイルをコピーしました: {debug_path}")
+                    logger.info(f"デバッグ用にファイルをコピーしました: {debug_path}")
                 except Exception as e:
-                    print(f"デバッグファイルの保存に失敗: {e}")
+                    logger.info(f"デバッグファイルの保存に失敗: {e}")
             
             return result
             
@@ -360,7 +363,7 @@ class FileLoader:
             
             # ファイル診断（デバッグ用）
             diag_info = self.diagnose_file(temp_path, save_debug_copy=True)
-            print(f"ファイル診断: {diag_info}")
+            logger.info(f"ファイル診断: {diag_info}")
             
             # ファイル読み込み
             try:
@@ -406,13 +409,13 @@ class FileLoader:
         無効なBREPの場合は、パラメータから立方体を生成する。
         """
         try:
-            print("BREPファイル読み込み試行中...")
+            logger.info("BREPファイル読み込み試行中...")
             # 元の処理を試行
             result = self.load_from_bytes(file_content, 'brep')
-            print(f"BREP読み込み成功: {result}")
+            logger.info(f"BREP読み込み成功: {result}")
             return result
         except ValueError as e:
-            print(f"BREP読み込み失敗: {e}")
+            logger.info(f"BREP読み込み失敗: {e}")
             # BREPファイルが無効な場合、パラメータからの生成を試行
             file_content_str = file_content.decode('utf-8', errors='ignore')
             
@@ -427,13 +430,13 @@ class FileLoader:
                     height = float(params.get('height', 20))
                     depth = float(params.get('depth', 20))
                     
-                    print(f"無効なBREPファイルを検出。パラメータから立方体を生成: {width}x{height}x{depth}")
+                    logger.info(f"無効なBREPファイルを検出。パラメータから立方体を生成: {width}x{height}x{depth}")
                     return self.create_box_from_parameters(width, height, depth)
                 except (json.JSONDecodeError, ValueError, KeyError) as parse_error:
-                    print(f"パラメータ解析エラー: {parse_error}")
+                    logger.info(f"パラメータ解析エラー: {parse_error}")
             
             # パラメータが見つからない場合はデフォルトの立方体を生成
-            print("パラメータが見つかりません。デフォルトの立方体(20x20x20)を生成します")
+            logger.info("パラメータが見つかりません。デフォルトの立方体(20x20x20)を生成します")
             return self.create_box_from_parameters(20.0, 20.0, 20.0)
 
     def create_box_from_parameters(self, width: float, height: float, depth: float) -> bool:
@@ -441,6 +444,6 @@ class FileLoader:
         パラメータから立方体を生成する（仮実装）
         """
         # 実際の実装は省略（元のコードに含まれていない）
-        print(f"立方体生成: {width}x{height}x{depth}")
+        logger.info(f"立方体生成: {width}x{height}x{depth}")
         # TODO: ここで実際の立方体形状を生成する必要がある
         return True

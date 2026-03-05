@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from config import OCCT_AVAILABLE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
@@ -59,10 +62,10 @@ class STEPExporter:
             Interface_Static.SetIVal("write.surfacecurve.mode", 1)
             
             if self.debug_mode:
-                print("STEP export configured with AP214 schema and precision 1e-6")
+                logger.info("STEP export configured with AP214 schema and precision 1e-6")
         except Exception as e:
             if self.debug_mode:
-                print(f"Warning: Could not configure STEP export parameters: {e}")
+                logger.info(f"Warning: Could not configure STEP export parameters: {e}")
     
     def enable_debug(self, enabled: bool = True):
         """Enable debug mode for detailed logging"""

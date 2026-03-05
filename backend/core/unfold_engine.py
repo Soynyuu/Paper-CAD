@@ -5,6 +5,9 @@ from typing import List, Dict, Optional, Tuple, Set
 from scipy.spatial import ConvexHull
 
 from config import OCCT_AVAILABLE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
@@ -83,24 +86,24 @@ class UnfoldEngine:
         ]
 
         if not unfoldable_faces:
-            print("展開可能な面がありません")
+            logger.info("展開可能な面がありません")
             return []
 
-        print(f"展開可能な面: {len(unfoldable_faces)}個")
+        logger.info(f"展開可能な面: {len(unfoldable_faces)}個")
 
         # 展開ネット生成モードの場合、すべての面を1つのグループとする
         if generate_unfolding_net:
-            print(f"展開ネット生成モード: すべての面を1グループ化")
+            logger.info(f"展開ネット生成モード: すべての面を1グループ化")
             groups = [unfoldable_faces]
             self.unfold_groups = groups
-            print(f"作成されたグループ数: {len(groups)}（展開ネットモード）")
+            logger.info(f"作成されたグループ数: {len(groups)}（展開ネットモード）")
             return groups
 
         if not enable_grouping:
             # グループ化無効の場合は各面を個別のグループとする
             groups = [[face_idx] for face_idx in unfoldable_faces]
             self.unfold_groups = groups
-            print(f"作成されたグループ数: {len(groups)}（グループ化無効）")
+            logger.info(f"作成されたグループ数: {len(groups)}（グループ化無効）")
             return groups
 
         # グループ化有効の場合：隣接する同一平面の面をグループ化
@@ -141,17 +144,17 @@ class UnfoldEngine:
                     current_group.append(candidate_idx)
                     processed.add(candidate_idx)
                     queue.append(candidate_idx)
-                    print(
+                    logger.info(
                         f"    面{candidate_idx}を面{current_face_idx}のグループに追加（同一平面）"
                     )
 
             groups.append(current_group)
-            print(
+            logger.info(
                 f"  グループ{len(groups) - 1}: {len(current_group)}面 {current_group}"
             )
 
         self.unfold_groups = groups
-        print(f"作成されたグループ数: {len(groups)}")
+        logger.info(f"作成されたグループ数: {len(groups)}")
         return groups
 
     def unfold_face_groups(self) -> List[Dict]:
@@ -167,42 +170,42 @@ class UnfoldEngine:
 
         unfolded_groups = []
 
-        print(f"=== 面グループ展開開始 ===")
-        print(f"グループ数: {len(self.unfold_groups)}")
+        logger.info(f"=== 面グループ展開開始 ===")
+        logger.info(f"グループ数: {len(self.unfold_groups)}")
 
         for group_idx, face_indices in enumerate(self.unfold_groups):
-            print(f"\n--- グループ {group_idx} ---")
-            print(f"面数: {len(face_indices)}")
-            print(f"面インデックス: {face_indices}")
+            logger.info(f"\n--- グループ {group_idx} ---")
+            logger.info(f"面数: {len(face_indices)}")
+            logger.info(f"面インデックス: {face_indices}")
 
             # 各面の詳細情報を表示
             for i, face_idx in enumerate(face_indices):
                 if face_idx < len(self.faces_data):
                     face_data = self.faces_data[face_idx]
-                    print(
+                    logger.info(
                         f"  面{i}(idx={face_idx}): {face_data['surface_type']}, 面積={face_data.get('area', 'N/A')}"
                     )
                 else:
-                    print(f"  面{i}(idx={face_idx}): インデックスが範囲外")
+                    logger.info(f"  面{i}(idx={face_idx}): インデックスが範囲外")
 
             try:
                 group_result = self._unfold_single_group(group_idx, face_indices)
                 if group_result:
-                    print(
+                    logger.info(
                         f"  → 展開成功: {len(group_result.get('polygons', []))}個のポリゴン"
                     )
                     unfolded_groups.append(group_result)
                 else:
-                    print(f"  → 展開失敗: 結果がNone")
+                    logger.info(f"  → 展開失敗: 結果がNone")
             except Exception as e:
-                print(f"  → グループ{group_idx}の展開でエラー: {e}")
+                logger.info(f"  → グループ{group_idx}の展開でエラー: {e}")
                 import traceback
 
                 traceback.print_exc()
                 continue
 
-        print(f"\n=== 展開完了 ===")
-        print(f"成功したグループ数: {len(unfolded_groups)}")
+        logger.info(f"\n=== 展開完了 ===")
+        logger.info(f"成功したグループ数: {len(unfolded_groups)}")
         return unfolded_groups
 
     def _unfold_single_group(
@@ -219,30 +222,30 @@ class UnfoldEngine:
             Optional[Dict]: 展開結果
         """
         if not face_indices:
-            print(f"    グループ{group_idx}: 面インデックスが空")
+            logger.info(f"    グループ{group_idx}: 面インデックスが空")
             return None
 
         primary_face = self.faces_data[face_indices[0]]
         surface_type = primary_face["surface_type"]
 
-        print(f"    グループ{group_idx}: 主面タイプ={surface_type}")
+        logger.info(f"    グループ{group_idx}: 主面タイプ={surface_type}")
 
         try:
             if surface_type == "plane":
-                print(f"    → 平面グループとして展開")
+                logger.info(f"    → 平面グループとして展開")
                 return self._unfold_planar_group(group_idx, face_indices)
             elif surface_type == "cylinder":
-                print(f"    → 円筒グループとして展開")
+                logger.info(f"    → 円筒グループとして展開")
                 return self._unfold_cylindrical_group(group_idx, face_indices)
             elif surface_type == "cone":
-                print(f"    → 円錐グループとして展開")
+                logger.info(f"    → 円錐グループとして展開")
                 return self._unfold_conical_group(group_idx, face_indices)
             else:
-                print(f"    → 未対応の曲面タイプ: {surface_type}")
+                logger.info(f"    → 未対応の曲面タイプ: {surface_type}")
                 return None
 
         except Exception as e:
-            print(f"    → グループ{group_idx}展開エラー: {e}")
+            logger.info(f"    → グループ{group_idx}展開エラー: {e}")
             import traceback
 
             traceback.print_exc()
@@ -260,7 +263,7 @@ class UnfoldEngine:
         Returns:
             Dict: 展開結果
         """
-        print(f"      平面グループ{group_idx}を展開中（{len(face_indices)}面）...")
+        logger.info(f"      平面グループ{group_idx}を展開中（{len(face_indices)}面）...")
 
         if len(face_indices) == 1:
             # 単一面の場合は従来通り個別に展開
@@ -287,11 +290,11 @@ class UnfoldEngine:
         normal = np.array(face_data["plane_normal"])
         origin = np.array(face_data["plane_origin"])
 
-        print(f"        面{face_idx}: 法線={normal}, 原点={origin}")
+        logger.info(f"        面{face_idx}: 法線={normal}, 原点={origin}")
 
         # 面の正確な境界形状を取得
         face_polygons = self._extract_face_2d_shape(face_idx, normal, origin)
-        print(
+        logger.info(
             f"        面{face_idx}: {len(face_polygons) if face_polygons else 0}個の2D形状を抽出"
         )
 
@@ -324,7 +327,7 @@ class UnfoldEngine:
         Returns:
             Dict: 展開結果
         """
-        print(f"        展開ネット生成中（{len(face_indices)}面）...")
+        logger.info(f"        展開ネット生成中（{len(face_indices)}面）...")
 
         # 最初の面が同一平面かチェック
         if self._are_all_coplanar(face_indices):
@@ -367,7 +370,7 @@ class UnfoldEngine:
         Returns:
             Dict: 展開結果
         """
-        print(f"          同一平面の面を展開中...")
+        logger.info(f"          同一平面の面を展開中...")
 
         polygons = []
 
@@ -381,7 +384,7 @@ class UnfoldEngine:
             face_polygons = self._extract_face_2d_shape(face_idx, normal, origin)
             if face_polygons:
                 polygons.extend(face_polygons)
-                print(
+                logger.info(
                     f"            面{face_idx}: {len(face_polygons)}個のポリゴンを追加"
                 )
 
@@ -391,7 +394,7 @@ class UnfoldEngine:
             face_data = self.faces_data[face_idx]
             face_numbers.append(face_data.get("face_number", face_idx + 1))
 
-        print(f"          展開完成: 合計{len(polygons)}個のポリゴン")
+        logger.info(f"          展開完成: 合計{len(polygons)}個のポリゴン")
 
         return {
             "group_index": group_idx,
@@ -416,7 +419,7 @@ class UnfoldEngine:
         Returns:
             Dict: 展開結果
         """
-        print(f"          スパニングツリーベースの展開を開始...")
+        logger.info(f"          スパニングツリーベースの展開を開始...")
 
         if not face_indices:
             return {
@@ -432,7 +435,7 @@ class UnfoldEngine:
 
         # ルート面を選択（最初の面）
         root_face_idx = face_indices[0]
-        print(f"            ルート面: 面{root_face_idx}")
+        logger.info(f"            ルート面: 面{root_face_idx}")
 
         # ルート面を2D平面に投影
         root_face = self.faces_data[root_face_idx]
@@ -450,7 +453,7 @@ class UnfoldEngine:
             "origin": root_origin,
         }
 
-        print(
+        logger.info(
             f"            ルート面を展開: {len(unfolded_faces[root_face_idx]['polygons'])}個のポリゴン"
         )
 
@@ -498,7 +501,7 @@ class UnfoldEngine:
                 processed.add(candidate_idx)
                 queue.append(candidate_idx)
 
-                print(
+                logger.info(
                     f"            面{candidate_idx}を展開: {len(candidate_polygons)}個のポリゴン、オフセット={new_offset}"
                 )
 
@@ -508,7 +511,7 @@ class UnfoldEngine:
 
         for face_idx in face_indices:
             if face_idx not in unfolded_faces:
-                print(f"            警告: 面{face_idx}は展開できませんでした")
+                logger.info(f"            警告: 面{face_idx}は展開できませんでした")
                 continue
 
             offset = unfolded_faces[face_idx]["offset"]
@@ -520,7 +523,7 @@ class UnfoldEngine:
             face_data = self.faces_data[face_idx]
             face_numbers.append(face_data.get("face_number", face_idx + 1))
 
-        print(
+        logger.info(
             f"          展開ネット完成: {len(all_polygons)}個のポリゴン（{len(unfolded_faces)}面）"
         )
 
@@ -667,12 +670,12 @@ class UnfoldEngine:
         face_data = self.faces_data[face_idx]
         polygons_2d = []
 
-        print(f"面{face_idx}の2D形状を抽出中...")
-        print(f"  境界線数: {len(face_data['boundary_curves'])}")
+        logger.info(f"面{face_idx}の2D形状を抽出中...")
+        logger.info(f"  境界線数: {len(face_data['boundary_curves'])}")
 
         # 各境界線を2Dに投影
         for boundary_idx, boundary in enumerate(face_data["boundary_curves"]):
-            print(f"  境界線{boundary_idx}: {len(boundary)}点")
+            logger.info(f"  境界線{boundary_idx}: {len(boundary)}点")
 
             if len(boundary) >= 3:
                 # 3D境界点を2D平面に正確に投影
@@ -688,15 +691,15 @@ class UnfoldEngine:
                 # 有効な2D形状の場合のみ追加
                 if len(simplified_boundary) >= 3:
                     polygons_2d.append(simplified_boundary)
-                    print(
+                    logger.info(
                         f"  境界線{boundary_idx}を2D投影: {len(simplified_boundary)}点（簡略化済み）"
                     )
                 else:
-                    print(f"  境界線{boundary_idx}の投影に失敗")
+                    logger.info(f"  境界線{boundary_idx}の投影に失敗")
             else:
-                print(f"  境界線{boundary_idx}の点数が不足: {len(boundary)}点")
+                logger.info(f"  境界線{boundary_idx}の点数が不足: {len(boundary)}点")
 
-        print(f"面{face_idx}の2D形状: {len(polygons_2d)}個のポリゴン")
+        logger.info(f"面{face_idx}の2D形状: {len(polygons_2d)}個のポリゴン")
         return polygons_2d
 
     def _project_points_to_plane_accurate(
@@ -780,32 +783,32 @@ class UnfoldEngine:
         if len(cleaned_points) < 3:
             return cleaned_points
 
-        print(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
+        logger.info(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
 
         # Layer 1: 凸型多角形の場合、凸包で正確な頂点を抽出
         is_convex = self._is_convex_polygon(cleaned_points)
-        print(f"凸型={is_convex}, ", end="")
+        logger.info(f"凸型={is_convex}, ", end="")
 
         if is_convex:
             num_corners = self._detect_polygon_corners(cleaned_points)
-            print(f"角数={num_corners}, ", end="")
+            logger.info(f"角数={num_corners}, ", end="")
 
             if num_corners == 3:
                 result = self._extract_triangle_corners(cleaned_points)
-                print(f"{len(result)}点（三角形）")
+                logger.info(f"{len(result)}点（三角形）")
                 return result
             elif num_corners == 4:
                 result = self._extract_rectangle_corners(cleaned_points)
-                print(f"{len(result)}点（四角形）")
+                logger.info(f"{len(result)}点（四角形）")
                 return result
             elif 5 <= num_corners <= 12:
                 result = self._extract_convex_hull_corners(cleaned_points)
-                print(f"{len(result)}点（{num_corners}角形・凸包）")
+                logger.info(f"{len(result)}点（{num_corners}角形・凸包）")
                 return result
 
         # Layer 2: 凹型・複雑な形状 → Douglas-Peucker アルゴリズム
         result = self._simplify_rdp(cleaned_points, epsilon=0.5)
-        print(f"{len(result)}点（Douglas-Peucker）")
+        logger.info(f"{len(result)}点（Douglas-Peucker）")
         return result
 
     def _simplify_by_angle_detection(
@@ -1013,7 +1016,7 @@ class UnfoldEngine:
 
             is_convex = vertex_ratio <= 0.3
 
-            print(
+            logger.info(
                 f"凸包頂点={hull_vertices_count}/{total_unique_points}, 比率={vertex_ratio:.2f}, ",
                 end="",
             )
@@ -1022,7 +1025,7 @@ class UnfoldEngine:
 
         except Exception as e:
             # 凸包計算に失敗した場合はフォールバック（外積ベース）
-            print(f"凸包計算エラー: {e}, フォールバック, ", end="")
+            logger.info(f"凸包計算エラー: {e}, フォールバック, ", end="")
             return self._is_convex_polygon_fallback(points_2d)
 
     def _is_convex_polygon_fallback(self, points_2d: List[Tuple[float, float]]) -> bool:
@@ -1214,7 +1217,7 @@ class UnfoldEngine:
                     return corners
 
         except Exception as e:
-            print(f"凸包四角形抽出エラー: {e}, ", end="")
+            logger.info(f"凸包四角形抽出エラー: {e}, ", end="")
 
         # フォールバック：境界ボックスベースの抽出
         xs = [p[0] for p in points_2d]
@@ -1410,11 +1413,11 @@ class UnfoldEngine:
             # 凸包の頂点が多すぎる場合（>12）、Douglas-Peuckerでさらに簡略化
             if len(corners) > 12:
                 corners = self._simplify_rdp(corners, epsilon=1.0)
-                print(f"→{len(corners)}点に再簡略化, ", end="")
+                logger.info(f"→{len(corners)}点に再簡略化, ", end="")
 
             return corners
         except Exception as e:
-            print(f"凸包抽出エラー: {e}")
+            logger.info(f"凸包抽出エラー: {e}")
             # フォールバックとして元の点を返す
             return points_2d
 
@@ -1994,7 +1997,7 @@ class UnfoldEngine:
 
         # デバッグログ
         if is_adjacent:
-            print(
+            logger.info(
                 f"      面{face_idx1} <-> 面{face_idx2}: 隣接（共有頂点数={len(shared_vertices)}）"
             )
 

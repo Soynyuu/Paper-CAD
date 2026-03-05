@@ -19,6 +19,9 @@ from collections import OrderedDict
 
 # Import namespace dict
 from ..core.constants import NS
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class LocalXLinkCache:
@@ -211,13 +214,13 @@ def resolve_xlink_lazy(
         result = global_cache.get(target_id)
         if result is not None:
             if debug:
-                print(f"[XLINK] Global cache hit: {target_id}")
+                logger.info(f"[XLINK] Global cache hit: {target_id}")
             return result
 
     # Strategy 3: Cache miss
     # Return None to allow fallback to original resolution logic
     if debug:
-        print(f"[XLINK] Cache miss: {target_id}")
+        logger.info(f"[XLINK] Cache miss: {target_id}")
 
     return None
 

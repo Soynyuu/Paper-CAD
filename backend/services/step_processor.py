@@ -22,6 +22,9 @@ from core.layout_manager import LayoutManager
 from core.svg_exporter import SVGExporter
 from core.pdf_exporter import PDFExporter
 from models.request_models import BrepPapercraftRequest
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder, BRep_Tool
@@ -168,7 +171,7 @@ class StepUnfoldGenerator:
             texture_mappings: [{faceNumber: int, patternId: str, tileCount: int}, ...]
         """
         self.texture_mappings = texture_mappings
-        print(f"[StepUnfoldGenerator] Set {len(texture_mappings)} texture mappings")
+        logger.info(f"[StepUnfoldGenerator] Set {len(texture_mappings)} texture mappings")
 
     def load_from_file(self, file_path: str) -> bool:
         """
@@ -235,7 +238,7 @@ class StepUnfoldGenerator:
         # キャッシュヒットチェック
         if self._file_hash and self._file_hash in self._analysis_cache:
             cached = self._analysis_cache[self._file_hash]
-            print(f"[Cache HIT] 解析キャッシュを使用: {self._file_hash[:12]}...")
+            logger.info(f"[Cache HIT] 解析キャッシュを使用: {self._file_hash[:12]}...")
 
             # LRU: アクセスしたエントリを末尾に移動
             self._analysis_cache.move_to_end(self._file_hash)
@@ -266,7 +269,7 @@ class StepUnfoldGenerator:
             return
 
         # キャッシュミス: 通常の解析を実行
-        print(
+        logger.info(
             f"[Cache MISS] OCCT解析を実行"
             + (f": {self._file_hash[:12]}..." if self._file_hash else "")
         )
@@ -309,9 +312,9 @@ class StepUnfoldGenerator:
             # LRUエビクション: 最大サイズを超えた場合、最も古いエントリを削除
             while len(self._analysis_cache) > self._CACHE_MAX_SIZE:
                 evicted_key, _ = self._analysis_cache.popitem(last=False)
-                print(f"[Cache EVICT] キャッシュエビクション: {evicted_key[:12]}...")
+                logger.info(f"[Cache EVICT] キャッシュエビクション: {evicted_key[:12]}...")
 
-            print(
+            logger.info(
                 f"[Cache STORE] 解析結果をキャッシュ: {self._file_hash[:12]}... "
                 f"(キャッシュサイズ: {len(self._analysis_cache)}/{self._CACHE_MAX_SIZE})"
             )
@@ -485,7 +488,7 @@ class StepUnfoldGenerator:
         Returns:
             str: 出力されたPDFファイルのパス
         """
-        print(f"PDFエクスポート開始: {len(paged_groups)}ページ")
+        logger.info(f"PDFエクスポート開始: {len(paged_groups)}ページ")
 
         # 一時ディレクトリを作成
         temp_dir = tempfile.mkdtemp()
@@ -495,7 +498,7 @@ class StepUnfoldGenerator:
             # 各ページを個別のSVGファイルとして保存
             svg_paths = self.export_to_svg_paged_files(paged_groups, temp_dir)
 
-            print(f"SVG生成完了: {len(svg_paths)}ファイル")
+            logger.info(f"SVG生成完了: {len(svg_paths)}ファイル")
 
             # PDFExporterを初期化
             pdf_exporter = PDFExporter(
@@ -505,7 +508,7 @@ class StepUnfoldGenerator:
             # SVGファイルリストからPDFを生成
             result_path = pdf_exporter.export_svg_list_to_pdf(svg_paths, output_path)
 
-            print(f"PDFエクスポート完了: {result_path}")
+            logger.info(f"PDFエクスポート完了: {result_path}")
 
             return result_path
 
@@ -515,7 +518,7 @@ class StepUnfoldGenerator:
 
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
-                print(f"一時ディレクトリを削除: {temp_dir}")
+                logger.info(f"一時ディレクトリを削除: {temp_dir}")
 
     def generate_brep_papercraft_pages(
         self, request: BrepPapercraftRequest
@@ -652,7 +655,7 @@ class StepUnfoldGenerator:
                     {"faceIndex": face_index, "faceNumber": face_number}
                 )
 
-        print(
+        logger.info(
             f"StepUnfoldGenerator.get_face_numbers(): {len(face_numbers)}個の面番号データを返します"
         )
         return face_numbers

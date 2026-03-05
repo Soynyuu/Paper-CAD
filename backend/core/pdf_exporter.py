@@ -217,10 +217,36 @@ class PDFExporter:
                 drawing = renderSVG.svg2rlg(svg_path)
 
                 if drawing:
-                    # DrawingをPDFに変換
-                    renderPDF.drawToFile(drawing, temp_pdf_path,
-                                        fmt='PDF',
-                                        showBoundary=False)
+                    # Drawingをページサイズに合わせて描画
+                    # Note:
+                    # - svglibはSVGのpx単位をptとして読み込むため、A4/A3に対して1.333倍になることがある
+                    # - 固定ページサイズへ等倍/縮小で収めることで、出力スケールを安定化させる
+                    c = pdf_canvas.Canvas(temp_pdf_path, pagesize=page_size)
+                    drawing_width = float(getattr(drawing, "width", 0.0) or 0.0)
+                    drawing_height = float(getattr(drawing, "height", 0.0) or 0.0)
+                    page_width_pt, page_height_pt = page_size
+
+                    if drawing_width > 0 and drawing_height > 0:
+                        scale = min(
+                            page_width_pt / drawing_width,
+                            page_height_pt / drawing_height
+                        )
+                    else:
+                        # 異常系: サイズ情報が取れない場合はスケール1.0で描画
+                        scale = 1.0
+
+                    render_width = drawing_width * scale
+                    render_height = drawing_height * scale
+                    offset_x = (page_width_pt - render_width) / 2
+                    offset_y = (page_height_pt - render_height) / 2
+
+                    c.saveState()
+                    c.translate(offset_x, offset_y)
+                    c.scale(scale, scale)
+                    renderPDF.draw(drawing, c, 0, 0)
+                    c.restoreState()
+                    c.showPage()
+                    c.save()
                     temp_pdfs.append(temp_pdf_path)
                     print(f"PDFExporter: ページ {i+1}/{len(svg_paths)} を変換")
                 else:

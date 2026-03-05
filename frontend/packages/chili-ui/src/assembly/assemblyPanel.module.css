@@ -1,174 +1,230 @@
-.root {
+.host {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    inset: 0;
+    display: block;
+    z-index: var(--z-modal);
+}
+
+.root {
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    background: #f5f5f5;
+    background:
+        radial-gradient(circle at top right, rgba(255, 102, 51, 0.1), transparent 40%),
+        var(--background-color);
+    color: var(--foreground-color);
     overflow: hidden;
-    z-index: 9999;
 }
 
 .header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 12px var(--spacing-md);
-    background: var(--background-color-secondary);
-    border-bottom: 1px solid var(--border-color-primary);
-    box-shadow: var(--shadow-md);
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-sm) var(--spacing-lg);
+    background-color: var(--panel-background-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.titleBlock {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
 }
 
 .title {
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-primary);
+    color: var(--foreground-color);
+}
+
+.subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--neutral-600);
+    line-height: 1.45;
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: var(--panel-header-background);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.toolbarLeft {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    flex-wrap: wrap;
 }
 
-.titleIcon {
-    font-size: var(--font-size-xl);
+.toolbarHint {
+    font-size: var(--font-size-xs);
+    color: var(--neutral-600);
+    white-space: nowrap;
 }
 
-.controls {
-    display: flex;
-    gap: var(--spacing-sm);
+.controlGroup {
+    display: inline-flex;
     align-items: center;
-}
-
-.inputGroup {
-    display: flex;
     gap: var(--spacing-sm);
-    align-items: center;
-    padding: 8px 16px;
-    background: var(--background-color-primary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    border: 2px solid var(--border-color-primary);
-    box-shadow: var(--shadow-sm);
+    background-color: var(--panel-background-color);
 }
 
 .inputLabel {
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-primary);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--neutral-700);
     white-space: nowrap;
 }
 
 .faceNumberInput {
-    width: 100px;
-    padding: 8px 12px;
-    border: 2px solid var(--border-color-primary);
+    width: 110px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    font-size: var(--font-size-base);
+    background-color: var(--control-background-color);
+    color: var(--foreground-color);
+    font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    background: var(--input-background);
-    color: var(--input-color);
-    transition: all var(--transition-base);
     text-align: center;
+    transition:
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
 }
 
 .faceNumberInput:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px var(--color-primary-alpha);
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-focus);
 }
 
 .faceNumberInput::placeholder {
-    color: var(--color-tertiary);
+    color: var(--neutral-400);
 }
 
-.highlightButton {
-    padding: 8px 20px;
-    background: var(--color-primary);
-    color: white;
-    border: none;
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 var(--spacing-sm);
+    border: 1px solid var(--button-border-color);
     border-radius: var(--radius-sm);
+    background-color: var(--button-background);
+    color: var(--button-text-color);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-semibold);
-    transition: all var(--transition-base);
+    transition: all var(--transition-fast);
     white-space: nowrap;
-    box-shadow: var(--shadow-sm);
 }
 
-.highlightButton:hover {
-    background: var(--color-primary-hover);
-    box-shadow: var(--shadow-md);
+.button:hover {
+    border-color: var(--primary-color);
+    background-color: var(--button-hover-background);
     transform: translateY(-1px);
-}
-
-.highlightButton:active {
-    transform: translateY(0);
     box-shadow: var(--shadow-sm);
 }
 
-.closeButton {
-    padding: 6px 12px;
-    background: var(--button-background);
-    color: var(--button-color);
-    border: 1px solid var(--border-color-primary);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: var(--font-size-sm);
-    transition: all var(--transition-base);
+.button:active {
+    transform: translateY(0);
+    box-shadow: none;
 }
 
-.closeButton:hover {
-    background: var(--button-background-hover);
-    border-color: var(--border-color-hover);
+.buttonPrimary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--neutral-0);
 }
 
-.helpText {
-    padding: var(--spacing-sm) 12px;
-    background: var(--info-background);
-    color: var(--info-color);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
+.buttonPrimary:hover {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+.buttonSecondary {
+    background-color: var(--panel-background-color);
+}
+
+.buttonDanger {
+    border-color: rgba(236, 95, 95, 0.55);
+    color: var(--danger-color);
+}
+
+.buttonDanger:hover {
+    border-color: var(--danger-color);
+    background-color: rgba(236, 95, 95, 0.12);
+}
+
+.iconButton {
+    width: 32px;
+    padding: 0;
+    font-size: var(--font-size-base);
+    line-height: 1;
 }
 
 .content {
     flex: 1;
     display: flex;
-    gap: var(--spacing-xs);
-    padding: 2px;
-    background: var(--background-color-tertiary);
-    overflow: hidden;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    min-height: 0;
+    background-color: var(--neutral-100);
 }
 
-.viewContainer {
+.viewPanel {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--background-color-primary);
-    border: 1px solid var(--border-color-primary);
-    border-radius: var(--radius-sm);
+    background-color: var(--panel-background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     overflow: hidden;
-    position: relative;
+    box-shadow: var(--shadow-sm);
 }
 
 .viewHeader {
-    padding: var(--spacing-sm) 12px;
-    background: var(--background-color-secondary);
-    border-bottom: 1px solid var(--border-color-primary);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 var(--spacing-md);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--neutral-700);
+    background-color: var(--panel-header-background);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.viewBody {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+.view3D,
+.view2D {
+    width: 100%;
+    height: 100%;
 }
 
 .view3D {
-    flex: 1;
-    position: relative;
-    background: var(--viewport-background);
+    background:
+        linear-gradient(150deg, rgba(255, 102, 51, 0.07), transparent 35%), var(--viewport-background-color);
 }
 
 .view2D {
-    flex: 1;
-    position: relative;
-    background: #ffffff;
+    background-color: var(--neutral-0);
 }
 
 .svgContainer {
@@ -178,78 +234,162 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--spacing-sm);
+    box-sizing: border-box;
 }
 
-.highlightOverlay {
+.svgContent {
+    min-width: 100%;
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.svgContent :global(svg) {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.loadingOverlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: var(--z-fixed);
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    color: var(--neutral-700);
+    background-color: rgba(245, 245, 245, 0.88);
+    backdrop-filter: blur(2px);
+    z-index: var(--z-dropdown);
 }
 
-.faceHighlight {
-    fill: rgba(255, 220, 0, 0.5);
-    stroke: #ffa500;
-    stroke-width: 3;
-    animation: pulseHighlight 1s infinite;
+.loadingOverlay::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--neutral-300);
+    border-top-color: var(--primary-color);
+    animation: assemblySpin 0.8s linear infinite;
 }
 
-@keyframes pulseHighlight {
-    0% {
-        opacity: 0.5;
-    }
-    50% {
-        opacity: 0.8;
-    }
-    100% {
-        opacity: 0.5;
-    }
+.visible {
+    display: inline-flex;
+}
+
+[theme="dark"] .loadingOverlay {
+    background-color: rgba(18, 18, 18, 0.82);
+}
+
+.emptyState {
+    padding: var(--spacing-lg);
+    text-align: center;
+    color: var(--neutral-600);
+    font-size: var(--font-size-sm);
 }
 
 .statusBar {
+    min-height: 28px;
     display: flex;
     align-items: center;
-    padding: var(--spacing-xs) 12px;
-    background: var(--background-color-secondary);
-    border-top: 1px solid var(--border-color-primary);
-    font-size: var(--font-size-xs);
-    color: var(--color-secondary);
     gap: var(--spacing-md);
+    padding: 0 var(--spacing-lg);
+    background-color: var(--statusbar-background-color);
+    border-top: 1px solid var(--border-color);
 }
 
 .statusItem {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--spacing-xs);
+    min-width: 0;
 }
 
 .statusLabel {
+    font-size: var(--font-size-xs);
+    color: var(--neutral-600);
     font-weight: var(--font-weight-medium);
 }
 
 .statusValue {
-    color: var(--color-primary);
+    font-size: var(--font-size-xs);
+    color: var(--foreground-color);
+    font-weight: var(--font-weight-semibold);
 }
 
-/* Responsive layout for smaller screens */
-@media (max-width: 768px) {
-    .content {
-        flex-direction: column;
+.interactiveFace {
+    cursor: pointer;
+    transition:
+        opacity var(--transition-fast),
+        filter var(--transition-fast),
+        stroke var(--transition-fast);
+}
+
+.interactiveFace:hover {
+    opacity: 0.82;
+    filter: brightness(0.98);
+}
+
+.faceHighlighted {
+    fill: rgba(255, 102, 51, 0.32) !important;
+    stroke: var(--primary-color) !important;
+    stroke-width: 2.5 !important;
+    opacity: 1 !important;
+}
+
+@keyframes assemblySpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
     }
 }
 
-/* Dark theme adjustments */
-[theme="dark"] .root {
-    background: #2a2a2a;
+@media (max-width: 1080px) {
+    .toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .toolbarHint {
+        white-space: normal;
+    }
 }
 
-[theme="dark"] .view2D {
-    background: #2a2a2a;
+@media (max-width: 900px) {
+    .content {
+        flex-direction: column;
+    }
+
+    .viewPanel {
+        min-height: 280px;
+    }
 }
 
-[theme="dark"] .svgContainer {
-    filter: invert(1) hue-rotate(180deg);
+@media (max-width: 640px) {
+    .header {
+        padding: var(--spacing-sm) var(--spacing-md);
+        gap: var(--spacing-sm);
+    }
+
+    .toolbar {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .statusBar {
+        padding: 0 var(--spacing-md);
+        flex-wrap: wrap;
+        height: auto;
+        padding-top: var(--spacing-xs);
+        padding-bottom: var(--spacing-xs);
+    }
+
+    .controlGroup {
+        width: 100%;
+        flex-wrap: wrap;
+    }
 }

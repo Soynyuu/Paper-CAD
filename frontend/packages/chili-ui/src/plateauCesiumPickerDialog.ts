@@ -24,6 +24,7 @@ import style from "./dialog.module.css";
 
 export interface PlateauCesiumPickerResult {
     selectedBuildings: PickedBuilding[];
+    action?: "import" | "unfoldBeta";
 }
 
 /**
@@ -1135,7 +1136,10 @@ export class PlateauCesiumPickerDialog {
                     return b;
                 });
 
-                closeDialog(DialogResult.ok, { selectedBuildings: enrichedSelected });
+                closeDialog(DialogResult.ok, {
+                    selectedBuildings: enrichedSelected,
+                    action: "import",
+                });
             },
         });
 

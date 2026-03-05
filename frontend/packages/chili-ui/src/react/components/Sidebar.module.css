@@ -80,6 +80,29 @@
     cursor: not-allowed;
 }
 
+.unfoldBetaButton {
+    width: 100%;
+    padding: var(--spacing-10, 10px);
+    background: linear-gradient(140deg, #746f2a, #5d571f);
+    color: #f8f7ea;
+    border: none;
+    border-radius: var(--radius-sm, 4px);
+    font-weight: var(--font-weight-semibold, 600);
+    font-size: var(--font-size-sm, 14px);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.unfoldBetaButton:hover:not(:disabled) {
+    background: linear-gradient(140deg, #847f35, #6b6529);
+}
+
+.unfoldBetaButton:disabled {
+    background: var(--neutral-300);
+    color: var(--neutral-500);
+    cursor: not-allowed;
+}
+
 .clearButton {
     width: 100%;
     padding: var(--spacing-sm, 8px);

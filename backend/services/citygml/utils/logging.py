@@ -1,9 +1,10 @@
 """
 Thread-local logging utilities for CityGML conversion.
 
-This module provides global logging functions that write to both console and
-thread-local log files. This allows all conversion functions to write to a
-conversion-specific log file without passing log file handles around.
+This module provides global logging functions that write to both the standard
+Python logger and thread-local log files. This allows all conversion functions
+to write to a conversion-specific log file without passing log file handles
+around.
 
 Usage:
     from services.citygml.utils.logging import log, set_log_file, close_log_file
@@ -24,7 +25,9 @@ Usage:
 
 import threading
 from typing import Optional, TextIO
+from utils.logger import get_logger
 
+_logger = get_logger("citygml.conversion")
 
 # Thread-local storage for log file
 # This allows each conversion (thread) to have its own log file
@@ -33,10 +36,10 @@ _thread_local = threading.local()
 
 def log(message: str) -> None:
     """
-    Log a message to both console and thread-local log file.
+    Log a message to both the Python logger and thread-local log file.
 
     This function writes to:
-    1. Standard output (always)
+    1. Python logger at INFO level (always)
     2. Thread-local log file if one is set via set_log_file()
 
     Args:
@@ -46,8 +49,8 @@ def log(message: str) -> None:
         >>> log("Processing building 123...")
         Processing building 123...
     """
-    print(message)
-    log_file = getattr(_thread_local, 'log_file', None)
+    _logger.info(message)
+    log_file = getattr(_thread_local, "log_file", None)
     if log_file:
         try:
             log_file.write(message + "\n")
@@ -99,7 +102,7 @@ def close_log_file() -> None:
         ... finally:
         ...     close_log_file()  # Guaranteed to execute
     """
-    log_file = getattr(_thread_local, 'log_file', None)
+    log_file = getattr(_thread_local, "log_file", None)
     if log_file:
         try:
             set_log_file(None)  # Clear the reference first to prevent further writes
@@ -123,4 +126,4 @@ def get_log_file() -> Optional[TextIO]:
         >>> get_log_file() is f
         True
     """
-    return getattr(_thread_local, 'log_file', None)
+    return getattr(_thread_local, "log_file", None)

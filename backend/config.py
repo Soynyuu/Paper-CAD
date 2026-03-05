@@ -1,19 +1,12 @@
 import os
-import builtins
-import sys
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from utils.logger import get_logger
 
-# 環境変数でdemo/productionモードの場合、printを無効化してパフォーマンス向上
+logger = get_logger(__name__)
+
 ENV = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
-
-if ENV in ["demo", "production"]:
-    def noop_print(*args, **kwargs):
-        pass
-    builtins.print = noop_print
-    # 起動時のメッセージのみ標準エラー出力に表示
-    sys.stderr.write(f"[CONFIG] {ENV}モード: ログ出力を無効化しました\n")
 
 # OpenCASCADE Technology (OCCT) の可用性チェック
 try:
@@ -25,13 +18,35 @@ try:
     from OCC.Core import BRepGProp
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
     from OCC.Core.GeomLProp import GeomLProp_SLProps
-    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone, GeomAbs_Sphere
+    from OCC.Core.GeomAbs import (
+        GeomAbs_Plane,
+        GeomAbs_Cylinder,
+        GeomAbs_Cone,
+        GeomAbs_Sphere,
+    )
     from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
     from OCC.Core.GProp import GProp_GProps
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Edge, TopoDS_Vertex
-    from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Dir, gp_Pln, gp_Cylinder, gp_Cone, gp_Trsf, gp_Ax1, gp_Ax2, gp_Ax3
-    from OCC.Core.Geom import Geom_Surface, Geom_Plane, Geom_CylindricalSurface, Geom_ConicalSurface
+    from OCC.Core.gp import (
+        gp_Pnt,
+        gp_Vec,
+        gp_Dir,
+        gp_Pln,
+        gp_Cylinder,
+        gp_Cone,
+        gp_Trsf,
+        gp_Ax1,
+        gp_Ax2,
+        gp_Ax3,
+    )
+    from OCC.Core.Geom import (
+        Geom_Surface,
+        Geom_Plane,
+        Geom_CylindricalSurface,
+        Geom_ConicalSurface,
+    )
     from OCC.Core.Standard import Standard_Failure
+
     OCCT_AVAILABLE = True
 except ImportError as e:
     OCCT_AVAILABLE = False
@@ -41,7 +56,7 @@ except ImportError as e:
 try:
     from dotenv import load_dotenv
 
-    # ENV変数は冒頭で定義済み（print無効化のため）
+    # ENV変数は冒頭で定義済み
     # 環境に応じた.envファイルを選択
     env_file = None
     if ENV == "production":
@@ -65,11 +80,16 @@ try:
 
     if env_file:
         load_dotenv(env_file)
-        print(f"[CONFIG] 環境変数を {env_file} から読み込みました (ENV={ENV})")
+        logger.info("環境変数を %s から読み込みました (ENV=%s)", env_file, ENV)
     else:
-        print(f"[CONFIG] 環境変数ファイルが見つかりません (ENV={ENV})。環境変数から直接読み込みます。")
+        logger.info(
+            "環境変数ファイルが見つかりません (ENV=%s)。環境変数から直接読み込みます。",
+            ENV,
+        )
 except ImportError:
-    print("[CONFIG] python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。")
+    logger.warning(
+        "python-dotenvがインストールされていないため、環境変数の読み込みをスキップします。"
+    )
 
 # 設定値
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
@@ -114,11 +134,11 @@ APP_CONFIG = {
     "version": "1.0.0",
     "contact": {
         "name": "Kodai MIYAZAKI",
-        "url": "https://github.com/Soynyuu/Paper-CAD"
+        "url": "https://github.com/Soynyuu/Paper-CAD",
     },
     "license_info": {
         "name": "AGPL-3.0",
-    }
+    },
 }
 
 
@@ -135,7 +155,7 @@ def _get_int_env(name: str, default: int) -> int:
 SVG_UPLOAD_LIMITS = {
     "max_files": _get_int_env("SVG_MAX_FILES", 100),
     "max_file_size_bytes": _get_int_env("SVG_MAX_FILE_SIZE_MB", 50) * 1024 * 1024,
-    "max_total_bytes": _get_int_env("SVG_MAX_TOTAL_SIZE_MB", 200) * 1024 * 1024
+    "max_total_bytes": _get_int_env("SVG_MAX_TOTAL_SIZE_MB", 200) * 1024 * 1024,
 }
 
 # OpenAPI タグのメタデータ
@@ -177,59 +197,66 @@ TAGS_METADATA = [
 
 def setup_cors(app: FastAPI) -> None:
     """CORS設定を行う"""
-    print(f"\n{'='*60}")
-    print(f"[CORS CONFIG] フロントエンドURL: {FRONTEND_URL}")
-    print(f"[CORS CONFIG] すべてのオリジンを許可: {CORS_ALLOW_ALL}")
-    print(f"[CORS CONFIG] 環境: {os.getenv('ENV', 'development')}")
-    print(f"{'='*60}\n")
+    logger.info(
+        "CORS CONFIG: フロントエンドURL=%s, すべてのオリジンを許可=%s, 環境=%s",
+        FRONTEND_URL,
+        CORS_ALLOW_ALL,
+        os.getenv("ENV", "development"),
+    )
 
     # オリジンリストを構築
     origins = []
-    env = os.getenv('ENV', os.getenv('PYTHON_ENV', 'development'))
+    env = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
 
     if CORS_ALLOW_ALL or FRONTEND_URL == "*":
         # 開発環境: ローカルホストを明示的に許可
         # セキュリティ上の理由から、allow_origins=["*"]とallow_credentials=Trueの
         # 組み合わせは使用しない（CORS仕様違反、ブラウザでブロックされる）
-        origins.extend([
-            "http://localhost:8001",
-            "http://127.0.0.1:8001",
-            "http://localhost:8080",
-            "http://127.0.0.1:8080",
-            "http://localhost:8081",
-            "http://127.0.0.1:8081",
-        ])
-        print("[CORS] 🔧 開発モード: ローカルホストのみ許可")
+        origins.extend(
+            [
+                "http://localhost:8001",
+                "http://127.0.0.1:8001",
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+                "http://localhost:8081",
+                "http://127.0.0.1:8081",
+            ]
+        )
+        logger.info("CORS: 開発モード: ローカルホストのみ許可")
     elif env == "demo":
         # デモ環境: 本番設定 + localhost許可
-        # FRONTENDを設定
         if FRONTEND_URL and FRONTEND_URL != "*":
             origins.append(FRONTEND_URL)
 
         # localhostを追加（デモ用）
-        origins.extend([
-            "http://localhost:8080",
-            "http://127.0.0.1:8080",
-        ])
+        origins.extend(
+            [
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+            ]
+        )
 
         # 本番ドメインも追加（オプション）
-        origins.extend([
-            "https://paper-cad.soynyuu.com",
-            "https://app-paper-cad.soynyuu.com",
-        ])
-        print(f"[CORS] 🎬 デモモード: 本番設定 + localhost許可")
+        origins.extend(
+            [
+                "https://paper-cad.soynyuu.com",
+                "https://app-paper-cad.soynyuu.com",
+            ]
+        )
+        logger.info("CORS: デモモード: 本番設定 + localhost許可")
     else:
         # 本番環境: 特定のオリジンのみを許可
-        # FRONTENDを設定
         if FRONTEND_URL and FRONTEND_URL != "*":
             origins.append(FRONTEND_URL)
 
         # 本番ドメインを追加
-        origins.extend([
-            "https://paper-cad.soynyuu.com",
-            "https://app-paper-cad.soynyuu.com",
-        ])
-        print(f"[CORS] 🔒 本番モード: 特定のオリジンのみ許可")
+        origins.extend(
+            [
+                "https://paper-cad.soynyuu.com",
+                "https://app-paper-cad.soynyuu.com",
+            ]
+        )
+        logger.info("CORS: 本番モード: 特定のオリジンのみ許可")
 
     # CORSミドルウェアを追加
     app.add_middleware(
@@ -240,9 +267,8 @@ def setup_cors(app: FastAPI) -> None:
         allow_headers=["*"],
     )
 
-    print(f"[CORS] 許可されたオリジン数: {len(origins)}")
-    for i, origin in enumerate(origins, 1):
-        print(f"[CORS]   {i}. {origin}")
+    logger.info("CORS: 許可されたオリジン数=%d: %s", len(origins), origins)
+
 
 def create_app() -> FastAPI:
     """FastAPIアプリケーションを作成する"""

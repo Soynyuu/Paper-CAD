@@ -22,7 +22,7 @@ from ..utils.logging import log
 def compute_offset_and_wrap_transform(
     buildings: List[ET.Element],
     xyz_transform: Optional[CoordinateTransform3D],
-    debug: bool = False
+    debug: bool = False,
 ) -> Tuple[Optional[CoordinateTransform3D], Optional[Tuple[float, float, float]]]:
     """
     Compute coordinate offset and wrap transform to recenter geometry near origin.
@@ -33,9 +33,11 @@ def compute_offset_and_wrap_transform(
     collapsed or invalid geometry.
 
     Algorithm:
-    1. Scan all polygon coordinates from all buildings
+    1. Sample polygon coordinates from the first building (up to 20 polygons)
+       Issue #192: Only samples 1 building instead of scanning all, since the
+       centroid only needs to be approximate for numerical precision purposes.
     2. Apply xyz_transform (if provided) to get planar coordinates in meters
-    3. Calculate bounding box center of all coordinates
+    3. Calculate bounding box center of sampled coordinates
     4. Compute distance from origin
     5. If distance > threshold (1.0m):
        - Calculate offset = (-center_x, -center_y, -center_z)
@@ -71,24 +73,39 @@ def compute_offset_and_wrap_transform(
         - Returns offset-only transform if no xyz_transform provided
     """
     # Always log PHASE:0 header (critical for debugging coordinate issues)
-    log(f"\n{'='*80}")
+    log(f"\n{'=' * 80}")
     log(f"[PHASE:0] PRE-SCAN FOR COORDINATE RE-CENTERING")
-    log(f"{'='*80}")
+    log(f"{'=' * 80}")
 
-    # Scan all polygon coordinates from buildings
+    # Scan polygon coordinates from buildings (Issue #192: sample instead of full scan)
+    # We only need an approximate centroid for recentering, so sampling the first
+    # building's polygons (up to 20) is sufficient. This avoids scanning thousands
+    # of polygons across all buildings.
     raw_coords = []
+    max_buildings_to_sample = 1
+    max_polygons_per_building = 20
+    buildings_sampled = 0
+
     for b in buildings:
+        if buildings_sampled >= max_buildings_to_sample:
+            break
+        polygon_count = 0
         for poly in b.findall(".//gml:Polygon", NS):
-            ext, holes = extract_polygon_xyz(poly)
+            if polygon_count >= max_polygons_per_building:
+                break
+            ext, _ = extract_polygon_xyz(poly)
             raw_coords.extend(ext)
-            for hole in holes:
-                raw_coords.extend(hole)
+            polygon_count += 1
+        if polygon_count > 0:
+            buildings_sampled += 1
 
     if not raw_coords:
         log(f"[PRESCAN] ⚠ No polygon coordinates found, skipping re-centering")
         return xyz_transform, None
 
-    log(f"[PRESCAN] Scanned {len(raw_coords)} coordinates from {len(buildings)} buildings")
+    log(
+        f"[PRESCAN] Sampled {len(raw_coords)} coordinates from {buildings_sampled}/{len(buildings)} buildings"
+    )
 
     # Apply xyz_transform to get planar coordinates (meters)
     if xyz_transform:
@@ -121,23 +138,35 @@ def compute_offset_and_wrap_transform(
     distance_from_origin = (center_x**2 + center_y**2 + center_z**2) ** 0.5
 
     # Always log bounding box info (critical for diagnosing precision issues)
-    log(f"[PRESCAN] Bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f}) meters")
-    log(f"[PRESCAN] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin/1000:.3f} km)")
+    log(
+        f"[PRESCAN] Bounding box center: ({center_x:.3f}, {center_y:.3f}, {center_z:.3f}) meters"
+    )
+    log(
+        f"[PRESCAN] Distance from origin: {distance_from_origin:.3f} m ({distance_from_origin / 1000:.3f} km)"
+    )
 
     # Apply offset if significantly far from origin (> threshold)
     if distance_from_origin > RECENTERING_DISTANCE_THRESHOLD:
         coord_offset = (-center_x, -center_y, -center_z)
 
-        log(f"[PRESCAN] ✓ Offset calculated: ({coord_offset[0]:.3f}, {coord_offset[1]:.3f}, {coord_offset[2]:.3f}) meters")
+        log(
+            f"[PRESCAN] ✓ Offset calculated: ({coord_offset[0]:.3f}, {coord_offset[1]:.3f}, {coord_offset[2]:.3f}) meters"
+        )
         log(f"[PRESCAN] This will re-center geometry to origin for numerical precision")
 
         # Wrap xyz_transform with offset
         if xyz_transform:
             original_transform = xyz_transform
 
-            def wrapped_transform(x: float, y: float, z: float) -> Tuple[float, float, float]:
+            def wrapped_transform(
+                x: float, y: float, z: float
+            ) -> Tuple[float, float, float]:
                 tx, ty, tz = original_transform(x, y, z)
-                return (tx + coord_offset[0], ty + coord_offset[1], tz + coord_offset[2])
+                return (
+                    tx + coord_offset[0],
+                    ty + coord_offset[1],
+                    tz + coord_offset[2],
+                )
 
             log(f"[PRESCAN] ✓ Wrapped xyz_transform with offset")
 
@@ -146,14 +175,22 @@ def compute_offset_and_wrap_transform(
                 test_x, test_y, test_z = raw_coords[0]
                 orig_result = original_transform(test_x, test_y, test_z)
                 wrapped_result = wrapped_transform(test_x, test_y, test_z)
-                log(f"[PRESCAN] DEBUG: Sample coordinate ({test_x:.3f}, {test_y:.3f}, {test_z:.3f})")
-                log(f"[PRESCAN] DEBUG: Original transform → ({orig_result[0]:.3f}, {orig_result[1]:.3f}, {orig_result[2]:.3f})")
-                log(f"[PRESCAN] DEBUG: Wrapped transform → ({wrapped_result[0]:.3f}, {wrapped_result[1]:.3f}, {wrapped_result[2]:.3f})")
+                log(
+                    f"[PRESCAN] DEBUG: Sample coordinate ({test_x:.3f}, {test_y:.3f}, {test_z:.3f})"
+                )
+                log(
+                    f"[PRESCAN] DEBUG: Original transform → ({orig_result[0]:.3f}, {orig_result[1]:.3f}, {orig_result[2]:.3f})"
+                )
+                log(
+                    f"[PRESCAN] DEBUG: Wrapped transform → ({wrapped_result[0]:.3f}, {wrapped_result[1]:.3f}, {wrapped_result[2]:.3f})"
+                )
 
             return wrapped_transform, coord_offset
         else:
             # No xyz_transform, create offset-only transform
-            def offset_transform(x: float, y: float, z: float) -> Tuple[float, float, float]:
+            def offset_transform(
+                x: float, y: float, z: float
+            ) -> Tuple[float, float, float]:
                 return (x + coord_offset[0], y + coord_offset[1], z + coord_offset[2])
 
             log(f"[PRESCAN] ✓ Created offset-only transform (no xyz_transform)")

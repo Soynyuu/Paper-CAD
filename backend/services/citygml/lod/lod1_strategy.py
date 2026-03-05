@@ -24,7 +24,8 @@ def extract_lod1_geometry(
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
     elem_id: str,
-    debug: bool = False
+    tolerance: Optional[float] = None,
+    debug: bool = False,
 ) -> LODExtractionResult:
     """
     Extract LOD1 geometry from a building element.
@@ -75,7 +76,7 @@ def extract_lod1_geometry(
             exterior_faces=[],
             interior_shells=[],
             lod_level="LOD1",
-            method="lod1Solid (not found)"
+            method="lod1Solid (not found)",
         )
 
     solid_elem = lod1_solid.find(".//gml:Solid", NS)
@@ -87,7 +88,7 @@ def extract_lod1_geometry(
             exterior_faces=[],
             interior_shells=[],
             lod_level="LOD1",
-            method="lod1Solid (no gml:Solid)"
+            method="lod1Solid (no gml:Solid)",
         )
 
     if debug:
@@ -95,15 +96,17 @@ def extract_lod1_geometry(
 
     # Extract exterior and interior shells
     exterior_faces, interior_shells = extract_solid_shells(
-        solid_elem, xyz_transform, id_index, debug=debug
+        solid_elem, xyz_transform, id_index, tolerance=tolerance, debug=debug
     )
 
     if debug:
-        log(f"[LOD1] Extracted {len(exterior_faces)} exterior faces, {len(interior_shells)} interior shells")
+        log(
+            f"[LOD1] Extracted {len(exterior_faces)} exterior faces, {len(interior_shells)} interior shells"
+        )
 
     return LODExtractionResult(
         exterior_faces=exterior_faces,
         interior_shells=interior_shells,
         lod_level="LOD1",
-        method="lod1Solid//gml:Solid"
+        method="lod1Solid//gml:Solid",
     )

@@ -15,7 +15,10 @@ import xml.etree.ElementTree as ET
 from ..core.constants import NS
 from ..core.types import CoordinateTransform3D, IDIndex, LODExtractionResult
 from ..utils.logging import log
-from .surface_extractors import extract_faces_from_surface_container, extract_solid_shells
+from .surface_extractors import (
+    extract_faces_from_surface_container,
+    extract_solid_shells,
+)
 
 
 def extract_lod3_geometry(
@@ -23,7 +26,8 @@ def extract_lod3_geometry(
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
     elem_id: str,
-    debug: bool = False
+    tolerance: Optional[float] = None,
+    debug: bool = False,
 ) -> LODExtractionResult:
     """
     Extract LOD3 geometry from a building element using progressive fallback.
@@ -84,22 +88,28 @@ def extract_lod3_geometry(
 
             # Extract exterior and interior shells
             exterior_faces_solid, interior_shells_faces = extract_solid_shells(
-                solid_elem, xyz_transform, id_index, debug=debug
+                solid_elem, xyz_transform, id_index, tolerance=tolerance, debug=debug
             )
 
-            log(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+            log(
+                f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells"
+            )
             if debug:
-                log(f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+                log(
+                    f"[LOD3] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells"
+                )
 
             if exterior_faces_solid:
                 return LODExtractionResult(
                     exterior_faces=exterior_faces_solid,
                     interior_shells=interior_shells_faces,
                     lod_level="LOD3",
-                    method="lod3Solid//gml:Solid"
+                    method="lod3Solid//gml:Solid",
                 )
             else:
-                log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy...")
+                log(
+                    f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 1 failed (0 faces), trying next strategy..."
+                )
                 if debug:
                     log(f"[LOD3] Solid extracted 0 faces, trying other strategies...")
         else:
@@ -117,12 +127,15 @@ def extract_lod3_geometry(
             log(f"[LOD3] Found bldg:lod3MultiSurface in {elem_id}")
 
         # Look for MultiSurface or CompositeSurface
-        for surface_container in (
-            lod3_multi.findall(".//gml:MultiSurface", NS) +
-            lod3_multi.findall(".//gml:CompositeSurface", NS)
-        ):
+        for surface_container in lod3_multi.findall(
+            ".//gml:MultiSurface", NS
+        ) + lod3_multi.findall(".//gml:CompositeSurface", NS):
             faces_multi = extract_faces_from_surface_container(
-                surface_container, xyz_transform, id_index, debug=debug
+                surface_container,
+                xyz_transform,
+                id_index,
+                tolerance=tolerance,
+                debug=debug,
             )
             exterior_faces.extend(faces_multi)
 
@@ -130,17 +143,23 @@ def extract_lod3_geometry(
             log(f"[LOD3] MultiSurface extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
-            log(f"[CONVERSION DEBUG]   ✓ LOD3 Strategy 2 extracted {len(exterior_faces)} faces")
+            log(
+                f"[CONVERSION DEBUG]   ✓ LOD3 Strategy 2 extracted {len(exterior_faces)} faces"
+            )
             return LODExtractionResult(
                 exterior_faces=exterior_faces,
                 interior_shells=[],  # MultiSurface doesn't have interior shells
                 lod_level="LOD3",
-                method="lod3MultiSurface"
+                method="lod3MultiSurface",
             )
         else:
-            log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 2 failed (0 faces), trying next strategy...")
+            log(
+                f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 2 failed (0 faces), trying next strategy..."
+            )
             if debug:
-                log(f"[LOD3] MultiSurface extracted 0 faces, trying other strategies...")
+                log(
+                    f"[LOD3] MultiSurface extracted 0 faces, trying other strategies..."
+                )
 
     # =========================================================================
     # Strategy 3: LOD3 Geometry (generic LOD3 geometry container)
@@ -156,21 +175,29 @@ def extract_lod3_geometry(
 
         # Try to find any surface structures
         for surface_container in (
-            lod3_geom.findall(".//gml:MultiSurface", NS) +
-            lod3_geom.findall(".//gml:CompositeSurface", NS) +
-            lod3_geom.findall(".//gml:Solid", NS)
+            lod3_geom.findall(".//gml:MultiSurface", NS)
+            + lod3_geom.findall(".//gml:CompositeSurface", NS)
+            + lod3_geom.findall(".//gml:Solid", NS)
         ):
             if surface_container.tag.endswith("Solid"):
                 # Process as Solid
                 faces_geom, interior_shells_geom = extract_solid_shells(
-                    surface_container, xyz_transform, id_index, debug=debug
+                    surface_container,
+                    xyz_transform,
+                    id_index,
+                    tolerance=tolerance,
+                    debug=debug,
                 )
                 exterior_faces.extend(faces_geom)
                 interior_shells.extend(interior_shells_geom)
             else:
                 # Process as MultiSurface/CompositeSurface
                 faces_geom = extract_faces_from_surface_container(
-                    surface_container, xyz_transform, id_index, debug=debug
+                    surface_container,
+                    xyz_transform,
+                    id_index,
+                    tolerance=tolerance,
+                    debug=debug,
                 )
                 exterior_faces.extend(faces_geom)
 
@@ -178,12 +205,14 @@ def extract_lod3_geometry(
             log(f"[LOD3] Geometry extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
-            log(f"[CONVERSION DEBUG]   ✓ LOD3 Strategy 3 extracted {len(exterior_faces)} faces")
+            log(
+                f"[CONVERSION DEBUG]   ✓ LOD3 Strategy 3 extracted {len(exterior_faces)} faces"
+            )
             return LODExtractionResult(
                 exterior_faces=exterior_faces,
                 interior_shells=interior_shells,
                 lod_level="LOD3",
-                method="lod3Geometry"
+                method="lod3Geometry",
             )
         else:
             log(f"[CONVERSION DEBUG]   ✗ LOD3 Strategy 3 failed (0 faces)")
@@ -198,5 +227,5 @@ def extract_lod3_geometry(
         exterior_faces=[],
         interior_shells=[],
         lod_level="LOD3",
-        method="No LOD3 geometry found"
+        method="No LOD3 geometry found",
     )

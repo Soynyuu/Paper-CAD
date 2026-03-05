@@ -17,7 +17,10 @@ import xml.etree.ElementTree as ET
 from ..core.constants import NS, BOUNDED_BY_PREFERENCE_THRESHOLD
 from ..core.types import CoordinateTransform3D, IDIndex, LODExtractionResult
 from ..utils.logging import log
-from .surface_extractors import extract_faces_from_surface_container, extract_solid_shells
+from .surface_extractors import (
+    extract_faces_from_surface_container,
+    extract_solid_shells,
+)
 from .bounded_by import extract_faces_from_all_bounded_surfaces, count_bounded_by_faces
 
 
@@ -26,7 +29,8 @@ def extract_lod2_geometry(
     xyz_transform: Optional[CoordinateTransform3D],
     id_index: IDIndex,
     elem_id: str,
-    debug: bool = False
+    tolerance: Optional[float] = None,
+    debug: bool = False,
 ) -> LODExtractionResult:
     """
     Extract LOD2 geometry from a building element using progressive fallback.
@@ -105,12 +109,16 @@ def extract_lod2_geometry(
 
             # Extract exterior and interior shells
             exterior_faces_solid, interior_shells_faces = extract_solid_shells(
-                solid_elem, xyz_transform, id_index, debug=debug
+                solid_elem, xyz_transform, id_index, tolerance=tolerance, debug=debug
             )
 
-            log(f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+            log(
+                f"[CONVERSION DEBUG]   Extracted {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells"
+            )
             if debug:
-                log(f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells")
+                log(
+                    f"[LOD2] Solid extraction: {len(exterior_faces_solid)} exterior faces, {len(interior_shells_faces)} interior shells"
+                )
 
             if exterior_faces_solid:
                 # ===================================================================
@@ -120,45 +128,63 @@ def extract_lod2_geometry(
                 # - lod2Solid: Simplified envelope (basic shape)
                 # - boundedBy/WallSurface: Detailed wall geometry (architectural details)
                 # We need to check both and use the more detailed one
-                log(f"[CONVERSION DEBUG]   Checking if boundedBy has more detailed geometry...")
+                log(
+                    f"[CONVERSION DEBUG]   Checking if boundedBy has more detailed geometry..."
+                )
 
                 # Quick count of boundedBy faces without full extraction
                 bounded_faces_count = count_bounded_by_faces(elem)
 
                 if bounded_faces_count > 0:
-                    log(f"[CONVERSION DEBUG]   Found {bounded_faces_count} boundedBy faces")
-                    log(f"[CONVERSION DEBUG]   Comparing lod2Solid ({len(exterior_faces_solid)} faces) vs boundedBy ({bounded_faces_count} faces)...")
+                    log(
+                        f"[CONVERSION DEBUG]   Found {bounded_faces_count} boundedBy faces"
+                    )
+                    log(
+                        f"[CONVERSION DEBUG]   Comparing lod2Solid ({len(exterior_faces_solid)} faces) vs boundedBy ({bounded_faces_count} faces)..."
+                    )
 
                     # If boundedBy has same or more faces, prefer it for more detail
                     # Fix for Issue #48: Threshold is 1.0 (same or more), not 1.2 (20% more)
                     # This ensures we don't miss detailed wall geometry in tall buildings
                     threshold = BOUNDED_BY_PREFERENCE_THRESHOLD  # 1.0 from constants
                     if bounded_faces_count >= len(exterior_faces_solid) * threshold:
-                        log(f"[CONVERSION DEBUG]   ✓ boundedBy has {bounded_faces_count} vs lod2Solid's {len(exterior_faces_solid)} faces")
-                        log(f"[CONVERSION DEBUG]   → Preferring boundedBy strategy for more detailed geometry")
-                        log(f"[CONVERSION DEBUG]   → Skipping MultiSurface/Geometry strategies, jumping to boundedBy")
+                        log(
+                            f"[CONVERSION DEBUG]   ✓ boundedBy has {bounded_faces_count} vs lod2Solid's {len(exterior_faces_solid)} faces"
+                        )
+                        log(
+                            f"[CONVERSION DEBUG]   → Preferring boundedBy strategy for more detailed geometry"
+                        )
+                        log(
+                            f"[CONVERSION DEBUG]   → Skipping MultiSurface/Geometry strategies, jumping to boundedBy"
+                        )
                         prefer_bounded_by = True  # Skip intermediate strategies
                         # Don't return here - let it fall through to boundedBy strategy below
                     else:
-                        log(f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it")
+                        log(
+                            f"[CONVERSION DEBUG]   → lod2Solid has more detail ({len(exterior_faces_solid)} vs {bounded_faces_count} faces), using it"
+                        )
                         return LODExtractionResult(
                             exterior_faces=exterior_faces_solid,
                             interior_shells=interior_shells_faces,
                             lod_level="LOD2",
                             method="lod2Solid//gml:Solid",
-                            prefer_bounded_by=False
+                            prefer_bounded_by=False,
                         )
                 else:
-                    log(f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result")
+                    log(
+                        f"[CONVERSION DEBUG]   No boundedBy surfaces found, using lod2Solid result"
+                    )
                     return LODExtractionResult(
                         exterior_faces=exterior_faces_solid,
                         interior_shells=interior_shells_faces,
                         lod_level="LOD2",
                         method="lod2Solid//gml:Solid",
-                        prefer_bounded_by=False
+                        prefer_bounded_by=False,
                     )
             else:
-                log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (0 faces), trying next strategy...")
+                log(
+                    f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 1 failed (0 faces), trying next strategy..."
+                )
                 if debug:
                     log(f"[LOD2] Solid extracted 0 faces, trying other strategies...")
         else:
@@ -181,12 +207,15 @@ def extract_lod2_geometry(
             log(f"[LOD2] Found bldg:lod2MultiSurface in {elem_id}")
 
         # Look for MultiSurface or CompositeSurface
-        for surface_container in (
-            lod2_multi.findall(".//gml:MultiSurface", NS) +
-            lod2_multi.findall(".//gml:CompositeSurface", NS)
-        ):
+        for surface_container in lod2_multi.findall(
+            ".//gml:MultiSurface", NS
+        ) + lod2_multi.findall(".//gml:CompositeSurface", NS):
             faces_multi = extract_faces_from_surface_container(
-                surface_container, xyz_transform, id_index, debug=debug
+                surface_container,
+                xyz_transform,
+                id_index,
+                tolerance=tolerance,
+                debug=debug,
             )
             exterior_faces.extend(faces_multi)
 
@@ -194,18 +223,24 @@ def extract_lod2_geometry(
             log(f"[LOD2] MultiSurface extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
-            log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 2 extracted {len(exterior_faces)} faces")
+            log(
+                f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 2 extracted {len(exterior_faces)} faces"
+            )
             return LODExtractionResult(
                 exterior_faces=exterior_faces,
                 interior_shells=[],  # MultiSurface doesn't have interior shells
                 lod_level="LOD2",
                 method="lod2MultiSurface",
-                prefer_bounded_by=False
+                prefer_bounded_by=False,
             )
         else:
-            log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 2 failed (0 faces), trying next strategy...")
+            log(
+                f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 2 failed (0 faces), trying next strategy..."
+            )
             if debug:
-                log(f"[LOD2] MultiSurface extracted 0 faces, trying other strategies...")
+                log(
+                    f"[LOD2] MultiSurface extracted 0 faces, trying other strategies..."
+                )
             # Clear for next strategy
             exterior_faces = []
 
@@ -225,21 +260,29 @@ def extract_lod2_geometry(
 
         # Try to find any surface structures
         for surface_container in (
-            lod2_geom.findall(".//gml:MultiSurface", NS) +
-            lod2_geom.findall(".//gml:CompositeSurface", NS) +
-            lod2_geom.findall(".//gml:Solid", NS)
+            lod2_geom.findall(".//gml:MultiSurface", NS)
+            + lod2_geom.findall(".//gml:CompositeSurface", NS)
+            + lod2_geom.findall(".//gml:Solid", NS)
         ):
             if surface_container.tag.endswith("Solid"):
                 # Process as Solid
                 faces_geom, interior_shells_geom = extract_solid_shells(
-                    surface_container, xyz_transform, id_index, debug=debug
+                    surface_container,
+                    xyz_transform,
+                    id_index,
+                    tolerance=tolerance,
+                    debug=debug,
                 )
                 exterior_faces.extend(faces_geom)
                 interior_shells.extend(interior_shells_geom)
             else:
                 # Process as MultiSurface/CompositeSurface
                 faces_geom = extract_faces_from_surface_container(
-                    surface_container, xyz_transform, id_index, debug=debug
+                    surface_container,
+                    xyz_transform,
+                    id_index,
+                    tolerance=tolerance,
+                    debug=debug,
                 )
                 exterior_faces.extend(faces_geom)
 
@@ -247,16 +290,20 @@ def extract_lod2_geometry(
             log(f"[LOD2] Geometry extraction: {len(exterior_faces)} faces")
 
         if exterior_faces:
-            log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 3 extracted {len(exterior_faces)} faces")
+            log(
+                f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 3 extracted {len(exterior_faces)} faces"
+            )
             return LODExtractionResult(
                 exterior_faces=exterior_faces,
                 interior_shells=interior_shells,
                 lod_level="LOD2",
                 method="lod2Geometry",
-                prefer_bounded_by=False
+                prefer_bounded_by=False,
             )
         else:
-            log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 3 failed (0 faces), trying next strategy...")
+            log(
+                f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 3 failed (0 faces), trying next strategy..."
+            )
             if debug:
                 log(f"[LOD2] Geometry extracted 0 faces, trying other strategies...")
             exterior_faces = []
@@ -276,13 +323,18 @@ def extract_lod2_geometry(
 
     # Use the comprehensive boundedBy extraction from bounded_by.py
     exterior_faces = extract_faces_from_all_bounded_surfaces(
-        elem, xyz_transform, id_index,
+        elem,
+        xyz_transform,
+        id_index,
         extract_faces_from_surface_container,  # Pass helper function
-        debug=debug
+        tolerance=tolerance,
+        debug=debug,
     )
 
     if exterior_faces:
-        log(f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 4 extracted {len(exterior_faces)} faces from boundedBy")
+        log(
+            f"[CONVERSION DEBUG]   ✓ LOD2 Strategy 4 extracted {len(exterior_faces)} faces from boundedBy"
+        )
         if debug:
             log(f"[CONVERSION DEBUG] ═══ Conversion via boundedBy strategy ═══")
         return LODExtractionResult(
@@ -290,7 +342,7 @@ def extract_lod2_geometry(
             interior_shells=[],  # boundedBy surfaces don't have interior shells
             lod_level="LOD2",
             method="boundedBy surfaces (6 types)",
-            prefer_bounded_by=prefer_bounded_by
+            prefer_bounded_by=prefer_bounded_by,
         )
     else:
         log(f"[CONVERSION DEBUG]   ✗ LOD2 Strategy 4 failed (0 faces)")
@@ -306,5 +358,5 @@ def extract_lod2_geometry(
         interior_shells=[],
         lod_level="LOD2",
         method="No LOD2 geometry found",
-        prefer_bounded_by=prefer_bounded_by
+        prefer_bounded_by=prefer_bounded_by,
     )

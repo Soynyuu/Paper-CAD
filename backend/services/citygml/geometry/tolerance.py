@@ -16,8 +16,7 @@ from ..core.constants import PRECISION_MODE_FACTORS
 
 
 def compute_tolerance_from_coords(
-    coords: List[Tuple[float, float, float]],
-    precision_mode: str = "standard"
+    coords: List[Tuple[float, float, float]], precision_mode: str = "standard"
 ) -> float:
     """
     Compute appropriate tolerance based on coordinate extent and precision mode.
@@ -73,7 +72,9 @@ def compute_tolerance_from_coords(
     extent = max(x_extent, y_extent, z_extent)
 
     # Get tolerance percentage from precision mode
-    percentage = PRECISION_MODE_FACTORS.get(precision_mode, PRECISION_MODE_FACTORS["standard"])
+    percentage = PRECISION_MODE_FACTORS.get(
+        precision_mode, PRECISION_MODE_FACTORS["standard"]
+    )
 
     tolerance = extent * percentage
 
@@ -99,7 +100,7 @@ def compute_tolerance_from_coords(
 
 def compute_tolerance_from_face_list(
     faces: List[Any],  # List["TopoDS_Face"] but avoid import
-    precision_mode: str = "standard"
+    precision_mode: str = "standard",
 ) -> float:
     """
     Compute tolerance from a list of OpenCASCADE faces by sampling their vertices.
@@ -176,6 +177,57 @@ def compute_tolerance_from_face_list(
             "standard": 0.01,
         }
         return fallback.get(precision_mode, 0.01)
+
+
+def compute_building_tolerance(
+    building_elem: "ET.Element",
+    xyz_transform: Optional[Any] = None,
+    precision_mode: str = "standard",
+    sample_limit: int = 50,
+) -> float:
+    """
+    Precompute tolerance for an entire building by sampling polygon coordinates.
+
+    This avoids calling compute_tolerance_from_coords() per-polygon during face
+    extraction, which is a significant performance win for buildings with many faces.
+    The bounding box extent of the entire building gives a better tolerance estimate
+    than individual polygon extents anyway.
+
+    Issue #192: Performance optimization - compute once per building, not per polygon.
+
+    Args:
+        building_elem: Building XML element to sample coordinates from
+        xyz_transform: Optional coordinate transformation (applied before computing extent)
+        precision_mode: Precision level ("standard", "high", "maximum", "ultra")
+        sample_limit: Maximum number of polygons to sample (50 is sufficient for
+            accurate bounding box estimation)
+
+    Returns:
+        Computed tolerance value based on building extent and precision mode
+    """
+    import xml.etree.ElementTree as ET
+    from ..core.constants import NS
+    from ..parsers.coordinates import extract_polygon_xyz
+
+    sampled_coords: List[Tuple[float, float, float]] = []
+    polygon_count = 0
+
+    for poly in building_elem.iter(f"{{{NS['gml']}}}Polygon"):
+        if polygon_count >= sample_limit:
+            break
+        ext, _ = extract_polygon_xyz(poly)
+        if not ext:
+            continue
+        # Apply coordinate transform if provided
+        if xyz_transform:
+            try:
+                ext = [tuple(map(float, xyz_transform(x, y, z))) for (x, y, z) in ext]
+            except Exception:
+                continue
+        sampled_coords.extend(ext)
+        polygon_count += 1
+
+    return compute_tolerance_from_coords(sampled_coords, precision_mode)
 
 
 def get_precision_mode_description(precision_mode: str) -> str:

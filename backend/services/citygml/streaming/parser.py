@@ -12,6 +12,11 @@ Architecture:
 3. Immediate memory release - elem.clear() after processing
 4. Early filtering - Apply limit/building_ids before full parse
 5. Local XLink indexing - Build index per building (1-10MB)
+
+Performance Optimizations (Issue #192):
+- O(1) parent lookup via element_stack (was O(n²) parent_map rebuild)
+- Zero-copy yield: detach original element from tree instead of serialize-reparse
+- Incremental XLink index reuse: yield the already-built index directly
 """
 
 import xml.etree.ElementTree as ET
@@ -112,15 +117,16 @@ def stream_parse_buildings(
 
     **Key Optimizations:**
     1. SAX-style parsing: `ET.iterparse()` instead of `ET.parse()`
-    2. Immediate memory release: `elem.clear()` after yielding
-    3. Early filtering: Stop parsing when limit reached
-    4. Local XLink indexing: Building-scope only (1-10MB vs. GB)
+    2. Zero-copy yield: Detach original element from tree (no serialize-reparse)
+    3. O(1) parent lookup via element_stack (no parent_map rebuild)
+    4. Early filtering: Stop parsing when limit reached
+    5. Local XLink indexing: Built incrementally during parse, yielded directly
 
     Args:
         gml_path: Path to CityGML file
         limit: Maximum number of buildings to process (early termination)
         building_ids: List of building IDs to filter (None = all)
-        filter_attribute: Attribute for building_ids matching
+        filter_attribute: Attribute for building_ids matching.
             - "gml:id": Match against gml:id attribute (default)
             - Other: Match against gen:genericAttribute name
         debug: Enable debug logging
@@ -155,7 +161,10 @@ def stream_parse_buildings(
     building_ids_set: Optional[Set[str]] = None
     if building_ids:
         building_ids_set = set(building_ids)
-        _log(f"Filter by {len(building_ids)} building IDs (attribute: {filter_attribute})", debug)
+        _log(
+            f"Filter by {len(building_ids)} building IDs (attribute: {filter_attribute})",
+            debug,
+        )
 
     # Early termination counter
     processed_count = 0
@@ -186,8 +195,19 @@ def stream_parse_buildings(
     current_building_depth: int = 0
     depth: int = 0
 
-    # Local XLink index (per building)
+    # Element stack for O(1) parent lookup (Issue #192 optimization)
+    # Tracks the current ancestry path during SAX-style parsing.
+    # When a building completes, element_stack[-2] is its direct parent.
+    # This replaces the O(n²) parent_map rebuild that scanned the entire tree.
+    element_stack: List[ET.Element] = [root]
+
+    # Local XLink index (per building) - built incrementally during parsing
     local_xlink_index: Dict[str, ET.Element] = {}
+
+    # Track last yielded building to prevent elem.clear() from destroying it
+    # (after yield, the generator resumes and the cleanup loop would clear `elem`
+    #  which is still the yielded building element)
+    last_yielded_building: Optional[ET.Element] = None
 
     _log("Parsing XML stream...", debug)
 
@@ -195,6 +215,7 @@ def stream_parse_buildings(
         for event, elem in context:
             if event == "start":
                 depth += 1
+                element_stack.append(elem)
 
                 # Build local XLink index for current building
                 # Only index elements within current building scope
@@ -249,7 +270,9 @@ def stream_parse_buildings(
                             else:
                                 # Filter by generic attribute
                                 attrs = _extract_generic_attributes(completed_building)
-                                if not any(attrs.get(k) in building_ids_set for k in attrs):
+                                if not any(
+                                    attrs.get(k) in building_ids_set for k in attrs
+                                ):
                                     should_process = False
 
                         # === Process or Skip ===
@@ -260,35 +283,58 @@ def stream_parse_buildings(
                                 debug,
                             )
 
-                            building_copy = ET.fromstring(ET.tostring(completed_building))
-                            xlink_index_copy = _build_local_xlink_index(building_copy)
+                            # === Zero-copy yield (Issue #192 optimization) ===
+                            # Instead of ET.fromstring(ET.tostring()) serialize-reparse,
+                            # detach the original element from the tree and yield it directly.
+                            # The incrementally-built local_xlink_index already references
+                            # elements within this building, so it's yielded as-is too.
 
-                            # Yield building with its local XLink index
-                            yield (building_copy, xlink_index_copy)
+                            # Save references before detaching
+                            yield_building = completed_building
+                            yield_xlink = local_xlink_index
+
+                            # Create new dict for next building (don't clear the yielded one)
+                            local_xlink_index = {}
+
+                            # === O(1) parent detach (Issue #192 optimization) ===
+                            # Use element_stack for O(1) parent lookup instead of
+                            # rebuilding parent_map {c: p for p in root.iter() for c in p}
+                            # which was O(n*m) and called in a while loop.
+                            #
+                            # CityGML structure: CityModel > cityObjectMember > Building
+                            # At this point, the Building is element_stack[-1] (about to pop).
+                            # Its parent (cityObjectMember) is element_stack[-2].
+                            if len(element_stack) >= 2:
+                                parent = element_stack[-2]
+                                try:
+                                    parent.remove(completed_building)
+                                except ValueError:
+                                    pass  # Already removed or not a child
+
+                            yield (yield_building, yield_xlink)
 
                             processed_count += 1
+                            last_yielded_building = yield_building
                         else:
                             skipped_count += 1
                             if debug and skipped_count % 100 == 0:
-                                _log(f"Skipped {skipped_count} buildings (filtered)", debug)
+                                _log(
+                                    f"Skipped {skipped_count} buildings (filtered)",
+                                    debug,
+                                )
 
-                        # === Critical: Immediate Memory Release ===
-                        # This is the key to 98% memory reduction
+                            # === Memory release for skipped buildings ===
+                            completed_building.clear()
 
-                        # Clear completed building element and all children
-                        completed_building.clear()
+                            # Detach from parent using element_stack
+                            if len(element_stack) >= 2:
+                                parent = element_stack[-2]
+                                try:
+                                    parent.remove(completed_building)
+                                except ValueError:
+                                    pass
 
-                        # Clear parent references to allow garbage collection
-                        # This prevents memory leaks from parent → child references
-                        while completed_building is not None:
-                            parent_map = {c: p for p in root.iter() for c in p}
-                            parent = parent_map.get(completed_building)
-                            if parent is not None:
-                                parent.remove(completed_building)
-                            completed_building = parent
-
-                        # Clear local XLink index
-                        local_xlink_index.clear()
+                            local_xlink_index = {}
 
                         # Force garbage collection after each building
                         # Recommended for large files to prevent memory accumulation
@@ -299,17 +345,28 @@ def stream_parse_buildings(
                         current_building = None
                         current_building_depth = 0
 
+                # Pop element_stack on every end event (must match start push)
+                element_stack.pop()
                 depth -= 1
 
                 # Periodic cleanup of processed elements outside building scope
                 # Prevents memory growth from metadata elements
-                if depth < 3 and elem != root and current_building is None:
+                # Skip the last yielded building to avoid destroying consumer's data
+                if (
+                    depth < 3
+                    and elem != root
+                    and current_building is None
+                    and elem is not last_yielded_building
+                ):
                     elem.clear()
     except ET.ParseError as e:
         _log(f"XML Parse Error: {e}", debug=True)
         raise ValueError(f"Invalid CityGML XML: {e}")
 
-    _log(f"Streaming parse complete: processed={processed_count}, skipped={skipped_count}", debug)
+    _log(
+        f"Streaming parse complete: processed={processed_count}, skipped={skipped_count}",
+        debug,
+    )
 
     # Final cleanup
     root.clear()
@@ -317,9 +374,7 @@ def stream_parse_buildings(
 
 
 def estimate_memory_savings(
-    file_size_gb: float,
-    num_buildings: int,
-    limit: Optional[int] = None
+    file_size_gb: float, num_buildings: int, limit: Optional[int] = None
 ) -> Dict[str, float]:
     """
     Estimate memory savings from streaming parser.
@@ -358,7 +413,9 @@ def estimate_memory_savings(
     # If limit is set and is smaller than total, memory is further reduced
     if limit and limit < num_buildings:
         # No need to allocate memory for unprocessed buildings
-        streaming_memory = min(streaming_memory, avg_building_memory * (limit / num_buildings) + overhead)
+        streaming_memory = min(
+            streaming_memory, avg_building_memory * (limit / num_buildings) + overhead
+        )
 
     reduction_percent = ((legacy_memory - streaming_memory) / legacy_memory) * 100
 

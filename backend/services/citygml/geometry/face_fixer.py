@@ -13,7 +13,7 @@ from .builders import (
     face_from_xyz_rings,
     wire_from_coords_xyz,
     triangulate_polygon_fan,
-    project_to_best_fit_plane
+    project_to_best_fit_plane,
 )
 
 
@@ -21,7 +21,7 @@ def create_face_with_progressive_fallback(
     ext: List[Tuple[float, float, float]],
     holes: List[List[Tuple[float, float, float]]],
     tolerance: float,
-    debug: bool = False
+    debug: bool = False,
 ) -> List[Any]:  # List[TopoDS_Face]
     """
     Create face(s) from polygon rings using progressive fallback strategy.
@@ -80,14 +80,18 @@ def create_face_with_progressive_fallback(
 
     # ===== Level 2: Best-fit plane projection =====
     if debug:
-        log(f"  [Level 1] Failed, trying Level 2: Plane projection ({len(ext)} vertices)...")
+        log(
+            f"  [Level 1] Failed, trying Level 2: Plane projection ({len(ext)} vertices)..."
+        )
 
     try:
         # Project vertices to best-fit plane
         projected_ext, plane_normal = project_to_best_fit_plane(ext, tolerance)
 
         # Try creating face with projected vertices (now guaranteed planar)
-        face = face_from_xyz_rings(projected_ext, holes, debug=False, planar_check=False)
+        face = face_from_xyz_rings(
+            projected_ext, holes, debug=False, planar_check=False
+        )
         if face is not None:
             if debug:
                 log(f"  [Level 2] Success: Plane-projected face ({len(ext)} vertices)")
@@ -121,7 +125,9 @@ def create_face_with_progressive_fallback(
                 fixed_face = fixer.Face()
                 if fixed_face is not None and not fixed_face.IsNull():
                     if debug:
-                        log(f"  [Level 3] Success: ShapeFix repair ({len(ext)} vertices)")
+                        log(
+                            f"  [Level 3] Success: ShapeFix repair ({len(ext)} vertices)"
+                        )
                     return [fixed_face]
     except Exception as e:
         if debug:
@@ -140,13 +146,19 @@ def create_face_with_progressive_fallback(
         if tri_face is not None:
             faces.append(tri_face)
         elif debug:
-            log(f"  [Level 4] Warning: Triangle {i}/{len(triangles)} creation failed (rare!)")
+            log(
+                f"  [Level 4] Warning: Triangle {i}/{len(triangles)} creation failed (rare!)"
+            )
 
     if debug:
         if faces:
-            log(f"  [Level 4] Success: Created {len(faces)}/{len(triangles)} triangle faces")
+            log(
+                f"  [Level 4] Success: Created {len(faces)}/{len(triangles)} triangle faces"
+            )
         else:
-            log(f"  [Level 4] Failed: Could not create any triangle faces (extremely rare!)")
+            log(
+                f"  [Level 4] Failed: Could not create any triangle faces (extremely rare!)"
+            )
 
     return faces
 
@@ -154,7 +166,7 @@ def create_face_with_progressive_fallback(
 def validate_and_fix_face(
     face: Any,  # TopoDS_Face
     tolerance: float,
-    debug: bool = False
+    debug: bool = False,
 ) -> Optional[Any]:  # Optional[TopoDS_Face]
     """
     Validate and attempt to fix a face using OpenCASCADE shape fixing.
@@ -215,7 +227,7 @@ def validate_and_fix_face(
 
 def normalize_face_orientation(
     faces: List[Any],  # List[TopoDS_Face]
-    debug: bool = False
+    debug: bool = False,
 ) -> List[Any]:  # List[TopoDS_Face]
     """
     Normalize face orientations to ensure consistent normals.
@@ -238,17 +250,20 @@ def normalize_face_orientation(
     Notes:
         - Uses OCCT's internal face orientation mechanisms
         - Silently returns original faces if normalization fails
+        - STUB (Issue #192): Currently a no-op. OCCT's BRepBuilderAPI_Sewing
+          already handles orientation during shell construction, making this
+          pre-processing step unnecessary for the current pipeline. Remove
+          the call in shell_builder.py if this remains unimplemented.
     """
-    # For now, return faces as-is
-    # Full implementation would use OCCT's UnifySameDomain or custom orientation logic
-    # This is a placeholder for future enhancement
+    # No-op: OCCT sewing handles orientation internally.
+    # Keeping as a hook point for future enhancement if needed.
     return faces
 
 
 def remove_duplicate_vertices(
     faces: List[Any],  # List[TopoDS_Face]
     tolerance: float,
-    debug: bool = False
+    debug: bool = False,
 ) -> List[Any]:  # List[TopoDS_Face]
     """
     Remove duplicate vertices from faces within tolerance.
@@ -272,9 +287,10 @@ def remove_duplicate_vertices(
     Notes:
         - For now returns faces as-is (placeholder)
         - Full implementation would use ShapeUpgrade_RemoveLocations or similar
-        - This is typically handled by OCCT sewing operations
+        - STUB (Issue #192): Currently a no-op. Vertex merging is handled by
+          OCCT's BRepBuilderAPI_Sewing during shell construction. Remove the
+          call in shell_builder.py if this remains unimplemented.
     """
-    # For now, return faces as-is
-    # Full implementation would use ShapeUpgrade or BRepTools to merge vertices
-    # This is a placeholder for future enhancement
+    # No-op: OCCT sewing handles vertex merging internally.
+    # Keeping as a hook point for future enhancement if needed.
     return faces

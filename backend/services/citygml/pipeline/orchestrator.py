@@ -7,6 +7,7 @@ It preserves 100% compatibility with the original monolithic implementation.
 
 from typing import Optional, List, Tuple, Any
 import os
+import time
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
@@ -602,9 +603,12 @@ def export_step_from_citygml(
 
     # PHASE:0 - Coordinate recentering (⚠️ CRITICAL)
     print(f"[PHASE:0] Computing coordinate offset for {len(bldgs)} building(s)...")
+    t_phase0 = time.time()
     xyz_transform, coord_offset = compute_offset_and_wrap_transform(
         bldgs, xyz_transform, debug
     )
+    phase0_ms = (time.time() - t_phase0) * 1000
+    log(f"[TIMING] PHASE:0 (recentering): {phase0_ms:.0f}ms")
     print(f"[PHASE:0] Coordinate offset computed: {coord_offset}")
 
     # =========================================================================
@@ -649,6 +653,8 @@ def export_step_from_citygml(
             f"[INFO] BuildingPart merging: {'enabled' if merge_building_parts else 'disabled'}"
         )
         log(f"")
+
+        t_phase2 = time.time()
 
         # Issue #192: Use parallel processing for 3+ buildings when CRS transform is available
         effective_count = (
@@ -704,6 +710,8 @@ def export_step_from_citygml(
                 log(f"[BUILDING {i + 1}/{len(bldgs)}] Processing: {building_id[:60]}")
 
                 try:
+                    t_building = time.time()
+
                     # Issue #192: Check shape cache before expensive computation
                     shape_cache = get_shape_cache()
                     cache_key = (building_id, precision_mode, shape_fix_level)
@@ -735,16 +743,25 @@ def export_step_from_citygml(
                             shape_cache.put(cache_key, shp)
 
                     if shp is None or shp.IsNull():
-                        log(f"└─ [RESULT] Skipping (extraction returned None/Null)")
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] Skipping (extraction returned None/Null) [{building_ms:.0f}ms]"
+                        )
                         continue
 
                     # Validate
                     if is_valid_shape(shp):
-                        log(f"└─ [RESULT] ✓ Successfully added (total: {count + 1})")
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] ✓ Successfully added (total: {count + 1}) [{building_ms:.0f}ms]"
+                        )
                         shapes.append(shp)
                         count += 1
                     else:
-                        log(f"└─ [RESULT] ⚠ Added invalid shape (will attempt export)")
+                        building_ms = (time.time() - t_building) * 1000
+                        log(
+                            f"└─ [RESULT] ⚠ Added invalid shape (will attempt export) [{building_ms:.0f}ms]"
+                        )
                         shapes.append(shp)
                         count += 1
 
@@ -757,6 +774,10 @@ def export_step_from_citygml(
         log(f"[PHASE:2] EXTRACTION SUMMARY (Solid Method)")
         log(f"{'=' * 80}")
         log(f"[INFO] Shapes extracted: {count}")
+        phase2_ms = (time.time() - t_phase2) * 1000
+        log(f"[TIMING] PHASE:2 (geometry extraction): {phase2_ms:.0f}ms")
+        if count > 0:
+            log(f"[TIMING] PHASE:2 avg per building: {phase2_ms / count:.0f}ms")
         cache_stats = get_shape_cache().stats
         log(
             f"[INFO] Shape cache: {cache_stats['size']} entries, {cache_stats['hits']} hits, {cache_stats['misses']} misses ({cache_stats['hit_rate']})"
@@ -909,7 +930,10 @@ def export_step_from_citygml(
 
     # Export using legacy function (delegates to core STEPExporter)
     print(f"[PHASE:7] Exporting {len(shapes)} shape(s) to STEP file...")
+    t_phase7 = time.time()
     result = export_step_compound_local(shapes, out_step, debug=debug)
+    phase7_ms = (time.time() - t_phase7) * 1000
+    log(f"[TIMING] PHASE:7 (STEP export): {phase7_ms:.0f}ms")
     print(f"[PHASE:7] STEP export complete: {out_step}")
 
     close_log_file()

@@ -1,5 +1,4 @@
 # Paper-CAD デプロイメントガイド
-***REMOVED***
 このドキュメントでは、Paper-CADを本番環境にデプロイする手順を説明します。
 
 ## 目次
@@ -470,7 +469,7 @@ sudo nano /etc/nginx/conf.d/paper-cad.conf
 sudo nginx -t
 
 # 再起動
-sudo systemctl reload nginxsudo systemctl reload nginx
+sudo systemctl reload nginx
 ```
 
 ### 5. 証明書の自動更新

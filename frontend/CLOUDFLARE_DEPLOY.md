@@ -11,7 +11,7 @@
 
 ### GitHub連携の場合（推奨）
 
-- リポジトリ: `Soynyuu/chili3d`を選択
+- リポジトリ: `Soynyuu/Paper-CAD`を選択
 - ブランチ: `main`または`ui-design-system-improvement`
 - ビルド設定:
     - ビルドコマンド: `npm run build`

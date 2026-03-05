@@ -156,3 +156,46 @@ solid_shape → TopExp_Explorer(FACE) + topexp.MapShapesAndAncestors(EDGE,FACE)
 - `pytest` all existing tests must pass
 - New unit test: compare adjacency_map output with vertex-based adjacency for known STEP files
 - Manual: upload STEP file, verify SVG output unchanged
+
+---
+
+## Phase 3-7: CityGML Pipeline Optimization (Implemented in PR #194)
+
+### Phase 3: Streaming Parser Enhancement
+- Extended `services/citygml/streaming/parser.py` with lightweight iterparse-based
+  building ID search for metadata-only queries (no full parse needed)
+- Added `stream_building_ids()` for fast ID enumeration without geometry extraction
+- Reduced memory allocation for search/metadata endpoints
+
+### Phase 4: Coordinate Optimizer
+- Pre-compiled regex and optimized `parse_poslist()` with numpy-based batch parsing
+- Fallback to optimized pure-Python parser when numpy is unavailable
+- Benchmark tests confirm numpy path is faster for large coordinate lists
+
+### Phase 5: Geometry Pipeline Improvements
+- `geometry/solid_builder.py`: Flattened 4-stage repair escalation into a single
+  deterministic strategy (tolerance computation → sew → close → validate)
+- `geometry/shell_builder.py`: Improved wire construction with edge deduplication
+- `geometry/tolerance.py`: Adaptive tolerance computation based on shape bounding box
+- `geometry/face_fixer.py`: Streamlined face validation logic
+
+### Phase 6: Pipeline Orchestration
+- `pipeline/orchestrator.py`: Added timing instrumentation for each conversion phase
+- `pipeline/parallel.py`: New module for parallel building processing
+- `pipeline/shape_cache.py`: Shape-level caching to avoid redundant geometry construction
+- LOD extractors (`lod/lod1_strategy.py`, `lod2_strategy.py`, `lod3_strategy.py`):
+  Improved fallback logic and reduced redundant XLink resolution
+
+### Phase 7: Search & Fetch Optimization
+- `services/plateau_fetcher.py`: Lightweight iterparse-based ID search replacing
+  full CityGML parse for search endpoints
+- GC reduction: minimized garbage collection pressure in hot paths
+- Debug print gating: conditional logging behind `ENV` checks (later replaced by
+  structured logging in PR #195)
+- `api/routers/plateau.py`: Fixed search/metadata endpoints broken by BuildingInfo
+  removal
+
+### Performance Impact
+- Estimated ~3-5s reduction in fetch+convert time for large meshes (e.g. Shibuya Fukuras)
+- Search endpoints 10-50x faster with iterparse-based ID lookup
+- Memory usage reduced for streaming parse of large CityGML files

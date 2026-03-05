@@ -67,8 +67,13 @@ npm run dev
 ENV=demo python main.py
 
 # frontend (別ターミナル)
-npm run demo
+NODE_ENV=demo npm run dev
 ```
+
+デモモードでは:
+- **バックエンド**: ログレベルが INFO に設定され、CORS は本番ドメイン + localhost を許可
+- **フロントエンド**: Rspack が production モードでビルド（最適化・minify あり）
+- `.env.demo` から環境変数を読み込み（バックエンド・フロントエンド共通）
 
 ### ランディングページビルド
 ```bash

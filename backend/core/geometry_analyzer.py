@@ -30,7 +30,7 @@ if OCCT_AVAILABLE:
     )
     from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
     from OCC.Core.TopExp import topexp
-    from OCC.Core.topods import topods
+    from OCC.Core.TopoDS import topods
 
 
 class GeometryAnalyzer:

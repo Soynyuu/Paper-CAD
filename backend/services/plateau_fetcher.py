@@ -1468,6 +1468,7 @@ def search_buildings_by_address(
             building_id="bldg_3ad6aaeb-26f8-4716-a8ec-cb2504b94674",
             mesh_code="53393586",
             debug=False,
+            include_building_info=True,
         )
 
         if result["success"] and result["building"]:
@@ -2270,7 +2271,10 @@ def _find_building_id_in_xml(
 
 
 def search_building_by_id_and_mesh(
-    building_id: str, mesh_code: str, debug: bool = False
+    building_id: str,
+    mesh_code: str,
+    debug: bool = False,
+    include_building_info: bool = False,
 ) -> dict:
     """Search for a specific building by GML ID + mesh code (optimized).
 
@@ -2282,12 +2286,18 @@ def search_building_by_id_and_mesh(
                      or legacy building ID (e.g., "13101-bldg-2287")
         mesh_code: 3rd mesh code (8 digits, 1km area, e.g., "53394511")
         debug: Enable debug logging
+        include_building_info: When True, construct a full BuildingInfo object
+            by parsing the XML (slower, ~2,700ms for large meshes).  Required
+            for search/metadata endpoints that return building details to the
+            frontend.  When False (default), only the matched gml:id is
+            returned — sufficient for STEP conversion pipelines.
 
     Returns:
         Dictionary with search results:
         {
             "success": bool,
             "building": BuildingInfo or None,
+            "matched_gml_id": str or None,
             "mesh_code": str,
             "citygml_xml": str or None,
             "citygml_source_urls": list[str],
@@ -2299,7 +2309,7 @@ def search_building_by_id_and_mesh(
     Example:
         >>> result = search_building_by_id_and_mesh("bldg_48aa415d-b82f-4e8f-97e1-7538b5cb6c86", "53394511")
         >>> if result["success"]:
-        ...     print(f"Found: {result['building'].name}")
+        ...     print(f"Found: {result['matched_gml_id']}")
     """
     print(f"\n{'=' * 60}")
     print(f"[BUILDING SEARCH] Building ID: {building_id}, Mesh Code: {mesh_code}")
@@ -2432,9 +2442,20 @@ def search_building_by_id_and_mesh(
     print(f"[BUILDING SEARCH]   Mesh: {resolved_mesh_code} (requested: {mesh_code})")
     print(f"{'=' * 60}\n")
 
+    # Optionally construct full BuildingInfo for search/metadata endpoints.
+    # This requires parsing all buildings from the XML (~2,700ms for large meshes)
+    # but is necessary when the caller needs coordinates, height, LOD, etc.
+    building_info: Optional[BuildingInfo] = None
+    if include_building_info:
+        t_bi_start = _time.time()
+        buildings = parse_buildings_from_citygml(xml_content)
+        building_info = _find_building_by_id_match(buildings, matched_gml_id)
+        t_bi_ms = (_time.time() - t_bi_start) * 1000
+        print(f"[TIMING] BuildingInfo construction: {t_bi_ms:.0f}ms")
+
     return {
         "success": True,
-        "building": None,  # No longer constructed (not needed for STEP conversion)
+        "building": building_info,
         "matched_gml_id": matched_gml_id,
         "mesh_code": resolved_mesh_code,
         "citygml_xml": xml_content,

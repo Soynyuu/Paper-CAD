@@ -840,6 +840,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
                 request.building_id,
                 request.mesh_code,
                 debug=request.debug,
+                include_building_info=True,
             ),
         )
 
@@ -999,6 +1000,7 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                             building_id,
                             mesh_code,
                             debug=False,
+                            include_building_info=True,
                         ),
                     )
 

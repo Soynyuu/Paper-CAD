@@ -28,7 +28,10 @@ if OCCT_AVAILABLE:
         Geom_CylindricalSurface,
         Geom_ConicalSurface,
     )
-    from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
+    from OCC.Core.TopTools import (
+        TopTools_IndexedDataMapOfShapeListOfShape,
+        TopTools_ListIteratorOfListOfShape,
+    )
     from OCC.Core.TopExp import topexp
     from OCC.Core.TopoDS import topods
 
@@ -116,22 +119,22 @@ class GeometryAnalyzer:
                 face_to_index[id(topo_face)] = idx
 
             # Build adjacency_map: for each edge, find the faces that share it
-            num_edges = edge_face_map.Extent()
+            num_edges = edge_face_map.Size()
             print(f"OCCT edge-face map: {num_edges} edges mapped")
 
             for edge_i in range(1, num_edges + 1):
                 face_list = edge_face_map.FindFromIndex(edge_i)
                 # Collect face indices sharing this edge
                 sharing_indices = []
-                face_iter = face_list.begin()
-                while face_iter != face_list.end():
-                    ancestor_face = topods.Face(face_iter.Value())
+                it = TopTools_ListIteratorOfListOfShape(face_list)
+                while it.More():
+                    ancestor_face = topods.Face(it.Value())
                     # Find matching index via IsSame()
                     for idx, topo_face in enumerate(topo_faces):
                         if topo_face.IsSame(ancestor_face):
                             sharing_indices.append(idx)
                             break
-                    face_iter.Next()
+                    it.Next()
 
                 # All pairs of faces sharing this edge are adjacent
                 for i in range(len(sharing_indices)):

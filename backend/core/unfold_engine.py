@@ -263,7 +263,9 @@ class UnfoldEngine:
         Returns:
             Dict: 展開結果
         """
-        logger.info(f"      平面グループ{group_idx}を展開中（{len(face_indices)}面）...")
+        logger.info(
+            f"      平面グループ{group_idx}を展開中（{len(face_indices)}面）..."
+        )
 
         if len(face_indices) == 1:
             # 単一面の場合は従来通り個別に展開
@@ -783,32 +785,36 @@ class UnfoldEngine:
         if len(cleaned_points) < 3:
             return cleaned_points
 
-        logger.info(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
-
         # Layer 1: 凸型多角形の場合、凸包で正確な頂点を抽出
         is_convex = self._is_convex_polygon(cleaned_points)
-        logger.info(f"凸型={is_convex}, ", end="")
 
         if is_convex:
             num_corners = self._detect_polygon_corners(cleaned_points)
-            logger.info(f"角数={num_corners}, ", end="")
 
             if num_corners == 3:
                 result = self._extract_triangle_corners(cleaned_points)
-                logger.info(f"{len(result)}点（三角形）")
+                logger.debug(
+                    f"境界線簡略化: {len(points_2d)}点 → 凸型={is_convex}, 角数={num_corners}, {len(result)}点（三角形）"
+                )
                 return result
             elif num_corners == 4:
                 result = self._extract_rectangle_corners(cleaned_points)
-                logger.info(f"{len(result)}点（四角形）")
+                logger.debug(
+                    f"境界線簡略化: {len(points_2d)}点 → 凸型={is_convex}, 角数={num_corners}, {len(result)}点（四角形）"
+                )
                 return result
             elif 5 <= num_corners <= 12:
                 result = self._extract_convex_hull_corners(cleaned_points)
-                logger.info(f"{len(result)}点（{num_corners}角形・凸包）")
+                logger.debug(
+                    f"境界線簡略化: {len(points_2d)}点 → 凸型={is_convex}, 角数={num_corners}, {len(result)}点（{num_corners}角形・凸包）"
+                )
                 return result
 
         # Layer 2: 凹型・複雑な形状 → Douglas-Peucker アルゴリズム
         result = self._simplify_rdp(cleaned_points, epsilon=0.5)
-        logger.info(f"{len(result)}点（Douglas-Peucker）")
+        logger.debug(
+            f"境界線簡略化: {len(points_2d)}点 → 凸型={is_convex}, {len(result)}点（Douglas-Peucker）"
+        )
         return result
 
     def _simplify_by_angle_detection(
@@ -1016,16 +1022,15 @@ class UnfoldEngine:
 
             is_convex = vertex_ratio <= 0.3
 
-            logger.info(
-                f"凸包頂点={hull_vertices_count}/{total_unique_points}, 比率={vertex_ratio:.2f}, ",
-                end="",
+            logger.debug(
+                f"凸包頂点={hull_vertices_count}/{total_unique_points}, 比率={vertex_ratio:.2f}"
             )
 
             return is_convex
 
         except Exception as e:
             # 凸包計算に失敗した場合はフォールバック（外積ベース）
-            logger.info(f"凸包計算エラー: {e}, フォールバック, ", end="")
+            logger.debug(f"凸包計算エラー: {e}, フォールバック")
             return self._is_convex_polygon_fallback(points_2d)
 
     def _is_convex_polygon_fallback(self, points_2d: List[Tuple[float, float]]) -> bool:
@@ -1217,7 +1222,7 @@ class UnfoldEngine:
                     return corners
 
         except Exception as e:
-            logger.info(f"凸包四角形抽出エラー: {e}, ", end="")
+            logger.debug(f"凸包四角形抽出エラー: {e}")
 
         # フォールバック：境界ボックスベースの抽出
         xs = [p[0] for p in points_2d]
@@ -1413,7 +1418,7 @@ class UnfoldEngine:
             # 凸包の頂点が多すぎる場合（>12）、Douglas-Peuckerでさらに簡略化
             if len(corners) > 12:
                 corners = self._simplify_rdp(corners, epsilon=1.0)
-                logger.info(f"→{len(corners)}点に再簡略化, ", end="")
+                logger.debug(f"→{len(corners)}点に再簡略化")
 
             return corners
         except Exception as e:

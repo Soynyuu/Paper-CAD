@@ -337,8 +337,12 @@ def stream_parse_buildings(
                             local_xlink_index = {}
 
                         # Force garbage collection after each building
-                        # Recommended for large files to prevent memory accumulation
-                        if config is None or config.enable_gc_per_building:
+                        # When filtering by building_ids, skip GC for non-target
+                        # buildings — elem.clear() + parent detach already frees memory,
+                        # and gc.collect() costs ~10-50ms per call.  For a mesh with
+                        # 4,500 buildings this saves ~45-225 seconds of pure GC overhead.
+                        gc_enabled = config is None or config.enable_gc_per_building
+                        if gc_enabled and (should_process or not building_ids_set):
                             gc.collect()
 
                         # Reset current building tracking

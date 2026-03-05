@@ -1135,6 +1135,10 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         )
 
     try:
+        import time as _time
+
+        t_pipeline_start = _time.time()
+
         print(f"\n{'=' * 60}")
         print(f"[API] /api/plateau/fetch-by-id-and-mesh")
         print(f"[API] Building ID: {request.building_id}")
@@ -1144,6 +1148,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         print(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID + mesh code
+        t_step1 = _time.time()
         loop = asyncio.get_event_loop()
         search_result = await loop.run_in_executor(
             None,
@@ -1154,6 +1159,8 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                 debug=request.debug,
             ),
         )
+        t_step1_ms = (_time.time() - t_step1) * 1000
+        print(f"[TIMING] Step 1 (search): {t_step1_ms:.0f}ms")
 
         if not search_result["success"]:
             error_msg = search_result.get("error", "Building not found")
@@ -1166,6 +1173,9 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
             raise HTTPException(
                 status_code=500, detail="CityGML data is missing from search result"
             )
+
+        # Use matched_gml_id from lightweight search (Phase 7 optimization)
+        matched_gml_id = search_result.get("matched_gml_id", request.building_id)
 
         # Save CityGML to temporary file
         with tempfile.NamedTemporaryFile(
@@ -1180,13 +1190,14 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
         try:
             # Export to STEP with specified building ID filter
+            t_step2 = _time.time()
             success, message = await loop.run_in_executor(
                 None,
                 partial(
                     export_step_from_citygml,
                     tmp_gml_path,
                     tmp_step_path,
-                    building_ids=[request.building_id],
+                    building_ids=[matched_gml_id],
                     filter_attribute="gml:id",
                     method=request.method,
                     auto_reproject=request.auto_reproject,
@@ -1196,6 +1207,8 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                     debug=request.debug,
                 ),
             )
+            t_step2_ms = (_time.time() - t_step2) * 1000
+            print(f"[TIMING] Step 2 (STEP conversion): {t_step2_ms:.0f}ms")
 
             if not success:
                 raise HTTPException(
@@ -1208,6 +1221,11 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                 raise HTTPException(status_code=500, detail="STEP file was not created")
 
             # Return STEP file
+            t_total_ms = (_time.time() - t_pipeline_start) * 1000
+            print(
+                f"[TIMING] Total pipeline: {t_total_ms:.0f}ms "
+                f"(search={t_step1_ms:.0f}ms + convert={t_step2_ms:.0f}ms)"
+            )
             print(
                 f"[API] Success: Returning STEP file for building {request.building_id}"
             )
@@ -1313,9 +1331,8 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
                 status_code=500, detail="CityGML data is missing from search result"
             )
 
-        # Use resolved gml:id from search result to ensure filtering correctness.
-        building_data = search_result.get("building")
-        target_gml_id = building_data.gml_id if building_data else request.building_id
+        # Use resolved gml:id from lightweight search (Phase 7 optimization).
+        target_gml_id = search_result.get("matched_gml_id", request.building_id)
         source_urls = search_result.get("citygml_source_urls") or []
 
         # Step 2: CityGML -> STEP (target building only)

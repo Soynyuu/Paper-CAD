@@ -16,6 +16,9 @@ https://www.stat.go.jp/data/mesh/gaiyou.html
 """
 
 from typing import Tuple
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def latlon_to_mesh_1st(lat: float, lon: float) -> str:
@@ -236,22 +239,20 @@ if __name__ == "__main__":
     # Test with Tokyo Station (35.681236, 139.767125)
     lat, lon = 35.681236, 139.767125
 
-    print("Tokyo Station Coordinates:")
-    print(f"  Latitude: {lat}")
-    print(f"  Longitude: {lon}")
-    print()
+    logger.info("Tokyo Station Coordinates:")
+    logger.info(f"  Latitude: {lat}")
+    logger.info(f"  Longitude: {lon}")
 
-    print("Mesh Codes:")
-    print(f"  1st mesh (80km): {latlon_to_mesh_1st(lat, lon)}")
-    print(f"  2nd mesh (10km): {latlon_to_mesh_2nd(lat, lon)}")
-    print(f"  3rd mesh (1km):  {latlon_to_mesh_3rd(lat, lon)}")
-    print(f"  1/2 mesh (500m): {latlon_to_mesh_half(lat, lon)}")
-    print(f"  1/4 mesh (250m): {latlon_to_mesh_quarter(lat, lon)}")
-    print()
+    logger.info("Mesh Codes:")
+    logger.info(f"  1st mesh (80km): {latlon_to_mesh_1st(lat, lon)}")
+    logger.info(f"  2nd mesh (10km): {latlon_to_mesh_2nd(lat, lon)}")
+    logger.info(f"  3rd mesh (1km):  {latlon_to_mesh_3rd(lat, lon)}")
+    logger.info(f"  1/2 mesh (500m): {latlon_to_mesh_half(lat, lon)}")
+    logger.info(f"  1/4 mesh (250m): {latlon_to_mesh_quarter(lat, lon)}")
 
     # Test neighboring meshes
     mesh3 = latlon_to_mesh_3rd(lat, lon)
     neighbors = get_neighboring_meshes_3rd(mesh3)
-    print(f"3rd mesh + neighbors ({len(neighbors)} total):")
+    logger.info(f"3rd mesh + neighbors ({len(neighbors)} total):")
     for i, m in enumerate(neighbors, 1):
-        print(f"  {i:2d}. {m}")
+        logger.info(f"  {i:2d}. {m}")

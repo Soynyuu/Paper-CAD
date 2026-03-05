@@ -77,6 +77,10 @@ except ImportError:
     TopoDS_Shape = Any
     TopoDS_Compound = Any
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 # ============================================================================
 # Internal Helper Functions
@@ -386,9 +390,9 @@ def export_step_from_citygml(
 
     # === Streaming Parser Path (NEW: Issue #131) ===
     if use_streaming_actual:
-        print(f"[STREAMING] Using streaming parser (memory-optimized)")
-        print(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
-        print(
+        logger.info(f"[STREAMING] Using streaming parser (memory-optimized)")
+        logger.info(f"[STREAMING] Limit: {limit if limit else 'unlimited'}")
+        logger.info(
             f"[STREAMING] Building IDs: {len(building_ids) if building_ids else 'all'}"
         )
 
@@ -426,16 +430,16 @@ def export_step_from_citygml(
             if building_count % 10 == 0 or (
                 expected_count and building_count >= expected_count
             ):
-                print(f"[STREAMING] Progress: {building_count} building(s) found")
+                logger.info(f"[STREAMING] Progress: {building_count} building(s) found")
 
             # Early termination: If we found all requested buildings, stop
             if expected_count and building_count >= expected_count:
-                print(
+                logger.info(
                     f"[STREAMING] Found all {expected_count} requested building(s), stopping parse"
                 )
                 break
 
-        print(f"[STREAMING] Parse complete: {building_count} building(s) loaded")
+        logger.info(f"[STREAMING] Parse complete: {building_count} building(s) loaded")
 
         if not buildings_to_process:
             if building_ids:
@@ -550,7 +554,7 @@ def export_step_from_citygml(
         log_file.write(f"{'=' * 80}\n\n")
         set_log_file(log_file)
     except Exception as e:
-        print(f"Warning: Failed to create log file: {e}")
+        logger.error(f"Warning: Failed to create log file: {e}")
         log_file = None
 
     # Detect CRS (PHASE:1.5)
@@ -602,14 +606,16 @@ def export_step_from_citygml(
             return False, f"Reprojection setup failed: {e}"
 
     # PHASE:0 - Coordinate recentering (⚠️ CRITICAL)
-    print(f"[PHASE:0] Computing coordinate offset for {len(bldgs)} building(s)...")
+    logger.info(
+        f"[PHASE:0] Computing coordinate offset for {len(bldgs)} building(s)..."
+    )
     t_phase0 = time.time()
     xyz_transform, coord_offset = compute_offset_and_wrap_transform(
         bldgs, xyz_transform, debug
     )
     phase0_ms = (time.time() - t_phase0) * 1000
     log(f"[TIMING] PHASE:0 (recentering): {phase0_ms:.0f}ms")
-    print(f"[PHASE:0] Coordinate offset computed: {coord_offset}")
+    logger.info(f"[PHASE:0] Coordinate offset computed: {coord_offset}")
 
     # =========================================================================
     # PHASE:2 - Geometry extraction
@@ -703,7 +709,7 @@ def export_step_from_citygml(
                     break
 
                 building_id = b.get("{http://www.opengis.net/gml}id", f"building_{i}")
-                print(
+                logger.info(
                     f"[PHASE:2] Processing building {i + 1}/{len(bldgs)}: {building_id[:40]}..."
                 )
                 log(f"\n{'─' * 80}")
@@ -723,7 +729,7 @@ def export_step_from_citygml(
                     else:
                         # Use BuildingPart merger for complete extraction
                         # Note: Use local XLink index for streaming mode, shared index for legacy
-                        print(
+                        logger.info(
                             f"[PHASE:2]   Extracting geometry (merge_building_parts={merge_building_parts})..."
                         )
                         shp = merge_parts_fn(
@@ -736,7 +742,7 @@ def export_step_from_citygml(
                             shape_fix_level,
                             merge_building_parts,
                         )
-                        print(f"[PHASE:2]   Geometry extraction complete")
+                        logger.info(f"[PHASE:2]   Geometry extraction complete")
 
                         # Store in cache for future requests
                         if shp is not None and not shp.IsNull():
@@ -929,12 +935,12 @@ def export_step_from_citygml(
     log(f"[INFO] Target file: {out_step}")
 
     # Export using legacy function (delegates to core STEPExporter)
-    print(f"[PHASE:7] Exporting {len(shapes)} shape(s) to STEP file...")
+    logger.info(f"[PHASE:7] Exporting {len(shapes)} shape(s) to STEP file...")
     t_phase7 = time.time()
     result = export_step_compound_local(shapes, out_step, debug=debug)
     phase7_ms = (time.time() - t_phase7) * 1000
     log(f"[TIMING] PHASE:7 (STEP export): {phase7_ms:.0f}ms")
-    print(f"[PHASE:7] STEP export complete: {out_step}")
+    logger.info(f"[PHASE:7] STEP export complete: {out_step}")
 
     close_log_file()
     return result

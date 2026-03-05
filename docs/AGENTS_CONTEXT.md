@@ -212,7 +212,7 @@ def _generate_tabs_for_group(self, face_indices):
 
 ### バックエンド処理パイプライン
 ```
-API Request (endpoints.py)
+API Request (api/routers/*.py)
     ↓
 step_processor.py (オーケストレーター)
     ↓

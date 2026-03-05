@@ -39,6 +39,9 @@ from services.plateau_fetcher import (
 )
 from services.plateau_texture_mapper import build_plateau_texture_mappings
 from services.step_processor import StepUnfoldGenerator
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -121,12 +124,11 @@ async def plateau_search_by_address(request: PlateauSearchRequest):
         ```
     """
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/search-by-address")
-        print(f"[API] Query: {request.query}")
-        print(f"[API] Radius: {request.radius} degrees")
-        print(f"[API] Limit: {request.limit}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/search-by-address")
+        logger.info(f"[API] Query: {request.query}")
+        logger.info(f"[API] Radius: {request.radius} degrees")
+        logger.info(f"[API] Limit: {request.limit}")
+        logger.info(f"{'=' * 60}\n")
 
         # Call the search function with name_filter and search_mode
         loop = asyncio.get_event_loop()
@@ -299,17 +301,16 @@ async def plateau_fetch_and_convert(
         # Normalize building_ids parameter (comma-separated string to list)
         normalized_building_ids = parse_csv_ids(building_ids)
 
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/fetch-and-convert")
-        print(f"[API] Query: {query}")
-        print(f"[API] Radius: {radius} degrees")
-        print(
+        logger.info(f"[API] /api/plateau/fetch-and-convert")
+        logger.info(f"[API] Query: {query}")
+        logger.info(f"[API] Radius: {radius} degrees")
+        logger.info(
             f"[API] Building limit: {normalized_building_limit if normalized_building_limit else 'unlimited'}"
         )
-        print(
+        logger.info(
             f"[API] User-selected building IDs: {normalized_building_ids if normalized_building_ids else 'None (auto-select)'}"
         )
-        print(f"{'=' * 60}\n")
+        logger.info(f"{'=' * 60}\n")
 
         # Step 1: Search for buildings
         loop = asyncio.get_event_loop()
@@ -340,7 +341,9 @@ async def plateau_fetch_and_convert(
         if normalized_building_ids:
             # User explicitly selected specific buildings - use those IDs directly
             final_building_ids = normalized_building_ids
-            print(f"[API] Using {len(final_building_ids)} user-selected building(s):")
+            logger.info(
+                f"[API] Using {len(final_building_ids)} user-selected building(s):"
+            )
 
             # Find LOD information for selected buildings
             for i, bid in enumerate(final_building_ids, 1):
@@ -367,13 +370,15 @@ async def plateau_fetch_and_convert(
                         if matching_building.name
                         else "unnamed"
                     )
-                    print(f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)})")
-                    print(f"[API LOD INFO]      ID: {bid[:50]}...")
-                    print(
+                    logger.info(
+                        f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)})"
+                    )
+                    logger.info(f"[API LOD INFO]      ID: {bid[:50]}...")
+                    logger.info(
                         f"[API LOD INFO]      Height: {height:.1f}m, Distance: {matching_building.distance_meters:.1f}m"
                     )
                 else:
-                    print(f"[API]   {i}. {bid[:50]}... (LOD info unavailable)")
+                    logger.info(f"[API]   {i}. {bid[:50]}... (LOD info unavailable)")
         else:
             # No user selection - fall back to auto-selection from search results
             selected_buildings = (
@@ -385,7 +390,7 @@ async def plateau_fetch_and_convert(
                 b.gml_id for b in selected_buildings
             ]  # Always use gml:id
 
-            print(
+            logger.info(
                 f"[API] Auto-selected {len(final_building_ids)} building(s) by smart scoring:"
             )
             for i, (bid, b) in enumerate(
@@ -401,10 +406,10 @@ async def plateau_fetch_and_convert(
 
                 height = b.measured_height or b.height or 0
                 name_str = f'"{b.name}"' if b.name else "unnamed"
-                print(
+                logger.info(
                     f"[API LOD INFO]   {i}. {name_str} ({', '.join(lod_str)}) - {height:.1f}m, {b.distance_meters:.1f}m away"
                 )
-                print(f"[API LOD INFO]      ID: {bid[:30]}...")
+                logger.info(f"[API LOD INFO]      ID: {bid[:30]}...")
 
         # Step 3: Reuse CityGML XML from search results (no re-fetch needed!)
         xml_content = search_result.get("citygml_xml")
@@ -414,7 +419,9 @@ async def plateau_fetch_and_convert(
                 status_code=500, detail="CityGMLデータの取得に失敗しました"
             )
 
-        print(f"[API] Reusing CityGML from search results ({len(xml_content):,} bytes)")
+        logger.info(
+            f"[API] Reusing CityGML from search results ({len(xml_content):,} bytes)"
+        )
 
         # Step 4: Save CityGML to temp file
         tmpdir = tempfile.mkdtemp()
@@ -454,7 +461,7 @@ async def plateau_fetch_and_convert(
 
         # Step 6: Return STEP file
         file_size = os.path.getsize(out_path)
-        print(f"[API] Success: Generated {output_filename} ({file_size:,} bytes)")
+        logger.info(f"[API] Success: Generated {output_filename} ({file_size:,} bytes)")
 
         # Cleanup function
         def cleanup_temp_files():
@@ -467,9 +474,9 @@ async def plateau_fetch_and_convert(
                     os.remove(out_path)
                 if os.path.exists(out_dir):
                     os.rmdir(out_dir)
-                print(f"[CLEANUP] Removed temporary files")
+                logger.info(f"[CLEANUP] Removed temporary files")
             except Exception as e:
-                print(f"[CLEANUP] Failed: {e}")
+                logger.info(f"[CLEANUP] Failed: {e}")
 
         background_tasks.add_task(cleanup_temp_files)
 
@@ -558,10 +565,9 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
     - CityGMLファイル情報を返却 / Returns CityGML file information
     """
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/search-by-id")
-        print(f"[API] Building ID: {request.building_id}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/search-by-id")
+        logger.info(f"[API] Building ID: {request.building_id}")
+        logger.info(f"{'=' * 60}\n")
 
         # Search for building by ID
         loop = asyncio.get_event_loop()
@@ -673,12 +679,11 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
         )
 
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/fetch-by-id")
-        print(f"[API] Building ID: {request.building_id}")
-        print(f"[API] Precision Mode: {request.precision_mode}")
-        print(f"[API] Shape Fix Level: {request.shape_fix_level}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/fetch-by-id")
+        logger.info(f"[API] Building ID: {request.building_id}")
+        logger.info(f"[API] Precision Mode: {request.precision_mode}")
+        logger.info(f"[API] Shape Fix Level: {request.shape_fix_level}")
+        logger.info(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID
         loop = asyncio.get_event_loop()
@@ -741,7 +746,7 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
                 raise HTTPException(status_code=500, detail="STEP file was not created")
 
             # Return STEP file
-            print(
+            logger.info(
                 f"[API] Success: Returning STEP file for building {request.building_id}"
             )
             return FileResponse(
@@ -825,11 +830,10 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
     - 大量建物の一括処理 / Batch processing of many buildings
     """
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/search-by-id-and-mesh")
-        print(f"[API] Building ID: {request.building_id}")
-        print(f"[API] Mesh Code: {request.mesh_code}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/search-by-id-and-mesh")
+        logger.info(f"[API] Building ID: {request.building_id}")
+        logger.info(f"[API] Mesh Code: {request.mesh_code}")
+        logger.info(f"{'=' * 60}\n")
 
         # Search for building by ID + mesh code
         loop = asyncio.get_event_loop()
@@ -965,10 +969,9 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
     - 大量建物の一括処理 / Batch processing of many buildings
     """
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/buildings/batch")
-        print(f"[API] Total buildings requested: {len(request.buildings)}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/buildings/batch")
+        logger.info(f"[API] Total buildings requested: {len(request.buildings)}")
+        logger.info(f"{'=' * 60}\n")
 
         results = []
         total_requested = len(request.buildings)
@@ -982,13 +985,15 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                 mesh_groups[item.mesh_code] = []
             mesh_groups[item.mesh_code].append(item.building_id)
 
-        print(f"[API] Grouped into {len(mesh_groups)} mesh code(s)")
+        logger.info(f"[API] Grouped into {len(mesh_groups)} mesh code(s)")
 
         loop = asyncio.get_event_loop()
 
         # Process each mesh group
         for mesh_code, building_ids in mesh_groups.items():
-            print(f"[API] Processing mesh {mesh_code}: {len(building_ids)} buildings")
+            logger.info(
+                f"[API] Processing mesh {mesh_code}: {len(building_ids)} buildings"
+            )
 
             for building_id in building_ids:
                 try:
@@ -1059,7 +1064,9 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                         total_failed += 1
 
                 except Exception as e:
-                    print(f"[API] Error fetching building {building_id}: {str(e)}")
+                    logger.info(
+                        f"[API] Error fetching building {building_id}: {str(e)}"
+                    )
                     results.append(
                         PlateauBuildingIdSearchResponse(
                             success=False,
@@ -1074,7 +1081,9 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                     )
                     total_failed += 1
 
-        print(f"[API] Batch complete: {total_success} success, {total_failed} failed")
+        logger.info(
+            f"[API] Batch complete: {total_success} success, {total_failed} failed"
+        )
 
         return PlateauBatchBuildingResponse(
             results=results,
@@ -1141,13 +1150,12 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
         t_pipeline_start = _time.time()
 
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/fetch-by-id-and-mesh")
-        print(f"[API] Building ID: {request.building_id}")
-        print(f"[API] Mesh Code: {request.mesh_code}")
-        print(f"[API] Precision Mode: {request.precision_mode}")
-        print(f"[API] Shape Fix Level: {request.shape_fix_level}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/fetch-by-id-and-mesh")
+        logger.info(f"[API] Building ID: {request.building_id}")
+        logger.info(f"[API] Mesh Code: {request.mesh_code}")
+        logger.info(f"[API] Precision Mode: {request.precision_mode}")
+        logger.info(f"[API] Shape Fix Level: {request.shape_fix_level}")
+        logger.info(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID + mesh code
         t_step1 = _time.time()
@@ -1162,7 +1170,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
             ),
         )
         t_step1_ms = (_time.time() - t_step1) * 1000
-        print(f"[TIMING] Step 1 (search): {t_step1_ms:.0f}ms")
+        logger.debug(f"[TIMING] Step 1 (search): {t_step1_ms:.0f}ms")
 
         if not search_result["success"]:
             error_msg = search_result.get("error", "Building not found")
@@ -1210,7 +1218,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                 ),
             )
             t_step2_ms = (_time.time() - t_step2) * 1000
-            print(f"[TIMING] Step 2 (STEP conversion): {t_step2_ms:.0f}ms")
+            logger.debug(f"[TIMING] Step 2 (STEP conversion): {t_step2_ms:.0f}ms")
 
             if not success:
                 raise HTTPException(
@@ -1224,11 +1232,11 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
 
             # Return STEP file
             t_total_ms = (_time.time() - t_pipeline_start) * 1000
-            print(
+            logger.debug(
                 f"[TIMING] Total pipeline: {t_total_ms:.0f}ms "
                 f"(search={t_step1_ms:.0f}ms + convert={t_step2_ms:.0f}ms)"
             )
-            print(
+            logger.info(
                 f"[API] Success: Returning STEP file for building {request.building_id}"
             )
             return FileResponse(
@@ -1302,14 +1310,13 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
     output_tmpdir = None
 
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/unfold-textured-by-id-and-mesh")
-        print(f"[API] Building ID: {request.building_id}")
-        print(f"[API] Mesh Code: {request.mesh_code}")
-        print(
+        logger.info(f"[API] /api/plateau/unfold-textured-by-id-and-mesh")
+        logger.info(f"[API] Building ID: {request.building_id}")
+        logger.info(f"[API] Mesh Code: {request.mesh_code}")
+        logger.info(
             f"[API] Layout: {request.layout_mode}, Page: {request.page_format}/{request.page_orientation}"
         )
-        print(f"{'=' * 60}\n")
+        logger.info(f"{'=' * 60}\n")
 
         # Step 1: Search building by ID + mesh code
         loop = asyncio.get_event_loop()
@@ -1400,9 +1407,9 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
         texture_mappings = texture_result.get("texture_mappings") or []
         if texture_mappings:
             generator.set_texture_mappings(texture_mappings)
-            print(f"[API] Applied {len(texture_mappings)} texture mappings")
+            logger.info(f"[API] Applied {len(texture_mappings)} texture mappings")
         else:
-            print(
+            logger.info(
                 "[API] No texture mappings generated; fallback to non-textured unfold"
             )
 
@@ -1544,12 +1551,11 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
     - 同じ市区町村の重複したURLは除外されます
     """
     try:
-        print(f"\n{'=' * 60}")
-        print(f"[API] /api/plateau/mesh-to-tilesets")
-        print(f"[API] Mesh Codes: {request.mesh_codes}")
-        print(f"[API] LOD: {request.lod}")
-        print(f"[API] Prefer no texture: {request.prefer_no_texture}")
-        print(f"{'=' * 60}\n")
+        logger.info(f"[API] /api/plateau/mesh-to-tilesets")
+        logger.info(f"[API] Mesh Codes: {request.mesh_codes}")
+        logger.info(f"[API] LOD: {request.lod}")
+        logger.info(f"[API] Prefer no texture: {request.prefer_no_texture}")
+        logger.info(f"{'=' * 60}\n")
 
         if request.municipality_code:
             dataset = await fetch_plateau_dataset_by_municipality(
@@ -1575,7 +1581,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                 total_found = len(tilesets)
                 total_not_found = total_requested - total_found
 
-                print(
+                logger.info(
                     f"[API] Using municipality filter {request.municipality_code}: "
                     f"Found {total_found}/{total_requested} tilesets"
                 )
@@ -1587,7 +1593,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                     total_not_found=total_not_found,
                 )
 
-            print(
+            logger.info(
                 f"[API] Municipality {request.municipality_code} not found for LOD{request.lod}, "
                 "falling back to mesh lookup"
             )
@@ -1614,7 +1620,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
         total_found = len(tilesets)
         total_not_found = total_requested - total_found
 
-        print(f"[API] Found {total_found}/{total_requested} tilesets")
+        logger.info(f"[API] Found {total_found}/{total_requested} tilesets")
 
         return MeshToTilesetsResponse(
             tilesets=tilesets,

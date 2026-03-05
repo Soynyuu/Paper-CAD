@@ -71,7 +71,7 @@ const config = defineConfig({
     entry: {
         main: "./packages/chili-web/src/index.ts",
     },
-    mode: process.env.NODE_ENV === "production" ? "production" : "development",
+    mode: process.env.NODE_ENV === "development" ? "development" : "production",
     bail: false, // Continue building despite errors
     devServer: {
         hot: true,

@@ -13,6 +13,9 @@ import os
 import tempfile
 from typing import List, Dict, Optional
 import logging
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # PDF generation library - try multiple backends for compatibility
 try:
@@ -108,7 +111,7 @@ class PDFExporter:
         if not svg_paths:
             raise ValueError("SVGファイルパスのリストが空です")
 
-        print(f"PDFExporter: {len(svg_paths)}個のSVGファイルをPDFに変換中...")
+        logger.info(f"PDFExporter: {len(svg_paths)}個のSVGファイルをPDFに変換中...")
 
         if CAIROSVG_AVAILABLE:
             return self._export_with_cairosvg(svg_paths, output_path)
@@ -131,7 +134,7 @@ class PDFExporter:
         Returns:
             str: 出力されたPDFファイルのパス
         """
-        print("PDFExporter: cairosvgを使用してPDF生成中...")
+        logger.info("PDFExporter: cairosvgを使用してPDF生成中...")
 
         if len(svg_paths) == 1:
             # 単一ページの場合は直接変換
@@ -143,7 +146,7 @@ class PDFExporter:
                 write_to=output_path
             )
 
-            print(f"PDFExporter: 単一ページPDFを生成: {output_path}")
+            logger.info(f"PDFExporter: 単一ページPDFを生成: {output_path}")
             return output_path
 
         else:
@@ -165,17 +168,17 @@ class PDFExporter:
                     )
 
                     temp_pdfs.append(temp_pdf_path)
-                    print(f"PDFExporter: ページ {i+1}/{len(svg_paths)} を変換")
+                    logger.info(f"PDFExporter: ページ {i+1}/{len(svg_paths)} を変換")
 
                 # PDFをマージ
                 if PYPDF2_AVAILABLE:
                     self._merge_pdfs(temp_pdfs, output_path)
-                    print(f"PDFExporter: {len(temp_pdfs)}ページのPDFをマージ: {output_path}")
+                    logger.info(f"PDFExporter: {len(temp_pdfs)}ページのPDFをマージ: {output_path}")
                 else:
                     # PyPDF2が利用できない場合は最初のPDFのみを返す
                     import shutil
                     shutil.copy(temp_pdfs[0], output_path)
-                    print(f"警告: PyPDF2が利用できないため、最初のページのみを出力しました")
+                    logger.info(f"警告: PyPDF2が利用できないため、最初のページのみを出力しました")
 
                 return output_path
 
@@ -196,7 +199,7 @@ class PDFExporter:
         Returns:
             str: 出力されたPDFファイルのパス
         """
-        print("PDFExporter: reportlab + svglibを使用してPDF生成中...")
+        logger.info("PDFExporter: reportlab + svglibを使用してPDF生成中...")
 
         # ページサイズを取得
         if self.page_orientation == "landscape":
@@ -248,20 +251,20 @@ class PDFExporter:
                     c.showPage()
                     c.save()
                     temp_pdfs.append(temp_pdf_path)
-                    print(f"PDFExporter: ページ {i+1}/{len(svg_paths)} を変換")
+                    logger.info(f"PDFExporter: ページ {i+1}/{len(svg_paths)} を変換")
                 else:
-                    print(f"警告: {svg_path} をReportLab Drawingに変換できませんでした")
+                    logger.info(f"警告: {svg_path} をReportLab Drawingに変換できませんでした")
 
             # PDFをマージ
             if temp_pdfs:
                 if PYPDF2_AVAILABLE:
                     self._merge_pdfs(temp_pdfs, output_path)
-                    print(f"PDFExporter: {len(temp_pdfs)}ページのPDFをマージ: {output_path}")
+                    logger.info(f"PDFExporter: {len(temp_pdfs)}ページのPDFをマージ: {output_path}")
                 else:
                     # PyPDF2が利用できない場合は最初のPDFのみを返す
                     import shutil
                     shutil.copy(temp_pdfs[0], output_path)
-                    print(f"警告: PyPDF2が利用できないため、最初のページのみを出力しました")
+                    logger.info(f"警告: PyPDF2が利用できないため、最初のページのみを出力しました")
             else:
                 raise RuntimeError("PDFページを1つも生成できませんでした")
 

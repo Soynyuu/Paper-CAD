@@ -17,6 +17,9 @@ from config import OCCT_AVAILABLE
 from core.file_loaders import FileLoader
 from core.geometry_analyzer import GeometryAnalyzer
 from core.unfold_engine import UnfoldEngine
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder, BRep_Tool
@@ -194,12 +197,12 @@ class StepUnfoldGenerator:
         face_data = self.faces_data[face_idx]
         polygons_2d = []
         
-        print(f"面{face_idx}の2D形状を抽出中...")
-        print(f"  境界線数: {len(face_data['boundary_curves'])}")
+        logger.info(f"面{face_idx}の2D形状を抽出中...")
+        logger.info(f"  境界線数: {len(face_data['boundary_curves'])}")
         
         # 各境界線を2Dに投影
         for boundary_idx, boundary in enumerate(face_data["boundary_curves"]):
-            print(f"  境界線{boundary_idx}: {len(boundary)}点")
+            logger.info(f"  境界線{boundary_idx}: {len(boundary)}点")
             
             if len(boundary) >= 3:
                 # 3D境界点を2D平面に正確に投影
@@ -211,13 +214,13 @@ class StepUnfoldGenerator:
                 # 有効な2D形状の場合のみ追加
                 if len(simplified_boundary) >= 3:
                     polygons_2d.append(simplified_boundary)
-                    print(f"  境界線{boundary_idx}を2D投影: {len(simplified_boundary)}点（簡略化済み）")
+                    logger.info(f"  境界線{boundary_idx}を2D投影: {len(simplified_boundary)}点（簡略化済み）")
                 else:
-                    print(f"  境界線{boundary_idx}の投影に失敗")
+                    logger.info(f"  境界線{boundary_idx}の投影に失敗")
             else:
-                print(f"  境界線{boundary_idx}の点数が不足: {len(boundary)}点")
+                logger.info(f"  境界線{boundary_idx}の点数が不足: {len(boundary)}点")
         
-        print(f"面{face_idx}の2D形状: {len(polygons_2d)}個のポリゴン")
+        logger.info(f"面{face_idx}の2D形状: {len(polygons_2d)}個のポリゴン")
         return polygons_2d
 
     def _remove_duplicate_points_2d(self, points_2d: List[Tuple[float, float]], tolerance: float = 1e-6) -> List[Tuple[float, float]]:
@@ -282,29 +285,29 @@ class StepUnfoldGenerator:
         if len(cleaned_points) < 3:
             return cleaned_points
         
-        print(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
+        logger.info(f"        境界線簡略化: {len(points_2d)}点 → ", end="")
         
         # 三角形の場合
         if self._is_triangular_boundary(cleaned_points):
             result = self._extract_triangle_corners(cleaned_points)
-            print(f"{len(result)}点（三角形）")
+            logger.info(f"{len(result)}点（三角形）")
             return result
             
         # 四角形の場合
         if self._is_rectangular_boundary(cleaned_points):
             result = self._extract_rectangle_corners(cleaned_points)
-            print(f"{len(result)}点（四角形）")
+            logger.info(f"{len(result)}点（四角形）")
             return result
         
         # 五角形の場合（家の形状）
         if self._is_pentagonal_boundary(cleaned_points):
             result = self._extract_pentagon_corners(cleaned_points)
-            print(f"{len(result)}点（五角形）")
+            logger.info(f"{len(result)}点（五角形）")
             return result
         
         # その他の多角形は適度に間引く
         result = self._thin_out_points(cleaned_points, max_points=12)
-        print(f"{len(result)}点（一般多角形）")
+        logger.info(f"{len(result)}点（一般多角形）")
         return result
     
     def _is_triangular_boundary(self, points_2d: List[Tuple[float, float]]) -> bool:
@@ -897,8 +900,8 @@ class StepUnfoldGenerator:
         overall_bbox = self._calculate_overall_bbox(placed_groups)
         
         # デバッグ情報
-        print(f"全体境界ボックス: {overall_bbox}")
-        print(f"現在のscale_factor: {self.scale_factor}")
+        logger.info(f"全体境界ボックス: {overall_bbox}")
+        logger.info(f"現在のscale_factor: {self.scale_factor}")
         
         # SVGキャンバスサイズ決定（最小サイズを保証）
         margin = max(50, 20 * self.scale_factor)  # 最小50px
@@ -911,13 +914,13 @@ class StepUnfoldGenerator:
             if content_scale > 1.0:
                 # 内容が小さすぎる場合はスケールアップ
                 self.scale_factor = max(self.scale_factor, content_scale)
-                print(f"スケールファクターを自動調整: {self.scale_factor}")
+                logger.info(f"スケールファクターを自動調整: {self.scale_factor}")
         
         # SVGサイズ計算
         svg_width = max(min_canvas_size, overall_bbox["width"] * self.scale_factor + 2 * margin)
         svg_height = max(min_canvas_size, overall_bbox["height"] * self.scale_factor + 2 * margin + 120)  # タイトル・スケール用
         
-        print(f"SVGサイズ: {svg_width} x {svg_height}")
+        logger.info(f"SVGサイズ: {svg_width} x {svg_height}")
         
         # SVG作成
         dwg = svgwrite.Drawing(output_path, size=(f"{svg_width}px", f"{svg_height}px"), viewBox=f"0 0 {svg_width} {svg_height}")
@@ -940,8 +943,8 @@ class StepUnfoldGenerator:
         polygon_count = 0
         
         for group_idx, group in enumerate(placed_groups):
-            print(f"グループ{group_idx}をSVGに描画中...")
-            print(f"  ポリゴン数: {len(group['polygons'])}")
+            logger.info(f"グループ{group_idx}をSVGに描画中...")
+            logger.info(f"  ポリゴン数: {len(group['polygons'])}")
             
             # 面ポリゴン描画
             for poly_idx, polygon in enumerate(group["polygons"]):
@@ -950,9 +953,9 @@ class StepUnfoldGenerator:
                     points = [(x * self.scale_factor + content_offset_x, y * self.scale_factor + content_offset_y) for x, y in polygon]
                     dwg.add(dwg.polygon(points=points, class_="face-polygon"))
                     polygon_count += 1
-                    print(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画")
+                    logger.info(f"  ポリゴン{poly_idx}: {len(polygon)}点を描画")
                 else:
-                    print(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
+                    logger.info(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
             
             # タブ描画
             for tab_idx, tab in enumerate(group.get("tabs", [])):
@@ -960,9 +963,9 @@ class StepUnfoldGenerator:
                     # スケールファクターを適用
                     points = [(x * self.scale_factor + content_offset_x, y * self.scale_factor + content_offset_y) for x, y in tab]
                     dwg.add(dwg.polygon(points=points, class_="tab-polygon"))
-                    print(f"  タブ{tab_idx}: {len(tab)}点を描画")
+                    logger.info(f"  タブ{tab_idx}: {len(tab)}点を描画")
         
-        print(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
+        logger.info(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
         
         # タイトル描画
         title = f"BREP Papercraft Unfolding - {len(placed_groups)} Groups"

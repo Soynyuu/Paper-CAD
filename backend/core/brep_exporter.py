@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from config import OCCT_AVAILABLE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Solid, TopoDS_Shell, TopoDS_Compound
@@ -73,7 +76,7 @@ class BREPExporter:
                 file_size = os.path.getsize(output_path) if os.path.exists(output_path) else None
                 
                 if self.debug_mode:
-                    print(f"Successfully exported shape to BREP file: {file_size} bytes")
+                    logger.info(f"Successfully exported shape to BREP file: {file_size} bytes")
                 
                 return BREPExportResult(
                     success=True,
@@ -110,7 +113,7 @@ class BREPExporter:
         try:
             if shape.IsNull():
                 if self.debug_mode:
-                    print("Cannot write null shape to BREP file")
+                    logger.info("Cannot write null shape to BREP file")
                 return False
             
             # Use BRepTools to write the BREP file
@@ -129,26 +132,26 @@ class BREPExporter:
             
             if not success:
                 if self.debug_mode:
-                    print(f"BRepTools.Write returned False for {output_path}")
+                    logger.info(f"BRepTools.Write returned False for {output_path}")
                 return False
             
             # Verify file was created and has content
             if not os.path.exists(output_path):
                 if self.debug_mode:
-                    print(f"BREP file was not created: {output_path}")
+                    logger.info(f"BREP file was not created: {output_path}")
                 return False
             
             file_size = os.path.getsize(output_path)
             if file_size == 0:
                 if self.debug_mode:
-                    print(f"BREP file is empty: {output_path}")
+                    logger.info(f"BREP file is empty: {output_path}")
                 return False
             
             return True
         
         except Exception as e:
             if self.debug_mode:
-                print(f"Error writing BREP file {output_path}: {e}")
+                logger.info(f"Error writing BREP file {output_path}: {e}")
             return False
     
     def create_temporary_output_path(self, prefix: str = "export") -> str:

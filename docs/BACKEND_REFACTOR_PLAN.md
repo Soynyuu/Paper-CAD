@@ -62,7 +62,7 @@ Exit Criteria:
 - Tests can run locally and verify basic success paths.
 - Golden files stored for at least one STEP and one CityGML sample.
 
-### Phase 1 - API Layer Separation
+### Phase 1 - API Layer Separation ✅ COMPLETED (PR #194)
 - Split `backend/api/endpoints.py` into routers by domain.
 - Keep routes identical; only move code and fix imports.
 - Extract shared helpers:
@@ -107,7 +107,7 @@ Exit Criteria:
 - No runtime path hacks.
 - Plateau logic is testable without HTTP calls (use fixtures/mocks).
 
-### Phase 5 - Logging and Config Standardization
+### Phase 5 - Logging and Config Standardization 🔧 IN PROGRESS (PR #195)
 - Replace `print` with standard logging in all backend modules.
 - Remove `builtins.print` override; use logger levels for demo/production.
 - Introduce a structured config object (Pydantic settings) for ENV, CORS, ports.
@@ -198,7 +198,7 @@ Exit Criteria:
 - ローカルでテストが実行でき、成功経路を検証できる。
 - STEP/CityGMLの少なくとも1件はゴールデンファイルを保存。
 
-### Phase 1 - API層の分離
+### Phase 1 - API層の分離 ✅ 完了 (PR #194)
 - `backend/api/endpoints.py` をドメイン単位で分割。
 - ルーティングやタグは変更せず、移動とインポート修正のみ。
 - 共有ヘルパーを抽出:
@@ -243,7 +243,7 @@ Exit Criteria:
 - ランタイムのパス操作がなくなる。
 - HTTP依存なしでPLATEAUロジックをテスト可能。
 
-### Phase 5 - ログ/設定の標準化
+### Phase 5 - ログ/設定の標準化 🔧 進行中 (PR #195)
 - すべての `print` を標準ロガーへ移行。
 - `builtins.print` の上書きを廃止し、ログレベルで抑制。
 - 環境設定をPydantic設定などで集中管理。

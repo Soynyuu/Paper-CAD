@@ -10,6 +10,9 @@ from collections import defaultdict
 from scipy.spatial import ConvexHull
 
 from config import OCCT_AVAILABLE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if OCCT_AVAILABLE:
     from OCC.Core.TopExp import TopExp_Explorer
@@ -78,7 +81,7 @@ class GeometryAnalyzer:
             "neg_y": 0,  # -Y方向
             "other": 0,  # その他
         }
-        print("面番号カウンターをリセットしました")
+        logger.info("面番号カウンターをリセットしました")
 
     def analyze_brep_topology(self, solid_shape):
         """
@@ -88,7 +91,7 @@ class GeometryAnalyzer:
         if solid_shape is None:
             raise ValueError("BREPデータが読み込まれていません")
 
-        print("BREPトポロジ解析開始...")
+        logger.info("BREPトポロジ解析開始...")
         self.faces_data.clear()
         self.edges_data.clear()
         self.adjacency_map.clear()
@@ -120,7 +123,7 @@ class GeometryAnalyzer:
 
             # Build adjacency_map: for each edge, find the faces that share it
             num_edges = edge_face_map.Size()
-            print(f"OCCT edge-face map: {num_edges} edges mapped")
+            logger.info(f"OCCT edge-face map: {num_edges} edges mapped")
 
             for edge_i in range(1, num_edges + 1):
                 face_list = edge_face_map.FindFromIndex(edge_i)
@@ -143,17 +146,17 @@ class GeometryAnalyzer:
                         self.adjacency_map[fi].add(fj)
                         self.adjacency_map[fj].add(fi)
 
-            print(
+            logger.info(
                 f"隣接マップ構築完了: {sum(len(v) for v in self.adjacency_map.values()) // 2} 隣接ペア"
             )
 
             # Second pass: analyze each face geometry
             for face_index, topo_face in enumerate(topo_faces):
-                print(f"面 {face_index} を解析中...")
+                logger.info(f"面 {face_index} を解析中...")
                 face_data = self._analyze_face_geometry(topo_face, face_index)
                 if face_data:
                     self.faces_data.append(face_data)
-                    print(
+                    logger.info(
                         f"面 {face_index} 解析完了: {face_data['surface_type']}, 面積: {face_data['area']:.2f}"
                     )
 
@@ -163,7 +166,7 @@ class GeometryAnalyzer:
 
             while edge_explorer.More():
                 edge = edge_explorer.Current()
-                print(f"エッジ {edge_index} を解析中...")
+                logger.info(f"エッジ {edge_index} を解析中...")
                 edge_data = self._analyze_edge_geometry(edge, edge_index)
                 if edge_data:
                     self.edges_data.append(edge_data)
@@ -185,15 +188,15 @@ class GeometryAnalyzer:
                 1 for f in self.faces_data if f["surface_type"] == "other"
             )
 
-            print(
+            logger.info(
                 f"トポロジ解析完了: {self.stats['total_faces']} 面, {len(self.edges_data)} エッジ"
             )
-            print(
+            logger.info(
                 f"面の内訳: 平面={self.stats['planar_faces']}, 円筒={self.stats['cylindrical_faces']}, 円錐={self.stats['conical_faces']}, その他={self.stats['other_faces']}"
             )
 
         except Exception as e:
-            print(f"トポロジ解析エラー: {e}")
+            logger.info(f"トポロジ解析エラー: {e}")
             import traceback
 
             traceback.print_exc()
@@ -238,7 +241,7 @@ class GeometryAnalyzer:
 
             # シンプルに faceIndex + 1 を面番号として使用（フロントエンドと統一）
             face_number = face_index + 1
-            print(f"  -> 面番号 {face_number} を割り当て (faceIndex={face_index})")
+            logger.info(f"  -> 面番号 {face_number} を割り当て (faceIndex={face_index})")
 
             face_data = {
                 "index": face_index,
@@ -270,14 +273,14 @@ class GeometryAnalyzer:
 
             # 境界線が取得できない場合でも展開可能とする（立方体の場合）
             if not face_data["boundary_curves"]:
-                print(f"面{face_index}: 境界線が取得できませんが、展開可能として処理")
+                logger.info(f"面{face_index}: 境界線が取得できませんが、展開可能として処理")
                 # 立方体の場合の簡易境界線を生成
                 face_data["boundary_curves"] = self._generate_default_square_boundary()
 
             return face_data
 
         except Exception as e:
-            print(f"面{face_index}の解析でエラー: {e}")
+            logger.info(f"面{face_index}の解析でエラー: {e}")
             return None
 
     def _analyze_planar_face(self, surface_adaptor):
@@ -354,7 +357,7 @@ class GeometryAnalyzer:
             # 法線ベクトルが取得できない場合
             self.face_direction_counters["other"] += 1
             face_number = 7 + (self.face_direction_counters["other"] - 1) * 10
-            print(f"  -> 法線不明として面番号{face_number}を割り当て")
+            logger.info(f"  -> 法線不明として面番号{face_number}を割り当て")
             return face_number
 
         # 法線ベクトルの正規化
@@ -365,7 +368,7 @@ class GeometryAnalyzer:
             # 法線がゼロベクトルの場合
             self.face_direction_counters["other"] += 1
             face_number = 7 + (self.face_direction_counters["other"] - 1) * 10
-            print(f"  -> ゼロ法線として面番号{face_number}を割り当て")
+            logger.info(f"  -> ゼロ法線として面番号{face_number}を割り当て")
             return face_number
 
         # 正規化された法線ベクトル
@@ -381,10 +384,10 @@ class GeometryAnalyzer:
         abs_z = abs(normalized_normal[2])
         threshold = 0.7  # 主成分を判定する閾値
 
-        print(
+        logger.info(
             f"  -> 法線ベクトル: ({normalized_normal[0]:.3f}, {normalized_normal[1]:.3f}, {normalized_normal[2]:.3f})"
         )
-        print(f"  -> 成分: |X|={abs_x:.3f}, |Y|={abs_y:.3f}, |Z|={abs_z:.3f}")
+        logger.info(f"  -> 成分: |X|={abs_x:.3f}, |Y|={abs_y:.3f}, |Z|={abs_z:.3f}")
 
         # Z軸方向の判定
         if abs_z >= threshold and abs_z >= abs_x and abs_z >= abs_y:
@@ -392,13 +395,13 @@ class GeometryAnalyzer:
                 # +Z方向（前面）
                 self.face_direction_counters["pos_z"] += 1
                 face_number = 1 + (self.face_direction_counters["pos_z"] - 1) * 10
-                print(f"  -> +Z方向（前面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> +Z方向（前面）として面番号{face_number}を割り当て")
                 return face_number
             else:
                 # -Z方向（背面）
                 self.face_direction_counters["neg_z"] += 1
                 face_number = 2 + (self.face_direction_counters["neg_z"] - 1) * 10
-                print(f"  -> -Z方向（背面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> -Z方向（背面）として面番号{face_number}を割り当て")
                 return face_number
 
         # X軸方向の判定
@@ -407,13 +410,13 @@ class GeometryAnalyzer:
                 # +X方向（右面）
                 self.face_direction_counters["pos_x"] += 1
                 face_number = 3 + (self.face_direction_counters["pos_x"] - 1) * 10
-                print(f"  -> +X方向（右面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> +X方向（右面）として面番号{face_number}を割り当て")
                 return face_number
             else:
                 # -X方向（左面）
                 self.face_direction_counters["neg_x"] += 1
                 face_number = 4 + (self.face_direction_counters["neg_x"] - 1) * 10
-                print(f"  -> -X方向（左面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> -X方向（左面）として面番号{face_number}を割り当て")
                 return face_number
 
         # Y軸方向の判定
@@ -422,19 +425,19 @@ class GeometryAnalyzer:
                 # +Y方向（上面）
                 self.face_direction_counters["pos_y"] += 1
                 face_number = 5 + (self.face_direction_counters["pos_y"] - 1) * 10
-                print(f"  -> +Y方向（上面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> +Y方向（上面）として面番号{face_number}を割り当て")
                 return face_number
             else:
                 # -Y方向（下面）
                 self.face_direction_counters["neg_y"] += 1
                 face_number = 6 + (self.face_direction_counters["neg_y"] - 1) * 10
-                print(f"  -> -Y方向（下面）として面番号{face_number}を割り当て")
+                logger.info(f"  -> -Y方向（下面）として面番号{face_number}を割り当て")
                 return face_number
         else:
             # その他の方向（斜め面など）
             self.face_direction_counters["other"] += 1
             face_number = 7 + (self.face_direction_counters["other"] - 1) * 10
-            print(f"  -> その他の方向として面番号{face_number}を割り当て")
+            logger.info(f"  -> その他の方向として面番号{face_number}を割り当て")
             return face_number
 
     def _extract_face_boundaries(self, face):
@@ -445,7 +448,7 @@ class GeometryAnalyzer:
         boundaries = []
 
         try:
-            print(f"    面の境界線抽出開始...")
+            logger.info(f"    面の境界線抽出開始...")
 
             # 面のアダプター取得
             face_adaptor = BRepAdaptor_Surface(face)
@@ -456,7 +459,7 @@ class GeometryAnalyzer:
 
             while wire_explorer.More():
                 wire = wire_explorer.Current()
-                print(f"      ワイヤ{wire_count}を処理中...")
+                logger.info(f"      ワイヤ{wire_count}を処理中...")
 
                 # 高精度サンプリングを試行
                 boundary_points = self._extract_wire_points_parametric(
@@ -465,7 +468,7 @@ class GeometryAnalyzer:
 
                 if boundary_points and len(boundary_points) >= 3:
                     boundaries.append(boundary_points)
-                    print(
+                    logger.info(
                         f"      ワイヤ{wire_count}: {len(boundary_points)}点を抽出（高精度）"
                     )
                 else:
@@ -473,19 +476,19 @@ class GeometryAnalyzer:
                     boundary_points = self._extract_wire_points_fallback(wire)
                     if boundary_points and len(boundary_points) >= 3:
                         boundaries.append(boundary_points)
-                        print(
+                        logger.info(
                             f"      ワイヤ{wire_count}: {len(boundary_points)}点を抽出（フォールバック）"
                         )
                     else:
-                        print(f"      ワイヤ{wire_count}: 境界点の抽出に失敗")
+                        logger.info(f"      ワイヤ{wire_count}: 境界点の抽出に失敗")
 
                 wire_count += 1
                 wire_explorer.Next()
 
-            print(f"    面の境界線抽出完了: {len(boundaries)}本のワイヤ")
+            logger.info(f"    面の境界線抽出完了: {len(boundaries)}本のワイヤ")
 
         except Exception as e:
-            print(f"    境界線抽出エラー: {e}")
+            logger.info(f"    境界線抽出エラー: {e}")
             import traceback
 
             traceback.print_exc()
@@ -511,15 +514,15 @@ class GeometryAnalyzer:
                 edge_points = self._sample_edge_points_3d(edge, num_points // 10)
                 if edge_points:
                     points.extend(edge_points)
-                    print(f"    エッジ{edge_count}: {len(edge_points)}点を3D抽出")
+                    logger.info(f"    エッジ{edge_count}: {len(edge_points)}点を3D抽出")
                 else:
-                    print(f"    エッジ{edge_count}: 3D抽出に失敗")
+                    logger.info(f"    エッジ{edge_count}: 3D抽出に失敗")
 
                 edge_count += 1
                 edge_explorer.Next()
 
         except Exception as e:
-            print(f"パラメータ空間ワイヤ点抽出エラー: {e}")
+            logger.info(f"パラメータ空間ワイヤ点抽出エラー: {e}")
             # フォールバック処理
             return self._extract_wire_points_fallback(wire, num_points)
 
@@ -547,7 +550,7 @@ class GeometryAnalyzer:
                 points.append((point_3d.X(), point_3d.Y(), point_3d.Z()))
 
         except Exception as e:
-            print(f"パラメータ空間エッジサンプリングエラー: {e}")
+            logger.info(f"パラメータ空間エッジサンプリングエラー: {e}")
 
         return points
 
@@ -570,7 +573,7 @@ class GeometryAnalyzer:
                 points.append((point.X(), point.Y(), point.Z()))
 
         except Exception as e:
-            print(f"3Dエッジサンプリングエラー: {e}")
+            logger.info(f"3Dエッジサンプリングエラー: {e}")
 
         return points
 
@@ -596,7 +599,7 @@ class GeometryAnalyzer:
                 points = self._remove_duplicate_points(points)
 
         except Exception as e:
-            print(f"フォールバックワイヤ点抽出エラー: {e}")
+            logger.info(f"フォールバックワイヤ点抽出エラー: {e}")
 
         return points
 
@@ -643,7 +646,7 @@ class GeometryAnalyzer:
             }
 
         except Exception as e:
-            print(f"エッジ{edge_index}解析エラー: {e}")
+            logger.info(f"エッジ{edge_index}解析エラー: {e}")
             return None
 
     def _generate_default_square_boundary(self):

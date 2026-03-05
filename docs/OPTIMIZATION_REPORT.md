@@ -25,17 +25,17 @@ Paper-CADは機能的には良く動作しているが、**複雑性の削減**�
 
 #### PLATEAUエンドポイントの重複
 
-**場所**: `backend/api/endpoints.py`
+**場所**: `backend/api/routers/plateau.py`
 
 6つのエンドポイントが90%同じロジックを繰り返している:
 
 ```
-/api/plateau/search-by-address      (lines 866-974)
-/api/plateau/fetch-and-convert      (lines 995-1236)
-/api/plateau/search-by-id           (lines 1272-1361)
-/api/plateau/fetch-by-id            (lines 1383-1486)
-/api/plateau/search-by-id-and-mesh  (lines 1521-1614)
-/api/plateau/fetch-by-id-and-mesh   (lines 1636-1744)
+/api/plateau/search-by-address      (plateau.py)
+/api/plateau/fetch-and-convert      (plateau.py)
+/api/plateau/search-by-id           (plateau.py)
+/api/plateau/fetch-by-id            (plateau.py)
+/api/plateau/search-by-id-and-mesh  (plateau.py)
+/api/plateau/fetch-by-id-and-mesh   (plateau.py)
 ```
 
 **問題**: 各エンドポイントが独立して以下を実装:
@@ -55,7 +55,7 @@ Paper-CADは機能的には良く動作しているが、**複雑性の削減**�
 
 #### クリーンアップロジックの重複
 
-**場所**: `backend/api/endpoints.py` - 7箇所で同一パターン
+**場所**: `backend/api/routers/plateau.py` - 複数箇所で同一パターン
 
 ```python
 # このパターンが7回繰り返されている (lines 32-45, 218-230, 433-439, 692-700, 722-738, 1188-1200, 1220-1236)
@@ -91,7 +91,7 @@ with TemporaryDirectory() as tmpdir:
 
 #### 1つのエンドポイントが多すぎる責務を持つ
 
-**場所**: `backend/api/endpoints.py:462-518` (`/api/citygml/to-step`)
+**場所**: `backend/api/routers/citygml.py` (`/api/citygml/to-step`)
 
 13個のパラメータを持ち、以下を同時に処理:
 - 入力バリデーション
@@ -186,7 +186,7 @@ fallback: {
 
 ### 3.1 ロギングの問題
 
-**場所**: `backend/api/endpoints.py` 全体
+**場所**: `backend/api/routers/*.py` 全体
 
 **現状**: 80+ の `print()` 文が散在
 
@@ -197,11 +197,11 @@ print(f"[UPLOAD] File received...")
 ```
 
 **問題**:
-- 重大度レベルなし
-- 構造化されていない
-- demo/productionでグローバルに無効化（副作用）
+- 重大度レベルなし（→ Phase 5で標準loggingモジュールに移行済み）
+- 構造化されていない（→ `utils/logger.py`で一元管理済み）
+- demo/productionでグローバルに無効化（→ `builtins.print`上書き廃止済み）
 
-**改善案**: 標準のloggingモジュール使用
+**改善案**: 標準のloggingモジュール使用 → **実装済み（PR #195）**
 
 ```python
 import logging
@@ -211,19 +211,19 @@ logger.info("Processing %s", filename)
 
 ### 3.2 設定ファイルの副作用
 
-**場所**: `backend/config.py:10-15`
+**場所**: `backend/config.py`
 
 ```python
-# インポート時にグローバル状態を変更（危険）
-if ENV in ["demo", "production"]:
-    builtins.print = noop_print  # グローバル副作用
+# 以前のコード（削除済み — PR #195で廃止）
+# if ENV in ["demo", "production"]:
+#     builtins.print = noop_print  # グローバル副作用
 ```
 
-**改善案**: 明示的な初期化関数に移動
+**改善案**: 明示的な初期化関数に移動 → **`builtins.print`上書きを完全削除し、`utils/logger.py`の`setup_logging()`に置き換え済み**
 
 ### 3.3 エラー処理の不統一
 
-**場所**: `backend/api/endpoints.py` 全体
+**場所**: `backend/api/routers/*.py` 全体
 
 ```python
 # パターンA (一部のエンドポイント)

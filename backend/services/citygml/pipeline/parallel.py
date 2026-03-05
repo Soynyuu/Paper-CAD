@@ -29,6 +29,7 @@ def _process_building_worker(
     shape_fix_level: str,
     merge_building_parts: bool,
     debug: bool,
+    target_lod: Optional[str] = None,
 ) -> Optional[bytes]:
     """
     Worker function for parallel building processing.
@@ -46,6 +47,7 @@ def _process_building_worker(
         shape_fix_level: Shape fix level for solid building
         merge_building_parts: Whether to merge BuildingParts
         debug: Enable debug logging
+        target_lod: Target LOD level ("LOD1", "LOD2", "LOD3", or None for auto-fallback)
 
     Returns:
         BREP byte string of the resulting shape, or None if processing failed
@@ -94,7 +96,8 @@ def _process_building_worker(
 
         def extract_single_solid(bldg_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
             result = extract_building_geometry(
-                bldg_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode
+                bldg_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode,
+                target_lod=target_lod,
             )
             if not result.exterior_faces:
                 return None
@@ -157,6 +160,7 @@ def process_buildings_parallel(
     merge_building_parts: bool,
     debug: bool,
     max_workers: Optional[int] = None,
+    target_lod: Optional[str] = None,
 ) -> list:
     """
     Process multiple buildings in parallel using ProcessPoolExecutor.
@@ -173,6 +177,7 @@ def process_buildings_parallel(
         merge_building_parts: Whether to merge parts
         debug: Enable debug logging
         max_workers: Max parallel workers (default: min(len(buildings), CPU count))
+        target_lod: Target LOD level for extraction (None = auto-fallback)
 
     Returns:
         List of (building_id, TopoDS_Shape or None) tuples
@@ -208,6 +213,7 @@ def process_buildings_parallel(
                 shape_fix_level,
                 merge_building_parts,
                 debug,
+                target_lod,
             )
             future_to_id[future] = building_id
 

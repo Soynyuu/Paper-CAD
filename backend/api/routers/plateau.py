@@ -261,6 +261,10 @@ async def plateau_fetch_and_convert(
         False,
         description="BuildingPart結合 / Merge BuildingPart (False recommended for detail preservation)",
     ),
+    lod: Optional[str] = Form(
+        None,
+        description="LODレベル指定 / Target LOD (LOD1/LOD2/LOD3, None=自動フォールバック)",
+    ),
 ):
     """
     住所・施設名から自動的にPLATEAU建物を取得してSTEPファイルに変換します。
@@ -451,6 +455,7 @@ async def plateau_fetch_and_convert(
                 # Use gml:id filtering (consistent, no mixed ID types)
                 building_ids=final_building_ids,
                 filter_attribute="gml:id",
+                target_lod=lod,
             ),
         )
 
@@ -732,6 +737,7 @@ async def plateau_fetch_by_building_id(request: PlateauBuildingIdRequest):
                     shape_fix_level=request.shape_fix_level,
                     merge_building_parts=request.merge_building_parts,
                     debug=request.debug,
+                    target_lod=request.lod,
                 ),
             )
 
@@ -1215,6 +1221,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                     shape_fix_level=request.shape_fix_level,
                     merge_building_parts=request.merge_building_parts,
                     debug=request.debug,
+                    target_lod=request.lod,
                 ),
             )
             t_step2_ms = (_time.time() - t_step2) * 1000
@@ -1371,6 +1378,7 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
                 shape_fix_level=request.shape_fix_level or "minimal",
                 merge_building_parts=request.merge_building_parts or False,
                 debug=request.debug or False,
+                target_lod=request.lod,
             ),
         )
         if not success:

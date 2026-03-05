@@ -37,6 +37,7 @@ class ConversionContext:
         target_latitude: Target latitude for coordinate filtering (WGS84)
         target_longitude: Target longitude for coordinate filtering (WGS84)
         radius_meters: Radius for coordinate filtering (default: 100m)
+        target_lod: Target LOD level for extraction (None = auto fallback LOD3→LOD2→LOD1)
 
         # Runtime state (mutable, populated during pipeline execution)
         root: Parsed XML root element (populated in preprocessing)
@@ -67,6 +68,7 @@ class ConversionContext:
     target_latitude: Optional[float] = None
     target_longitude: Optional[float] = None
     radius_meters: float = 100.0
+    target_lod: Optional[str] = None  # "LOD1", "LOD2", "LOD3", or None (auto fallback)
 
     # === Runtime state (populated during pipeline) ===
     root: Optional[ET.Element] = None

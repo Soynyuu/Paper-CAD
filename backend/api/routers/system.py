@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from config import OCCT_AVAILABLE
+from config import OCCT_AVAILABLE, ENV
 
 router = APIRouter()
 
@@ -24,13 +24,13 @@ router = APIRouter()
                             "step_unfold": True,
                             "citygml_conversion": True,
                             "plateau_integration": True,
-                            "pdf_export": True
-                        }
+                            "pdf_export": True,
+                        },
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def api_health_check():
     """
@@ -56,13 +56,15 @@ async def api_health_check():
     return {
         "status": "healthy" if OCCT_AVAILABLE else "degraded",
         "opencascade_available": OCCT_AVAILABLE,
-        "supported_formats": ["STEP", "BREP", "CityGML", "PLATEAU"] if OCCT_AVAILABLE else [],
+        "supported_formats": ["STEP", "BREP", "CityGML", "PLATEAU"]
+        if OCCT_AVAILABLE
+        else [],
         "features": {
             "step_unfold": OCCT_AVAILABLE,
             "citygml_conversion": OCCT_AVAILABLE,
             "plateau_integration": True,
-            "pdf_export": OCCT_AVAILABLE
-        }
+            "pdf_export": OCCT_AVAILABLE,
+        },
     }
 
 
@@ -99,9 +101,16 @@ async def debug_cors_config():
 
     # 設定の解釈結果
     is_dev_mode = CORS_ALLOW_ALL or FRONTEND_URL == "*"
-    cors_mode = "development (localhost only)" if is_dev_mode else "production (restricted origins)"
+    is_demo_mode = ENV == "demo"
 
-    # 許可されるオリジンを構築（config.pyと同じロジック）
+    if is_dev_mode:
+        cors_mode = "development (localhost only)"
+    elif is_demo_mode:
+        cors_mode = "demo (production origins + localhost)"
+    else:
+        cors_mode = "production (restricted origins)"
+
+    # 許可されるオリジンを構築（config.pyのsetup_cors()と同じロジック）
     if is_dev_mode:
         allowed_origins = [
             "http://localhost:8001",
@@ -111,6 +120,18 @@ async def debug_cors_config():
             "http://localhost:8081",
             "http://127.0.0.1:8081",
         ]
+    elif is_demo_mode:
+        allowed_origins = []
+        if FRONTEND_URL and FRONTEND_URL != "*":
+            allowed_origins.append(FRONTEND_URL)
+        allowed_origins.extend(
+            [
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+                "https://paper-cad.soynyuu.com",
+                "https://app-paper-cad.soynyuu.com",
+            ]
+        )
     else:
         allowed_origins = [
             "https://paper-cad.soynyuu.com",
@@ -122,26 +143,27 @@ async def debug_cors_config():
 
     return {
         "cors_configuration": {
+            "env": ENV,
             "mode": cors_mode,
             "frontend_url": FRONTEND_URL,
             "cors_allow_all": CORS_ALLOW_ALL,
-            "is_production_safe": not is_dev_mode,
+            "is_production_safe": not is_dev_mode and not is_demo_mode,
             "allowed_origins": allowed_origins,
-            "allows_credentials": True
+            "allows_credentials": True,
         },
         "environment_variables": {
             "FRONTEND_URL": raw_frontend_url,
-            "CORS_ALLOW_ALL": raw_cors_allow_all
+            "CORS_ALLOW_ALL": raw_cors_allow_all,
         },
         "expected_response_headers": {
             "access-control-allow-origin": f"{allowed_origins[0]} (or matching request origin)",
             "access-control-allow-credentials": "true",
             "access-control-allow-methods": "*",
-            "access-control-allow-headers": "*"
+            "access-control-allow-headers": "*",
         },
         "security_notes": {
             "wildcard_not_used": "Wildcard origin (*) is never used with credentials for security compliance",
-            "rfc_6454_compliance": "Complies with CORS spec (RFC 6454) - no wildcard + credentials combination"
+            "rfc_6454_compliance": "Complies with CORS spec (RFC 6454) - no wildcard + credentials combination",
         },
-        "warning": "This endpoint should be removed in production after verification"
+        "warning": "This endpoint should be removed in production after verification",
     }

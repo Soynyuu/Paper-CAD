@@ -14,6 +14,7 @@ import {
 } from "chili-cesium";
 import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
 import { Sidebar } from "./components/Sidebar";
+import type { LodLevel } from "./components/LodSelector";
 import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
 import { PlateauSearchLoading } from "./components/PlateauSearchLoading";
@@ -123,6 +124,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [pickerStage, setPickerStage] = useState<"search" | "map">("search");
     const [pendingResult, setPendingResult] = useState<SearchResult | null>(null);
     const [activeResultId, setActiveResultId] = useState<string | null>(null);
+
+    // LOD selection state (null = auto fallback)
+    const [selectedLod, setSelectedLod] = useState<LodLevel>(null);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState<string>("");
@@ -362,16 +366,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
             return;
         }
-        onClose(DialogResult.ok, { selectedBuildings, action: "import" });
-    }, [selectedBuildings, onClose]);
+        onClose(DialogResult.ok, { selectedBuildings, action: "import", targetLod: selectedLod });
+    }, [selectedBuildings, selectedLod, onClose]);
 
     const handleUnfoldBeta = useCallback(() => {
         if (selectedBuildings.length === 0) {
             PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
             return;
         }
-        onClose(DialogResult.ok, { selectedBuildings, action: "unfoldBeta" });
-    }, [selectedBuildings, onClose]);
+        onClose(DialogResult.ok, { selectedBuildings, action: "unfoldBeta", targetLod: selectedLod });
+    }, [selectedBuildings, selectedLod, onClose]);
 
     // Handle clear
     const handleClear = useCallback(() => {
@@ -1197,6 +1201,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
                     <Sidebar
                         selectedBuildings={selectedBuildings}
+                        selectedLod={selectedLod}
+                        onLodChange={setSelectedLod}
                         onRemove={handleRemoveBuilding}
                         onImport={handleImport}
                         onUnfoldBeta={handleUnfoldBeta}

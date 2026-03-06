@@ -1,0 +1,80 @@
+/* LodSelector - Segmented control for LOD level selection */
+/* Matches Paper-CAD Design System (Sidebar-consistent) */
+
+.lodSelector {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lodLabel {
+    font-size: 11px;
+    font-weight: var(--font-weight-medium, 500);
+    color: color-mix(in srgb, var(--neutral-500) 85%, #395a72 15%);
+    letter-spacing: 0.02em;
+}
+
+.segmentGroup {
+    display: flex;
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--panel-background-color) 85%, #dce4ec 15%);
+}
+
+.segment {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 6px 2px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+    min-width: 0;
+}
+
+.segment + .segment {
+    border-left: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent 40%);
+}
+
+.segment:hover:not(.segmentActive) {
+    background: color-mix(in srgb, var(--hover-background-color) 80%, #c8d6e0 20%);
+}
+
+.segmentActive {
+    background: linear-gradient(140deg, #2f5877, #1b3f5f);
+    color: #f7f8fa;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.segmentActive + .segment,
+.segment + .segmentActive {
+    border-left-color: transparent;
+}
+
+.segmentName {
+    font-size: 11px;
+    font-weight: var(--font-weight-semibold, 600);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.segmentActive .segmentName {
+    color: #f7f8fa;
+}
+
+.segmentSub {
+    font-size: 9px;
+    line-height: 1.1;
+    opacity: 0.65;
+    white-space: nowrap;
+}
+
+.segmentActive .segmentSub {
+    color: #f7f8fa;
+    opacity: 0.8;
+}

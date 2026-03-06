@@ -25,6 +25,7 @@ import style from "./dialog.module.css";
 export interface PlateauCesiumPickerResult {
     selectedBuildings: PickedBuilding[];
     action?: "import" | "unfoldBeta";
+    targetLod?: string | null; // "LOD1" | "LOD2" | "LOD3" | null (auto fallback)
 }
 
 /**

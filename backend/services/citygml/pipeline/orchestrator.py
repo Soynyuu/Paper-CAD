@@ -634,7 +634,11 @@ def export_step_from_citygml(
     def extract_single_solid(building_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
         """Extract solid from single building element using LOD extractor."""
         result = extract_building_geometry(
-            building_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode,
+            building_elem,
+            xyz_tx,
+            id_idx,
+            dbg,
+            precision_mode=prec_mode,
             target_lod=target_lod,
         )
         if not result.exterior_faces:
@@ -693,13 +697,14 @@ def export_step_from_citygml(
             )
 
             shape_cache = get_shape_cache()
+            lod_key = target_lod or "auto"
             for building_id, shp in parallel_results:
                 if shp is not None and not shp.IsNull():
                     if is_valid_shape(shp):
                         shapes.append(shp)
                         count += 1
                         shape_cache.put(
-                            (building_id, precision_mode, shape_fix_level), shp
+                            (building_id, precision_mode, shape_fix_level, lod_key), shp
                         )
                         log(f"[PARALLEL] ✓ {building_id[:40]}: Added (total: {count})")
                     else:
@@ -727,8 +732,11 @@ def export_step_from_citygml(
                     t_building = time.time()
 
                     # Issue #192: Check shape cache before expensive computation
+                    # Issue #201: Include target_lod in cache key so different LOD
+                    # selections are cached separately
                     shape_cache = get_shape_cache()
-                    cache_key = (building_id, precision_mode, shape_fix_level)
+                    lod_key = target_lod or "auto"
+                    cache_key = (building_id, precision_mode, shape_fix_level, lod_key)
                     cached_shape = shape_cache.get(cache_key)
 
                     if cached_shape is not None:

@@ -1,7 +1,7 @@
 """
 In-memory LRU cache for per-building STEP shapes (Issue #192).
 
-Caches TopoDS_Shape objects keyed by (gml_id, precision_mode, shape_fix_level)
+Caches TopoDS_Shape objects keyed by (gml_id, precision_mode, shape_fix_level, target_lod)
 to avoid re-processing the same building when:
 - The same building appears in multiple API requests
 - A multi-building batch includes duplicates
@@ -9,21 +9,25 @@ to avoid re-processing the same building when:
 The cache is bounded (default 128 entries) and uses LRU eviction.
 TopoDS_Shape objects are C++ objects managed by OCCT, so this cache
 keeps them alive in memory.
+
+Issue #201: Added target_lod to the cache key so that different LOD
+selections produce separate cache entries.
 """
 
 from collections import OrderedDict
 from typing import Any, Optional, Tuple
 import threading
 
-# Cache key: (gml_id, precision_mode, shape_fix_level)
-CacheKey = Tuple[str, str, str]
+# Cache key: (gml_id, precision_mode, shape_fix_level, target_lod)
+# target_lod is "LOD1", "LOD2", "LOD3", or "auto" (when None is passed)
+CacheKey = Tuple[str, str, str, str]
 
 
 class ShapeCache:
     """
     Thread-safe LRU cache for TopoDS_Shape objects.
 
-    Each entry is keyed by (gml_id, precision_mode, shape_fix_level).
+    Each entry is keyed by (gml_id, precision_mode, shape_fix_level, target_lod).
     When the cache exceeds max_size, the least recently used entry is evicted.
 
     Usage:

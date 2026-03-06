@@ -108,6 +108,7 @@ export interface PlateauBuildingIdSearchOptions {
 export interface PlateauBuildingIdWithMeshSearchOptions {
     debug?: boolean;
     mergeBuildingParts?: boolean;
+    lod?: string | null; // "LOD1" | "LOD2" | "LOD3" | null (auto fallback)
 }
 
 export interface PlateauTexturedUnfoldOptions extends PlateauBuildingIdWithMeshSearchOptions {
@@ -522,7 +523,7 @@ export class CityGMLService implements ICityGMLService {
         options?: PlateauBuildingIdWithMeshSearchOptions,
     ): Promise<Result<Blob>> {
         try {
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 building_id: buildingId,
                 mesh_code: meshCode,
                 merge_building_parts: options?.mergeBuildingParts ?? false,
@@ -532,6 +533,9 @@ export class CityGMLService implements ICityGMLService {
                 method: "solid",
                 auto_reproject: true,
             };
+            if (options?.lod) {
+                requestBody["lod"] = options.lod;
+            }
 
             const response = await fetch(`${this.baseUrl}/plateau/fetch-by-id-and-mesh`, {
                 method: "POST",
@@ -579,7 +583,7 @@ export class CityGMLService implements ICityGMLService {
         options?: PlateauTexturedUnfoldOptions,
     ): Promise<Result<PlateauTexturedUnfoldResponse>> {
         try {
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 building_id: buildingId,
                 mesh_code: meshCode,
                 merge_building_parts: options?.mergeBuildingParts ?? false,
@@ -596,6 +600,9 @@ export class CityGMLService implements ICityGMLService {
                 max_faces: options?.maxFaces ?? 20,
                 return_face_numbers: options?.returnFaceNumbers ?? true,
             };
+            if (options?.lod) {
+                requestBody["lod"] = options.lod;
+            }
 
             const response = await fetch(`${this.baseUrl}/plateau/unfold-textured-by-id-and-mesh`, {
                 method: "POST",

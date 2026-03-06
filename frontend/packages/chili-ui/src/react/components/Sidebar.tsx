@@ -5,10 +5,13 @@ import React from "react";
 import { I18n } from "chili-core";
 import type { PickedBuilding } from "chili-cesium";
 import { BuildingCard } from "./BuildingCard";
+import { LodSelector, type LodLevel } from "./LodSelector";
 import styles from "./Sidebar.module.css";
 
 export interface SidebarProps {
     selectedBuildings: PickedBuilding[];
+    selectedLod: LodLevel;
+    onLodChange: (lod: LodLevel) => void;
     onRemove: (gmlId: string) => void;
     onImport: () => void;
     onUnfoldBeta: () => void;
@@ -21,7 +24,15 @@ export interface SidebarProps {
  * Shows list of selected buildings with remove buttons.
  * Footer includes Import and Clear buttons.
  */
-export function Sidebar({ selectedBuildings, onRemove, onImport, onUnfoldBeta, onClear }: SidebarProps) {
+export function Sidebar({
+    selectedBuildings,
+    selectedLod,
+    onLodChange,
+    onRemove,
+    onImport,
+    onUnfoldBeta,
+    onClear,
+}: SidebarProps) {
     const count = selectedBuildings.length;
     const canImport = count > 0;
 
@@ -59,6 +70,7 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onUnfoldBeta, o
 
             {/* Footer */}
             <div className={styles.sidebarFooter}>
+                {canImport && <LodSelector selectedLod={selectedLod} onChange={onLodChange} />}
                 <button
                     className={styles.importButton}
                     onClick={onImport}

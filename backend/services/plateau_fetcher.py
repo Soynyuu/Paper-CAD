@@ -766,20 +766,11 @@ def fetch_citygml_from_plateau(
         except Exception as e:
             logger.info(f"[PLATEAU] Cache error (falling back to API): {e}")
 
-    # Step 2: Query PLATEAU API with mesh code (fallback)
-    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{center_mesh}"
-
+    # Step 2: Query PLATEAU API with mesh code (with retry logic)
     logger.info(f"[PLATEAU] Querying API...")
 
-    try:
-        response = requests.get(api_url, timeout=timeout)
-        response.raise_for_status()
-        catalog_data = response.json()
-    except requests.exceptions.RequestException as e:
-        logger.info(f"[PLATEAU] API request failed: {e}")
-        return None
-    except ValueError as e:
-        logger.info(f"[PLATEAU] Invalid JSON response: {e}")
+    catalog_data = _query_plateau_catalog_api(center_mesh, timeout=timeout)
+    if catalog_data is None:
         return None
 
     # Step 3: Extract building CityGML file URLs
@@ -1993,6 +1984,52 @@ def search_building_by_id(building_id: str, debug: bool = False) -> dict:
     }
 
 
+def _query_plateau_catalog_api(
+    mesh_code: str, timeout: int = 30, max_retries: int = 2
+) -> Optional[dict]:
+    """Query the PLATEAU CityGML catalog API with retry logic.
+
+    The PLATEAU Data Catalog API (api.plateauview.mlit.go.jp) intermittently
+    returns 404 for valid mesh codes.  This helper retries with exponential
+    backoff to improve reliability.
+
+    Args:
+        mesh_code: 8-digit 3rd mesh code
+        timeout: HTTP request timeout in seconds
+        max_retries: Number of retry attempts after the initial request (default 2)
+
+    Returns:
+        Parsed JSON response dict on success, None on failure after all retries.
+    """
+    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
+
+    for attempt in range(1 + max_retries):
+        try:
+            if attempt > 0:
+                delay = 0.5 * (2 ** (attempt - 1))  # 0.5s, 1.0s
+                logger.info(
+                    f"[PLATEAU] Retry {attempt}/{max_retries} after {delay:.1f}s..."
+                )
+                time.sleep(delay)
+
+            response = requests.get(api_url, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.info(
+                f"[PLATEAU] API request failed "
+                f"(attempt {attempt + 1}/{1 + max_retries}): {e}"
+            )
+            if attempt == max_retries:
+                return None
+        except ValueError as e:
+            # Don't retry JSON parse errors — the response is malformed
+            logger.info(f"[PLATEAU] Invalid JSON response: {e}")
+            return None
+
+    return None
+
+
 def _fetch_citygml_by_mesh_code_with_sources(
     mesh_code: str, timeout: int = 30
 ) -> Optional[Tuple[str, List[str]]]:
@@ -2054,20 +2091,11 @@ def _fetch_citygml_by_mesh_code_with_sources(
         except Exception as e:
             logger.info(f"[PLATEAU] Cache error (falling back to API): {e}")
 
-    # Query PLATEAU API with mesh code (fallback)
-    api_url = f"https://api.plateauview.mlit.go.jp/datacatalog/citygml/m:{mesh_code}"
-
+    # Query PLATEAU API with mesh code (with retry logic)
     logger.info(f"[PLATEAU] Querying API...")
 
-    try:
-        response = requests.get(api_url, timeout=timeout)
-        response.raise_for_status()
-        catalog_data = response.json()
-    except requests.exceptions.RequestException as e:
-        logger.info(f"[PLATEAU] API request failed: {e}")
-        return None
-    except ValueError as e:
-        logger.info(f"[PLATEAU] Invalid JSON response: {e}")
+    catalog_data = _query_plateau_catalog_api(mesh_code, timeout=timeout)
+    if catalog_data is None:
         return None
 
     # Extract building CityGML file URLs
@@ -2370,11 +2398,41 @@ def search_building_by_id_and_mesh(
             "error_details": f"Expected GML ID (bldg_...) or building ID (xxxxx-bldg-nnn), got: {building_id}",
         }
 
-    # Step 3: Fetch CityGML for the specified mesh code
+    # Step 3: Fetch CityGML for the specified mesh code (with neighbor fallback)
     import time as _time
 
     t_fetch_start = _time.time()
     fetched = _fetch_citygml_by_mesh_code_with_sources(mesh_code)
+
+    # If primary mesh fetch failed (e.g., PLATEAU API returned 404 after retries),
+    # try neighboring meshes before giving up.  The 3D Tiles tileset may assign a
+    # mesh code that the CityGML catalog doesn't serve, while the actual GML data
+    # lives in an adjacent mesh.
+    if not fetched:
+        logger.info(
+            f"[BUILDING SEARCH] Primary mesh {mesh_code} fetch failed. "
+            f"Trying neighboring meshes..."
+        )
+        try:
+            neighboring_meshes = [
+                m for m in get_neighboring_meshes_3rd(mesh_code) if m != mesh_code
+            ]
+        except Exception as e:
+            neighboring_meshes = []
+            logger.error(
+                f"[BUILDING SEARCH] Failed to calculate neighboring meshes "
+                f"for {mesh_code}: {e}"
+            )
+
+        for neighbor_mesh in neighboring_meshes:
+            fetched = _fetch_citygml_by_mesh_code_with_sources(neighbor_mesh)
+            if fetched:
+                logger.info(
+                    f"[BUILDING SEARCH] ✓ CityGML found via neighboring mesh "
+                    f"{neighbor_mesh} (primary {mesh_code} had no data)"
+                )
+                break
+
     t_fetch_ms = (_time.time() - t_fetch_start) * 1000
     if not fetched:
         logger.debug(f"[TIMING] CityGML fetch: {t_fetch_ms:.0f}ms (failed)")
@@ -2386,7 +2444,10 @@ def search_building_by_id_and_mesh(
             "citygml_source_urls": [],
             "total_buildings_in_mesh": None,
             "error": "Failed to fetch PLATEAU data",
-            "error_details": f"No CityGML data found for mesh code: {mesh_code}",
+            "error_details": (
+                f"No CityGML data found for mesh code: {mesh_code} "
+                f"(also tried neighboring meshes)"
+            ),
         }
     xml_content, source_urls = fetched
     xml_size_mb = len(xml_content) / (1024 * 1024)

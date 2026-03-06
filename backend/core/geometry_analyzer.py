@@ -37,6 +37,8 @@ if OCCT_AVAILABLE:
     )
     from OCC.Core.TopExp import topexp
     from OCC.Core.TopoDS import topods
+    from OCC.Core import BRepGProp
+    from OCC.Core.GProp import GProp_GProps
 
 
 class GeometryAnalyzer:
@@ -212,36 +214,50 @@ class GeometryAnalyzer:
             surface_adaptor = BRepAdaptor_Surface(face)
             surface_type_enum = surface_adaptor.GetType()
 
-            # 面積計算（簡易版）
-            # 面の境界から面積を推定
-            area = 100.0  # デフォルト値（立方体の場合）
+            # BRepGPropで正確な面積・重心を計算
+            props = GProp_GProps()
+            BRepGProp.brepgprop.SurfaceProperties(face, props)
+            area = props.Mass()  # 面積 = Mass() for surface properties
+            if area < 1e-12:
+                area = 0.0
+                logger.info(f"面{face_index}: 面積がほぼゼロ")
 
-            # 重心計算（面の中心点を近似）
-            # 面のパラメータ範囲の中心を使用
+            # 正確な幾何重心
+            center_of_mass = props.CentreOfMass()
+            centroid = center_of_mass
+
+            # 法線ベクトルを取得（全曲面タイプ対応）
+            normal_vec = None
             try:
                 u_min, u_max, v_min, v_max = surface_adaptor.BoundsUV()
                 u_mid = (u_min + u_max) / 2
                 v_mid = (v_min + v_max) / 2
-                center_point = surface_adaptor.Value(u_mid, v_mid)
-                centroid = center_point
-            except:
-                # フォールバック：原点を使用
-                centroid = gp_Pnt(0, 0, 0)
+                point = gp_Pnt()
+                du = gp_Vec()
+                dv = gp_Vec()
+                surface_adaptor.D1(u_mid, v_mid, point, du, dv)
+                normal = du.Crossed(dv)
+                if normal.Magnitude() > 1e-12:
+                    normal.Normalize()
+                    normal_vec = [normal.X(), normal.Y(), normal.Z()]
+            except Exception:
+                pass
 
-            # 法線ベクトルを取得（立方体の面を識別するため）
-            normal_vec = None
-            if surface_type_enum == GeomAbs_Plane:
+            # 平面の場合はより正確な法線を使用（D1のフォールバックとして）
+            if normal_vec is None and surface_type_enum == GeomAbs_Plane:
                 try:
                     plane = surface_adaptor.Plane()
                     axis = plane.Axis()
                     normal_dir = axis.Direction()
                     normal_vec = [normal_dir.X(), normal_dir.Y(), normal_dir.Z()]
-                except:
+                except Exception:
                     pass
 
             # シンプルに faceIndex + 1 を面番号として使用（フロントエンドと統一）
             face_number = face_index + 1
-            logger.info(f"  -> 面番号 {face_number} を割り当て (faceIndex={face_index})")
+            logger.info(
+                f"  -> 面番号 {face_number} を割り当て (faceIndex={face_index})"
+            )
 
             face_data = {
                 "index": face_index,
@@ -273,7 +289,9 @@ class GeometryAnalyzer:
 
             # 境界線が取得できない場合でも展開可能とする（立方体の場合）
             if not face_data["boundary_curves"]:
-                logger.info(f"面{face_index}: 境界線が取得できませんが、展開可能として処理")
+                logger.info(
+                    f"面{face_index}: 境界線が取得できませんが、展開可能として処理"
+                )
                 # 立方体の場合の簡易境界線を生成
                 face_data["boundary_curves"] = self._generate_default_square_boundary()
 

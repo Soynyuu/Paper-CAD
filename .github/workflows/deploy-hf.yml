@@ -1,0 +1,112 @@
+# Hugging Face Spaces 自動デプロイ
+# backend/ 配下の変更が main にマージされたとき、HF Space にプッシュする
+#
+# 必要な GitHub Secrets:
+#   HF_TOKEN - Hugging Face のアクセストークン (write 権限)
+#
+# 必要な GitHub Variables:
+#   HF_SPACE - HF Space の ID (例: kodai-m/paper-cad-backend)
+
+name: Deploy Backend to HF Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "!backend/tests/**"
+      - "!backend/**/*.md"
+      - "!backend/.env*"
+
+  # 手動トリガーも可能
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is not set"
+            exit 1
+          fi
+          if [ -z "$HF_SPACE" ]; then
+            echo "::error::HF_SPACE variable is not set"
+            exit 1
+          fi
+
+          # Git の設定
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # HF Space リポをクローン
+          HF_REPO_URL="https://oauth:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}"
+          git clone --depth 1 "$HF_REPO_URL" /tmp/hf-space
+
+          # backend のファイルを同期 (.dockerignore ベースで除外)
+          rsync -av --delete \
+            --exclude-from=backend/.dockerignore \
+            --exclude='Dockerfile' \
+            --exclude='Dockerfile.*' \
+            --exclude='Containerfile' \
+            --exclude='docker-compose.yml' \
+            --exclude='podman-deploy.sh' \
+            --exclude='deploy-hf.sh' \
+            --exclude='environment.yml' \
+            --exclude='.git/' \
+            --exclude='README.md' \
+            --exclude='.gitattributes' \
+            --exclude='data/n03/' \
+            --exclude='.venv*' \
+            --exclude='debug_logs/' \
+            --exclude='logs/' \
+            --exclude='scripts/' \
+            backend/ /tmp/hf-space/
+
+          # Dockerfile.hf → Dockerfile
+          cp backend/Dockerfile.hf /tmp/hf-space/Dockerfile
+
+          # environment-docker.yml を確実にコピー
+          cp backend/environment-docker.yml /tmp/hf-space/environment-docker.yml
+
+          # README.md を生成 (YAML frontmatter は HF Space の設定に必須)
+          cat > /tmp/hf-space/README.md << 'READMEEOF'
+          ---
+          title: Paper-CAD Backend
+          emoji: 📐
+          colorFrom: blue
+          colorTo: green
+          sdk: docker
+          app_port: 7860
+          pinned: false
+          ---
+
+          # Paper-CAD Backend
+
+          FastAPI backend for Paper-CAD — a CAD application for unfolding 3D models into 2D SVG/PDF patterns.
+
+          - **API Docs**: `/docs`
+          - **Health Check**: `/api/health`
+          READMEEOF
+
+          # 変更があればプッシュ
+          cd /tmp/hf-space
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            COMMIT_SHA="${GITHUB_SHA::7}"
+            git commit -m "deploy: sync from GitHub (${COMMIT_SHA})"
+            git push
+            echo "Deployed successfully!"
+            echo "Space: https://huggingface.co/spaces/${HF_SPACE}"
+          fi

@@ -1,0 +1,55 @@
+# Hugging Face Spaces 用 Dockerfile
+# HF Spaces 要件: uid=1000 で実行、デフォルトポート 7860
+#
+# 使い方:
+#   ローカルテスト:
+#     docker build -f Dockerfile.hf -t paper-cad-hf .
+#     docker run -p 7860:7860 -e FRONTEND_URL=http://localhost:8080 paper-cad-hf
+#
+#   HF Space へのデプロイ:
+#     このファイルを Dockerfile にリネームして HF Space リポにプッシュ
+
+FROM continuumio/miniconda3:24.11.1-0
+
+# システムパッケージのインストール（root で実行）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
+
+# Conda 環境ファイルをコピーして環境を作成（root で実行）
+COPY environment-docker.yml /tmp/environment-docker.yml
+RUN conda env create -f /tmp/environment-docker.yml && \
+    conda clean -afy && \
+    rm /tmp/environment-docker.yml
+
+# HF Spaces 要件: uid=1000 のユーザーを作成
+RUN useradd -m -u 1000 user
+
+# conda 環境への読み取り・実行権限を付与
+RUN chmod -R a+rX /opt/conda/envs/paper-cad
+
+# user に切り替え
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
+
+WORKDIR $HOME/app
+
+# アプリケーションコードをコピー（user 所有）
+COPY --chown=user . .
+
+# 環境変数のデフォルト値
+ENV PORT=7860 \
+    ENV=production \
+    WORKERS=1 \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 7860
+
+CMD ["conda", "run", "--no-capture-output", "-n", "paper-cad", "python", "main.py"]

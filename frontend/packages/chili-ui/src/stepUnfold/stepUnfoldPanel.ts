@@ -851,8 +851,9 @@ export class StepUnfoldPanel extends HTMLElement {
         // Clear container
         this._svgContainer.innerHTML = "";
 
-        // Enable SVG-Edit for editing capability
-        const USE_SVGEDIT = true; // Toggle this to enable/disable SVG-Edit
+        // Bypass SVG-Edit for texture-heavy SVGs (base64 images cause SVG-Edit to hang/strip content)
+        const hasEmbeddedTextures = /<pattern[^>]*>[\s\S]*?<image[^>]*href="data:image/.test(svgContent);
+        const USE_SVGEDIT = !hasEmbeddedTextures;
 
         if (!USE_SVGEDIT) {
             // Simple SVG display without editing capability
@@ -1628,17 +1629,17 @@ export class StepUnfoldPanel extends HTMLElement {
      * Check if SVG content exists
      */
     private _checkSvgContent(): boolean {
-        // Check if SVG Editor is initialized
-        if (!this._svgEditor) {
-            console.log("SVG Editor not initialized");
-            return false;
-        }
-
-        // Check if there's any SVG in the container
+        // Check if there's any SVG in the container (works for both SVG-Edit and innerHTML modes)
         const svgInContainer = this._svgContainer.querySelector("svg");
         if (svgInContainer) {
             console.log("Found SVG in container");
             return true;
+        }
+
+        // Check if SVG Editor is initialized
+        if (!this._svgEditor) {
+            console.log("SVG Editor not initialized and no SVG in container");
+            return false;
         }
 
         // Check if SVG-Edit has content
@@ -1661,11 +1662,11 @@ export class StepUnfoldPanel extends HTMLElement {
      */
     private async _performPDFExport() {
         // Check layout mode and route to appropriate export method
-        if (this._layoutMode === "paged") {
+        if (this._layoutMode === "paged" && this._lastStepData) {
             // Use backend PDF generation for multi-page layouts with correct scaling
             await this._performBackendPDFExport();
         } else {
-            // Use client-side PDF generation for single-page canvas mode
+            // Use client-side PDF generation (canvas mode, or paged mode without STEP data e.g. PLATEAU)
             await this._performClientPDFExport();
         }
     }
@@ -1754,83 +1755,79 @@ export class StepUnfoldPanel extends HTMLElement {
      * Perform client-side PDF export (for canvas mode)
      */
     private async _performClientPDFExport() {
-        if (!this._svgEditor) {
-            console.error("SVG Editor not initialized");
-            return;
-        }
-
         try {
             // Try multiple methods to get the SVG element
             let svgElement: SVGElement | null = null;
 
-            // Method 1: Try through SVG canvas
-            const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
-            if (canvas) {
-                console.log("Canvas object found:", canvas);
-
-                // Try getRootElem
-                if (canvas.getRootElem && typeof canvas.getRootElem === "function") {
-                    svgElement = canvas.getRootElem();
-                    console.log("Got SVG from getRootElem:", !!svgElement);
-                }
-
-                // Try getContentElem if getRootElem didn't work
-                if (!svgElement && canvas.getContentElem && typeof canvas.getContentElem === "function") {
-                    svgElement = canvas.getContentElem();
-                    console.log("Got SVG from getContentElem:", !!svgElement);
-                }
-
-                // Try getSvgContent (might not be in type definitions)
-                const canvasAny = canvas as any;
-                if (
-                    !svgElement &&
-                    canvasAny.getSvgContent &&
-                    typeof canvasAny.getSvgContent === "function"
-                ) {
-                    const svgContent = canvasAny.getSvgContent();
-                    console.log("Got SVG content string, length:", svgContent?.length);
-                    if (svgContent) {
-                        // Create a temporary div to parse the SVG string
-                        const tempDiv = document.createElement("div");
-                        tempDiv.innerHTML = svgContent;
-                        svgElement = tempDiv.querySelector("svg") as SVGElement;
-                        console.log("Parsed SVG from content string:", !!svgElement);
-                    }
-                }
+            // Method 0: Direct DOM query in the container (innerHTML mode, no SVG-Edit)
+            svgElement = this._svgContainer.querySelector("svg") as SVGElement;
+            if (svgElement) {
+                console.log("Found SVG directly in container (innerHTML mode)");
             }
 
-            // Method 2: Try direct DOM query in the SVG-Edit container
-            if (!svgElement && this._svgEditContainer) {
-                console.log("Searching for SVG in edit container");
+            // Methods 1-3: Try through SVG-Edit (if initialized and Method 0 didn't find it)
+            if (!svgElement && this._svgEditor) {
+                const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
 
-                // Look for SVG in the container or its iframe
-                svgElement = this._svgEditContainer.querySelector("svg") as SVGElement;
+                // Method 1: Try through SVG canvas
+                if (canvas) {
+                    console.log("Canvas object found:", canvas);
 
-                if (!svgElement) {
-                    // Check if there's an iframe (SVG-Edit might render in iframe)
-                    const iframe = this._svgEditContainer.querySelector("iframe") as HTMLIFrameElement;
-                    if (iframe && iframe.contentDocument) {
-                        svgElement = iframe.contentDocument.querySelector("svg") as SVGElement;
-                        console.log("Found SVG in iframe:", !!svgElement);
+                    if (canvas.getRootElem && typeof canvas.getRootElem === "function") {
+                        svgElement = canvas.getRootElem();
+                        console.log("Got SVG from getRootElem:", !!svgElement);
+                    }
+
+                    if (
+                        !svgElement &&
+                        canvas.getContentElem &&
+                        typeof canvas.getContentElem === "function"
+                    ) {
+                        svgElement = canvas.getContentElem();
+                        console.log("Got SVG from getContentElem:", !!svgElement);
+                    }
+
+                    const canvasAny = canvas as any;
+                    if (
+                        !svgElement &&
+                        canvasAny.getSvgContent &&
+                        typeof canvasAny.getSvgContent === "function"
+                    ) {
+                        const svgContent = canvasAny.getSvgContent();
+                        console.log("Got SVG content string, length:", svgContent?.length);
+                        if (svgContent) {
+                            const tempDiv = document.createElement("div");
+                            tempDiv.innerHTML = svgContent;
+                            svgElement = tempDiv.querySelector("svg") as SVGElement;
+                            console.log("Parsed SVG from content string:", !!svgElement);
+                        }
                     }
                 }
 
-                // Also check in the svgContainer
-                if (!svgElement) {
-                    svgElement = this._svgContainer.querySelector("svg") as SVGElement;
-                    console.log("Found SVG in svgContainer:", !!svgElement);
-                }
-            }
+                // Method 2: Try direct DOM query in the SVG-Edit container
+                if (!svgElement && this._svgEditContainer) {
+                    console.log("Searching for SVG in edit container");
+                    svgElement = this._svgEditContainer.querySelector("svg") as SVGElement;
 
-            // Method 3: Get SVG string and create element
-            if (!svgElement && canvas && canvas.getSvgString) {
-                const svgString = canvas.getSvgString();
-                console.log("Got SVG string, length:", svgString?.length);
-                if (svgString) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(svgString, "image/svg+xml");
-                    svgElement = doc.documentElement as unknown as SVGElement;
-                    console.log("Parsed SVG from string:", !!svgElement);
+                    if (!svgElement) {
+                        const iframe = this._svgEditContainer.querySelector("iframe") as HTMLIFrameElement;
+                        if (iframe && iframe.contentDocument) {
+                            svgElement = iframe.contentDocument.querySelector("svg") as SVGElement;
+                            console.log("Found SVG in iframe:", !!svgElement);
+                        }
+                    }
+                }
+
+                // Method 3: Get SVG string and create element
+                if (!svgElement && canvas && canvas.getSvgString) {
+                    const svgString = canvas.getSvgString();
+                    console.log("Got SVG string, length:", svgString?.length);
+                    if (svgString) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(svgString, "image/svg+xml");
+                        svgElement = doc.documentElement as unknown as SVGElement;
+                        console.log("Parsed SVG from string:", !!svgElement);
+                    }
                 }
             }
 

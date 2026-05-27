@@ -34,6 +34,10 @@ interface AppConfig {
     stepUnfoldWsUrl: string | null;
     cesiumBaseUrl: string;
     cesiumIonToken: string;
+    /** Cesium quantized-mesh terrain URL used for PLATEAU/GSI imagery alignment */
+    cesiumTerrainUrl?: string;
+    /** Geoid model query for PLATEAU-Terrain */
+    cesiumTerrainGeoid?: string;
     cesiumTerrainAssetId: number;
     /** Optional dedicated token for terrain assets (e.g. PLATEAU-Terrain) */
     cesiumTerrainIonToken?: string;

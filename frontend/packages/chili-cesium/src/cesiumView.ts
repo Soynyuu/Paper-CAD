@@ -29,6 +29,8 @@ const PLATEAU_CREDIT_HTML =
     '<a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">Project PLATEAU</a>';
 const createPlateauCredit = () => new Cesium.Credit(PLATEAU_CREDIT_HTML, true);
 const JAPAN_RECTANGLE = Cesium.Rectangle.fromDegrees(122.93457, 20.425, 153.986, 45.557);
+const DEFAULT_PLATEAU_TERRAIN_URL = "https://tile.plateauview.mlit.go.jp/terrain";
+const DEFAULT_PLATEAU_TERRAIN_GEOID = "gsigeo2011";
 
 /**
  * Basemap registry with GSI (Geospatial Information Authority of Japan) layers
@@ -80,9 +82,9 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         name: "PLATEAU Ortho 2023",
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
-                url: "https://api.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
+                url: "https://tile.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
                 minimumLevel: 10,
-                maximumLevel: 16,
+                maximumLevel: 19,
                 rectangle: JAPAN_RECTANGLE,
                 credit: createPlateauCredit(),
             });
@@ -111,6 +113,15 @@ const getRuntimeAppConfig = (): Partial<AppConfig> | undefined => {
 };
 
 const clampResolutionScale = (value: number): number => Math.min(Math.max(value, 0.5), 2);
+const withGeoidQuery = (url: string, geoid: string): string => {
+    if (!geoid || /[?&]geoid=/.test(url)) {
+        return url;
+    }
+
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}geoid=${encodeURIComponent(geoid)}`;
+};
+
 const ensureCesiumWidgetCss = (baseUrl: string): Promise<void> => {
     if (typeof document === "undefined") {
         return Promise.resolve();
@@ -289,41 +300,57 @@ export class CesiumView {
         if (!this.viewer) return;
 
         const appConfig = getRuntimeAppConfig();
-        const assetId = Number(appConfig?.cesiumTerrainAssetId);
-        if (!Number.isFinite(assetId) || assetId <= 0) {
+        const terrainUrl = withGeoidQuery(
+            appConfig?.cesiumTerrainUrl?.trim() || DEFAULT_PLATEAU_TERRAIN_URL,
+            appConfig?.cesiumTerrainGeoid?.trim() ?? DEFAULT_PLATEAU_TERRAIN_GEOID,
+        );
+
+        try {
+            const terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(terrainUrl, {
+                requestVertexNormals: true,
+            });
+            this.viewer.terrainProvider = terrainProvider;
+            this.viewer.scene?.requestRender();
             return;
+        } catch (error) {
+            console.warn(
+                `[CesiumView] Failed to load PLATEAU terrain from ${terrainUrl}. Falling back to configured terrain.`,
+                error,
+            );
         }
 
+        const assetId = Number(appConfig?.cesiumTerrainAssetId);
         const terrainIonToken = appConfig?.cesiumTerrainIonToken || appConfig?.cesiumIonToken;
-        if (!terrainIonToken) {
+
+        if (Number.isFinite(assetId) && assetId > 0 && terrainIonToken) {
+            try {
+                const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId, {
+                    accessToken: terrainIonToken,
+                } as any);
+                this.viewer.terrainProvider = terrainProvider;
+                this.viewer.scene?.requestRender();
+                return;
+            } catch (error) {
+                console.warn(
+                    `[CesiumView] Failed to load terrain from ion asset ${assetId}. Falling back to Cesium World Terrain.`,
+                    error,
+                );
+            }
+        } else if (Number.isFinite(assetId) && assetId > 0) {
             console.warn(
-                "[CesiumView] Terrain ion access token is missing; skipping terrain loading (CESIUM_TERRAIN_ASSET_ID is set).",
+                "[CesiumView] Terrain ion access token is missing; skipping configured ion terrain.",
             );
-            return;
         }
 
         try {
-            const terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(assetId, {
-                accessToken: terrainIonToken,
-            } as any);
-            this.viewer.terrainProvider = terrainProvider;
+            const fallbackTerrain = await Cesium.createWorldTerrainAsync();
+            this.viewer.terrainProvider = fallbackTerrain;
             this.viewer.scene?.requestRender();
-        } catch (error) {
+        } catch (fallbackError) {
             console.warn(
-                `[CesiumView] Failed to load terrain from ion asset ${assetId}. Falling back to Cesium World Terrain.`,
-                error,
+                "[CesiumView] Failed to load Cesium World Terrain, using default terrain.",
+                fallbackError,
             );
-
-            try {
-                const fallbackTerrain = await Cesium.createWorldTerrainAsync();
-                this.viewer.terrainProvider = fallbackTerrain;
-                this.viewer.scene?.requestRender();
-            } catch (fallbackError) {
-                console.warn(
-                    "[CesiumView] Failed to load Cesium World Terrain, using default terrain.",
-                    fallbackError,
-                );
-            }
         }
     }
 

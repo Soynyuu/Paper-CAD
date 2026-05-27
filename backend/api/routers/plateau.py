@@ -184,6 +184,7 @@ async def plateau_search_by_address(request: PlateauSearchRequest):
                 relevance_score=b.relevance_score,
                 name_similarity=b.name_similarity,
                 match_reason=b.match_reason,
+                municipality_code=b.municipality_code,
                 has_lod2=b.has_lod2,
                 has_lod3=b.has_lod3,
             )
@@ -603,6 +604,8 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
             relevance_score=building_data.relevance_score,
             name_similarity=building_data.name_similarity,
             match_reason=building_data.match_reason,
+            municipality_code=building_data.municipality_code
+            or result.get("municipality_code"),
             has_lod2=building_data.has_lod2,
             has_lod3=building_data.has_lod3,
         )
@@ -875,6 +878,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
             relevance_score=building_data.relevance_score,
             name_similarity=building_data.name_similarity,
             match_reason=building_data.match_reason,
+            municipality_code=building_data.municipality_code,
             has_lod2=building_data.has_lod2,
             has_lod3=building_data.has_lod3,
         )
@@ -1025,6 +1029,7 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                             relevance_score=building_data.relevance_score,
                             name_similarity=building_data.name_similarity,
                             match_reason=building_data.match_reason,
+                            municipality_code=building_data.municipality_code,
                             has_lod2=building_data.has_lod2,
                             has_lod3=building_data.has_lod3,
                         )
@@ -1579,7 +1584,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
                 ]
                 total_requested = len(request.mesh_codes)
                 total_found = len(tilesets)
-                total_not_found = total_requested - total_found
+                total_not_found = max(total_requested - total_found, 0)
 
                 logger.info(
                     f"[API] Using municipality filter {request.municipality_code}: "
@@ -1618,7 +1623,7 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
 
         total_requested = len(request.mesh_codes)
         total_found = len(tilesets)
-        total_not_found = total_requested - total_found
+        total_not_found = max(total_requested - total_found, 0)
 
         logger.info(f"[API] Found {total_found}/{total_requested} tilesets")
 

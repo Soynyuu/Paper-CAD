@@ -28,7 +28,9 @@ function loadEnv() {
 
 loadEnv();
 
-// PLATEAU-Terrain (ion asset 3258112). Override with CESIUM_TERRAIN_ASSET_ID if needed.
+// PLATEAU-Terrain. Override URL/geoid or ion asset if needed.
+const DEFAULT_TERRAIN_URL = "https://tile.plateauview.mlit.go.jp/terrain";
+const DEFAULT_TERRAIN_GEOID = "gsigeo2011";
 const DEFAULT_TERRAIN_ASSET_ID = 3258112;
 const DEFAULT_PICK_LOD = 2;
 const DEFAULT_RESOLUTION_SCALE = 0.6;
@@ -188,6 +190,8 @@ const config = defineConfig({
                 stepUnfoldWsUrl: process.env.STEP_UNFOLD_WS_URL || null,
                 cesiumBaseUrl: process.env.CESIUM_BASE_URL || "/cesium/",
                 cesiumIonToken: process.env.CESIUM_ION_TOKEN || "",
+                cesiumTerrainUrl: process.env.CESIUM_TERRAIN_URL || DEFAULT_TERRAIN_URL,
+                cesiumTerrainGeoid: process.env.CESIUM_TERRAIN_GEOID || DEFAULT_TERRAIN_GEOID,
                 cesiumTerrainAssetId: parseNumber(
                     process.env.CESIUM_TERRAIN_ASSET_ID,
                     DEFAULT_TERRAIN_ASSET_ID,

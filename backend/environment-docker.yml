@@ -35,10 +35,10 @@ dependencies:
   # pip経由でインストール
   - pip
   - pip:
-      - fastapi==0.116.1
-      - uvicorn[standard]==0.35.0
+      - fastapi==0.128.8
+      - uvicorn[standard]==0.39.0
       - python-multipart==0.0.20
-      - pydantic==2.11.7
+      - pydantic==2.13.4
       - python-dotenv==1.1.1
       - cairosvg==2.7.1
       - pypdf==5.2.0

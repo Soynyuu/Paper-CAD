@@ -123,6 +123,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const [pickerStage, setPickerStage] = useState<"search" | "map">("search");
     const [pendingResult, setPendingResult] = useState<SearchResult | null>(null);
     const [activeResultId, setActiveResultId] = useState<string | null>(null);
+    const [previewHighlightedResultId, setPreviewHighlightedResultId] = useState<string | null>(null);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState<string>("");
@@ -268,7 +269,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
             // Create and initialize CesiumView
             const cesiumView = new CesiumView(container);
-            await cesiumView.initialize("gsi-pale", {
+            await cesiumView.initialize("plateau-ortho-2023", {
                 deferBasemap: true,
                 deferTerrain: true,
             });
@@ -407,6 +408,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         const match = buildingId.match(MUNICIPALITY_CODE_PATTERN);
         return match?.[1];
     };
+    const getMunicipalityCodeFromBuilding = (building: any, buildingId?: string) => {
+        return typeof building?.municipality_code === "string"
+            ? building.municipality_code
+            : getMunicipalityCodeFromBuildingId(buildingId);
+    };
 
     const toNumberOrUndefined = (value: unknown): number | undefined => {
         const numeric = typeof value === "number" ? value : Number(value);
@@ -428,13 +434,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             const targetLongitude = result.longitude;
             const municipalityCode = result.municipalityCode;
             const centerMeshCodes = resolveMeshCodesFromCoordinates(targetLatitude, targetLongitude, false);
-            const loadedMeshCodes = new Set(loader.getLoadedMeshCodes());
-            const hasCenterMeshLoaded = centerMeshCodes.some((meshCode) => loadedMeshCodes.has(meshCode));
-
-            if (hasCenterMeshLoaded) {
-                viewer.scene.requestRender();
-                return;
-            }
 
             setLoading(true);
             setLoadingMessage("3D Tilesを読み込み中...");
@@ -499,23 +498,30 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 const PRIMARY_TILESETS_TO_LOAD = 1;
                 const BACKGROUND_BATCH_SIZE = 1;
                 const tilesetsToLoad = tilesets.slice(0, MAX_TILESETS_TO_LOAD);
-                const meshCodesToLoad = tilesetsToLoad.map((tileset: any) => tileset.mesh_code);
                 const primaryTilesets = tilesetsToLoad.slice(0, PRIMARY_TILESETS_TO_LOAD);
                 const backgroundTilesets = tilesetsToLoad.slice(PRIMARY_TILESETS_TO_LOAD);
+                const tilesetKeysToRetain = tilesetsToLoad.map((tileset: any) =>
+                    loader.createTilesetKey(
+                        tileset.mesh_code,
+                        tileset.tileset_url,
+                        tileset.municipality_code,
+                    ),
+                );
 
-                loader.retainMeshes(meshCodesToLoad);
+                loader.retainMeshes(tilesetKeysToRetain);
 
                 const primaryLoad = await loader.loadMultipleTilesets(
                     primaryTilesets.map((tileset: any) => ({
                         meshCode: tileset.mesh_code,
                         url: tileset.tileset_url,
+                        municipalityCode: tileset.municipality_code,
                     })),
                 );
                 let failedMeshCount = primaryLoad.failedMeshes.length;
 
                 if (cesiumViewRef.current) {
-                    setLoadingMessage("地図タイルを読み込み中...");
-                    await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: false });
+                    setLoadingMessage("地形・地図タイルを読み込み中...");
+                    await cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
                 }
 
                 if (backgroundTilesets.length > 0) {
@@ -536,6 +542,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                 batch.map((tileset: any) => ({
                                     meshCode: tileset.mesh_code,
                                     url: tileset.tileset_url,
+                                    municipalityCode: tileset.municipality_code,
                                 })),
                             );
                             failedMeshCount += loadResult.failedMeshes.length;
@@ -550,9 +557,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             );
                         }
 
-                        if (cesiumViewRef.current) {
-                            void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                        }
+                        viewer.scene.requestRender();
                     };
 
                     void loadBackgroundTilesets()
@@ -577,9 +582,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             failedMeshCount,
                         );
                     }
-                    if (cesiumViewRef.current) {
-                        void cesiumViewRef.current.activateBasemap(undefined, { includeTerrain: true });
-                    }
+                    viewer.scene.requestRender();
                 }
             } finally {
                 if (restoreOnFinish) {
@@ -603,6 +606,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 setSelectedResultIndex(index);
             }
             setActiveResultId(result.id);
+            setPreviewHighlightedResultId(null);
 
             await new Promise<void>((resolve) => {
                 viewer.camera.flyTo({
@@ -645,7 +649,10 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 );
             };
 
-            if (attemptPreviewHighlight()) return;
+            if (attemptPreviewHighlight()) {
+                setPreviewHighlightedResultId(result.id);
+                return;
+            }
 
             let retries = 0;
             const MAX_RETRIES = 40;
@@ -655,13 +662,15 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 if (viewer.isDestroyed()) return;
                 viewer.scene.requestRender();
                 retries += 1;
-                if (attemptPreviewHighlight() || retries >= MAX_RETRIES) {
-                    if (retries >= MAX_RETRIES) {
-                        console.warn(
-                            "[PlateauCesiumPicker] Search result highlight timed out",
-                            result.gmlId || result.buildingId || result.id,
-                        );
-                    }
+                if (attemptPreviewHighlight()) {
+                    setPreviewHighlightedResultId(result.id);
+                    return;
+                }
+                if (retries >= MAX_RETRIES) {
+                    console.warn(
+                        "[PlateauCesiumPicker] Search result highlight timed out",
+                        result.gmlId || result.buildingId || result.id,
+                    );
                     return;
                 }
                 window.setTimeout(retryPreview, RETRY_INTERVAL_MS);
@@ -705,6 +714,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         setIsSearching(true);
         setSearchError(null);
+        setPreviewHighlightedResultId(null);
         setShowResults(false);
 
         if (abortControllerRef.current) {
@@ -753,6 +763,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 setSearchResults([]);
                 setShowResults(true);
                 setActiveResultId(null);
+                setPreviewHighlightedResultId(null);
                 return;
             }
 
@@ -763,6 +774,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     setSearchResults([]);
                     setShowResults(true);
                     setActiveResultId(null);
+                    setPreviewHighlightedResultId(null);
                     return;
                 }
 
@@ -778,6 +790,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                           : undefined;
                 const buildingId =
                     typeof building.building_id === "string" ? building.building_id : undefined;
+                const municipalityCode =
+                    getMunicipalityCodeFromBuilding(building, buildingId) ||
+                    (typeof data.municipality_code === "string" ? data.municipality_code : undefined);
 
                 results.push({
                     id: gmlId || buildingId || "single-result",
@@ -787,7 +802,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                     gmlId,
                     buildingId,
                     distanceMeters: toNumberOrUndefined(building.distance_meters),
-                    municipalityCode: getMunicipalityCodeFromBuildingId(buildingId),
+                    municipalityCode,
                     usage: building.usage,
                 });
             } else {
@@ -812,6 +827,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                               : undefined;
                     const buildingId =
                         typeof building.building_id === "string" ? building.building_id : undefined;
+                    const municipalityCode = getMunicipalityCodeFromBuilding(building, buildingId);
                     const resultId = gmlId || buildingId || `search-result-${index + 1}`;
 
                     results.push({
@@ -823,7 +839,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         gmlId,
                         buildingId,
                         distanceMeters: toNumberOrUndefined(building.distance_meters),
-                        municipalityCode: getMunicipalityCodeFromBuildingId(buildingId),
+                        municipalityCode,
                         usage: building.usage,
                         osmType: geocoding?.osm_type,
                         osmId: geocoding?.osm_id,
@@ -836,6 +852,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                 setSearchResults([]);
                 setShowResults(true);
                 setActiveResultId(null);
+                setPreviewHighlightedResultId(null);
                 return;
             }
 
@@ -949,6 +966,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         setSearchError(null);
         setSelectedResultIndex(-1);
         setActiveResultId(null);
+        setPreviewHighlightedResultId(null);
         setPendingResult(null);
         buildingPickerRef.current?.clearPreviewHighlight();
         searchInputRef.current?.focus();
@@ -1127,7 +1145,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                                 {isResultSelected && (
                                                     <span className={styles.resultTag}>選択済み</span>
                                                 )}
-                                                {result.id === activeResultId && (
+                                                {result.id === previewHighlightedResultId && (
                                                     <span
                                                         className={`${styles.resultTag} ${styles.resultTagActive}`}
                                                     >

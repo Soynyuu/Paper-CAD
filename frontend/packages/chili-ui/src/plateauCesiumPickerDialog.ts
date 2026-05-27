@@ -1214,7 +1214,7 @@ export class PlateauCesiumPickerDialog {
             try {
                 // Initialize Cesium view
                 cesiumView = new CesiumView(viewerContainer);
-                cesiumView.initialize();
+                await cesiumView.initialize("plateau-ortho-2023");
 
                 const viewer = cesiumView.getViewer();
                 if (!viewer) {

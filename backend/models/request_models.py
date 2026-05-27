@@ -155,6 +155,7 @@ class BuildingInfoResponse(BaseModel):
     relevance_score: Optional[float] = None  # Composite relevance score (0.0-1.0)
     name_similarity: Optional[float] = None  # Name matching score (0.0-1.0)
     match_reason: Optional[str] = None  # Explanation of why this building matched
+    municipality_code: Optional[str] = None  # CityGML catalog municipality code
     has_lod2: bool = False  # Does the building have LOD2 geometry?
     has_lod3: bool = False  # Does the building have LOD3 geometry?
 

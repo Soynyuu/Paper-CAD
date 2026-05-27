@@ -32,6 +32,10 @@ export class CesiumTilesetLoader {
         this.viewer = viewer;
     }
 
+    createTilesetKey(meshCode: string, url?: string, municipalityCode?: string): string {
+        return `${meshCode}:${municipalityCode || url || "unknown"}`;
+    }
+
     private getTilesetOptions() {
         return {
             // Enable debugging for development
@@ -171,15 +175,19 @@ export class CesiumTilesetLoader {
      * ]);
      */
     async loadMultipleTilesets(
-        tilesets: Array<{ meshCode: string; url: string }>,
+        tilesets: Array<{ meshCode: string; url: string; municipalityCode?: string }>,
     ): Promise<{ failedMeshes: string[]; loadedTilesets: Cesium.Cesium3DTileset[] }> {
         const failedMeshes: string[] = [];
         const loadedTilesets: Cesium.Cesium3DTileset[] = [];
-        const loadPromises = tilesets.map(async ({ meshCode, url }) => {
+        const loadPromises = tilesets.map(async ({ meshCode, url, municipalityCode }) => {
+            const tilesetKey = this.createTilesetKey(meshCode, url, municipalityCode);
+
             // Skip if already loaded, but update access time
-            if (this.loadedTilesets.has(meshCode)) {
-                this.updateMeshAccessTime(meshCode);
-                console.log(`[CesiumTilesetLoader] Mesh ${meshCode} already loaded, updating access time`);
+            if (this.loadedTilesets.has(tilesetKey)) {
+                this.updateMeshAccessTime(tilesetKey);
+                console.log(
+                    `[CesiumTilesetLoader] Tileset ${tilesetKey} already loaded, updating access time`,
+                );
                 return;
             }
 
@@ -196,16 +204,16 @@ export class CesiumTilesetLoader {
 
                 // Add to scene
                 this.viewer.scene.primitives.add(tileset);
-                this.loadedTilesets.set(meshCode, tileset);
+                this.loadedTilesets.set(tilesetKey, tileset);
                 loadedTilesets.push(tileset);
 
                 // Track in LRU order
-                this.meshLoadOrder.push(meshCode);
+                this.meshLoadOrder.push(tilesetKey);
 
                 // Apply default styling
                 this.setDefaultStyle(tileset);
 
-                console.log(`[CesiumTilesetLoader] Loaded mesh ${meshCode}`);
+                console.log(`[CesiumTilesetLoader] Loaded tileset ${tilesetKey}`);
             } catch (error) {
                 console.warn(`[CesiumTilesetLoader] Failed to load mesh ${meshCode}:`, error);
                 failedMeshes.push(meshCode);
@@ -235,7 +243,7 @@ export class CesiumTilesetLoader {
                 this.meshLoadOrder.splice(index, 1);
             }
 
-            console.log(`[CesiumTilesetLoader] Unloaded mesh ${meshCode}`);
+            console.log(`[CesiumTilesetLoader] Unloaded tileset ${meshCode}`);
         }
     }
 
@@ -270,18 +278,18 @@ export class CesiumTilesetLoader {
     }
 
     /**
-     * Get list of loaded mesh codes
+     * Get list of loaded tileset keys
      *
-     * @returns Array of loaded mesh codes
+     * @returns Array of loaded tileset keys
      */
     getLoadedMeshCodes(): string[] {
         return Array.from(this.loadedTilesets.keys());
     }
 
     /**
-     * Keep only the specified mesh codes loaded, unloading the rest.
+     * Keep only the specified tileset keys loaded, unloading the rest.
      *
-     * @param meshCodes - Mesh codes to retain
+     * @param meshCodes - Tileset keys to retain
      */
     retainMeshes(meshCodes: string[]): void {
         const keep = new Set(meshCodes);

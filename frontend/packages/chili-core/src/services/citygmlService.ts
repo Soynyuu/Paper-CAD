@@ -65,6 +65,7 @@ export interface BuildingInfo {
     relevance_score?: number;
     name_similarity?: number;
     match_reason?: string;
+    municipality_code?: string;
 }
 
 export interface GeocodingResult {

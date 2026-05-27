@@ -274,6 +274,62 @@ def _load_gml_from_cache_multi(mesh_code: str, area_codes: List[str]) -> Optiona
         return None
 
 
+def _load_gml_from_cache_with_metadata(
+    mesh_code: str, area_codes: List[str]
+) -> Optional[CityGMLFetchResult]:
+    """Load cached CityGML and map each building to its ward directory code."""
+    config = _get_cache_config()
+    cache_dir = config["cache_dir"]
+
+    file_entries: List[Tuple[Path, str]] = []
+    for area_code in area_codes:
+        for path in _find_cached_gml_files(cache_dir, area_code, mesh_code):
+            file_entries.append((path, area_code))
+
+    if not file_entries:
+        return None
+
+    seen: Set[str] = set()
+    unique_entries: List[Tuple[Path, str]] = []
+    for path, area_code in file_entries:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_entries.append((path, area_code))
+
+    try:
+        with open(unique_entries[0][0], "r", encoding="utf-8") as f:
+            base_xml = f.read()
+
+        municipality_by_gml_id = _extract_gml_municipality_map(
+            base_xml, unique_entries[0][1]
+        )
+        root = ET.fromstring(base_xml)
+
+        for file_path, area_code in unique_entries[1:]:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            municipality_by_gml_id.update(
+                _extract_gml_municipality_map(content, area_code)
+            )
+            other_root = ET.fromstring(content)
+            for member in _iter_citygml_members(other_root):
+                root.append(member)
+
+        xml_content = (
+            base_xml
+            if len(unique_entries) == 1
+            else ET.tostring(root, encoding="unicode")
+        )
+        return CityGMLFetchResult(xml_content, municipality_by_gml_id)
+
+    except Exception as e:
+        logger.error(f"[CACHE] Failed to load GML metadata: {e}")
+        return None
+
+
 def _iter_citygml_members(root: ET.Element):
     """Yield merge-worthy CityGML members from a document root.
 
@@ -491,6 +547,7 @@ class BuildingInfo:
         relevance_score: Composite relevance score (0.0-1.0, optional)
         name_similarity: Name matching score (0.0-1.0, optional)
         match_reason: Human-readable explanation of why this building matched (optional)
+        municipality_code: PLATEAU municipality code from the CityGML catalog (optional)
     """
 
     building_id: Optional[str]
@@ -505,8 +562,17 @@ class BuildingInfo:
     relevance_score: Optional[float] = None
     name_similarity: Optional[float] = None
     match_reason: Optional[str] = None
+    municipality_code: Optional[str] = None
     has_lod2: bool = False  # Does the building have LOD2 geometry?
     has_lod3: bool = False  # Does the building have LOD3 geometry?
+
+
+@dataclass
+class CityGMLFetchResult:
+    """CityGML XML with source catalog metadata."""
+
+    xml_content: str
+    municipality_by_gml_id: Dict[str, str]
 
 
 @dataclass
@@ -703,6 +769,16 @@ def _calculate_relevance_score(result: dict, query: str) -> float:
 def fetch_citygml_from_plateau(
     latitude: float, longitude: float, radius: float = 0.001, timeout: int = 30
 ) -> Optional[str]:
+    """Fetch CityGML XML from PLATEAU, preserving the legacy string return type."""
+    result = fetch_citygml_from_plateau_with_metadata(
+        latitude, longitude, radius, timeout
+    )
+    return result.xml_content if result else None
+
+
+def fetch_citygml_from_plateau_with_metadata(
+    latitude: float, longitude: float, radius: float = 0.001, timeout: int = 30
+) -> Optional[CityGMLFetchResult]:
     """Fetch CityGML data from PLATEAU Data Catalog API using mesh codes.
 
     Args:
@@ -712,7 +788,7 @@ def fetch_citygml_from_plateau(
         timeout: Request timeout in seconds
 
     Returns:
-        Combined CityGML XML content as string if successful, None otherwise
+        CityGML XML and source municipality metadata if successful, None otherwise
 
     Strategy:
         1. Calculate 3rd mesh code (1km) for coordinates
@@ -748,16 +824,16 @@ def fetch_citygml_from_plateau(
                     logger.info(
                         f"[CACHE] Mesh {center_mesh} spans multiple wards: {area_codes}"
                     )
-                    cached_xml = _load_gml_from_cache_multi(center_mesh, area_codes)
-                else:
-                    cached_xml = _load_gml_from_cache(center_mesh, area_codes[0])
+                cached_result = _load_gml_from_cache_with_metadata(
+                    center_mesh, area_codes
+                )
 
-                if cached_xml:
+                if cached_result:
                     ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
                     logger.info(
                         f"[PLATEAU] ✓ Cache HIT: mesh={center_mesh}, wards={ward_label}"
                     )
-                    return cached_xml
+                    return cached_result
 
                 ward_label = area_codes if len(area_codes) > 1 else area_codes[0]
                 logger.info(
@@ -783,12 +859,15 @@ def fetch_citygml_from_plateau(
         return None
 
     # Step 3: Extract building CityGML file URLs
-    citygml_urls = []
+    citygml_entries: List[Tuple[str, Optional[str]]] = []
     MAX_FILES = 5  # Limit to prevent memory issues
 
     if "cities" in catalog_data:
         for city in catalog_data["cities"]:
             city_name = city.get("cityName", "Unknown")
+            city_code = city.get("cityCode")
+            if city_code is not None:
+                city_code = str(city_code)
             files = city.get("files", {})
             bldg_files = files.get("bldg", [])
 
@@ -797,36 +876,60 @@ def fetch_citygml_from_plateau(
             for bldg_file in bldg_files:
                 url = bldg_file.get("url")
                 if url:
-                    citygml_urls.append(url)
-                    if len(citygml_urls) >= MAX_FILES:
+                    citygml_entries.append((url, city_code))
+                    if len(citygml_entries) >= MAX_FILES:
                         break
 
-            if len(citygml_urls) >= MAX_FILES:
+            if len(citygml_entries) >= MAX_FILES:
                 break
 
-    if not citygml_urls:
+    if not citygml_entries:
         logger.info(f"[PLATEAU] No CityGML files found in response")
         return None
 
-    if len(citygml_urls) > MAX_FILES:
-        citygml_urls = citygml_urls[:MAX_FILES]
+    if len(citygml_entries) > MAX_FILES:
+        citygml_entries = citygml_entries[:MAX_FILES]
         logger.info(
             f"[PLATEAU] Limited to {MAX_FILES} file(s) to prevent memory issues"
         )
 
-    logger.info(f"[PLATEAU] Downloading {len(citygml_urls)} CityGML file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(citygml_entries)} CityGML file(s)...")
 
     # Step 4: Download and combine CityGML files
-    combined_xml = _download_and_combine_citygml(citygml_urls, timeout=timeout)
+    combined_result = _download_and_combine_citygml_with_metadata(
+        citygml_entries, timeout=timeout
+    )
 
-    if combined_xml:
+    if combined_result:
         logger.info(
-            f"[PLATEAU] Success: Combined {len(combined_xml)} bytes from {len(citygml_urls)} file(s)"
+            f"[PLATEAU] Success: Combined {len(combined_result.xml_content)} bytes from {len(citygml_entries)} file(s)"
         )
     else:
         logger.error(f"[PLATEAU] Failed to download CityGML files")
 
-    return combined_xml
+    return combined_result
+
+
+def _extract_gml_municipality_map(
+    xml_content: str, municipality_code: Optional[str]
+) -> Dict[str, str]:
+    """Map every building gml:id in an XML document to a municipality code."""
+    if not municipality_code:
+        return {}
+
+    try:
+        root = ET.fromstring(xml_content)
+    except ET.ParseError:
+        return {}
+
+    mapping: Dict[str, str] = {}
+    for building_elem in root.findall(".//bldg:Building", NS):
+        gml_id = building_elem.get(
+            "{http://www.opengis.net/gml}id"
+        ) or building_elem.get("id")
+        if gml_id:
+            mapping[gml_id] = municipality_code
+    return mapping
 
 
 def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optional[str]:
@@ -839,17 +942,27 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
     Returns:
         Combined CityGML XML as string, or None if failed
     """
-    # Download first file as base
-    if not urls:
+    result = _download_and_combine_citygml_with_metadata(
+        [(url, None) for url in urls], timeout=timeout
+    )
+    return result.xml_content if result else None
+
+
+def _download_and_combine_citygml_with_metadata(
+    entries: List[Tuple[str, Optional[str]]], timeout: int = 30
+) -> Optional[CityGMLFetchResult]:
+    """Download CityGML files, combine XML, and remember each building's city code."""
+    if not entries:
         return None
 
-    logger.info(f"[PLATEAU] Downloading {len(urls)} file(s)...")
+    logger.info(f"[PLATEAU] Downloading {len(entries)} file(s)...")
 
     try:
         # Download first file as base document
-        response = requests.get(urls[0], timeout=timeout)
+        response = requests.get(entries[0][0], timeout=timeout)
         response.raise_for_status()
         base_xml = response.text
+        municipality_by_gml_id = _extract_gml_municipality_map(base_xml, entries[0][1])
 
         # Parse base XML
         try:
@@ -859,15 +972,18 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
             return None
 
         # If only one file, return it
-        if len(urls) == 1:
-            return base_xml
+        if len(entries) == 1:
+            return CityGMLFetchResult(base_xml, municipality_by_gml_id)
 
         # Download and merge remaining files
-        for i, url in enumerate(urls[1:], 2):
+        for i, (url, municipality_code) in enumerate(entries[1:], 2):
             try:
-                logger.info(f"[PLATEAU]   Downloading file {i}/{len(urls)}...")
+                logger.info(f"[PLATEAU]   Downloading file {i}/{len(entries)}...")
                 response = requests.get(url, timeout=timeout)
                 response.raise_for_status()
+                municipality_by_gml_id.update(
+                    _extract_gml_municipality_map(response.text, municipality_code)
+                )
 
                 # Parse additional XML
                 additional_root = ET.fromstring(response.text)
@@ -882,7 +998,7 @@ def _download_and_combine_citygml(urls: List[str], timeout: int = 30) -> Optiona
 
         # Convert back to string
         combined_xml = ET.tostring(root, encoding="unicode")
-        return combined_xml
+        return CityGMLFetchResult(combined_xml, municipality_by_gml_id)
 
     except requests.exceptions.RequestException as e:
         logger.info(f"[PLATEAU] Download failed: {e}")
@@ -1505,6 +1621,7 @@ def search_buildings_by_address(
             building.match_reason = "完全一致"
             building.relevance_score = 1.0
             building.name_similarity = 1.0
+            building.municipality_code = "13113"
 
             # Frontend tileset loading uses municipality code derived from building_id.
             # Ensure Shibuya code exists even when source CityGML only has gml:id.
@@ -1556,10 +1673,10 @@ def search_buildings_by_address(
         }
 
     # Step 2: Fetch CityGML
-    xml_content = fetch_citygml_from_plateau(
+    fetch_result = fetch_citygml_from_plateau_with_metadata(
         geocoding.latitude, geocoding.longitude, radius=radius
     )
-    if not xml_content:
+    if not fetch_result:
         return {
             "success": False,
             "geocoding": geocoding,
@@ -1568,6 +1685,7 @@ def search_buildings_by_address(
             "search_mode": search_mode,
             "error": "Failed to fetch CityGML data from PLATEAU",
         }
+    xml_content = fetch_result.xml_content
 
     # Step 3: Parse buildings
     buildings = parse_buildings_from_citygml(xml_content)
@@ -1580,6 +1698,12 @@ def search_buildings_by_address(
             "search_mode": search_mode,
             "error": "No buildings found in PLATEAU data",
         }
+
+    for building in buildings:
+        building.municipality_code = (
+            fetch_result.municipality_by_gml_id.get(building.gml_id)
+            or extract_municipality_code(building.building_id or "")
+        )
 
     # Step 4: Smart ranking by distance + name similarity
     sorted_buildings = find_nearest_building(

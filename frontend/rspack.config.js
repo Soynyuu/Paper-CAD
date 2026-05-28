@@ -90,8 +90,20 @@ const config = defineConfig({
             "css/auto": {
                 namedExports: false,
             },
+            "css/module": {
+                namedExports: false,
+            },
         },
         rules: [
+            {
+                test: /\.module\.css$/,
+                type: "css/module",
+            },
+            {
+                test: /\.css$/,
+                exclude: /\.module\.css$/,
+                type: "css/auto",
+            },
             {
                 test: /\.wasm$/,
                 type: "asset",

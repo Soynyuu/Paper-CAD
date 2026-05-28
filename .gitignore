@@ -11,6 +11,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.antigravitycli/
 
 # Python
 __pycache__/

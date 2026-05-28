@@ -39,6 +39,7 @@ dependencies:
       - uvicorn[standard]==0.39.0
       - python-multipart==0.0.20
       - pydantic==2.13.4
+      - pytest==8.3.4
       - python-dotenv==1.1.1
       - cairosvg==2.7.1
       - pypdf==5.2.0

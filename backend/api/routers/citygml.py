@@ -109,6 +109,11 @@ async def citygml_to_step(
         description="building_idsと照合する属性名。'gml:id'（デフォルト）またはgen:genericAttributeのキー名（例: 'buildingID'）",
         example="gml:id",
     ),
+    lod: Optional[str] = Form(
+        None,
+        description="LODレベル指定（LOD1/LOD2/LOD3）。未指定で自動フォールバック（LOD3→LOD2→LOD1）",
+        example="LOD2",
+    ),
 ):
     """
     CityGML (.gml) を受け取り、高精度な STEP ファイルを生成します。
@@ -159,6 +164,13 @@ async def citygml_to_step(
     - `building_ids`: Comma-separated building IDs to extract (e.g., "bldg_12345,bldg_67890")
     - `filter_attribute`: Attribute to match against (default: "gml:id", or generic attribute key like "buildingID")
     - Unspecified = process all buildings
+
+    **LOD選択 / LOD Selection** (Issue #199):
+    - `lod`: Target LOD level for extraction
+      * `None` (default): Auto-fallback LOD3 → LOD2 → LOD1 (backward-compatible)
+      * `LOD3`: Extract LOD3 only (highest detail, no fallback)
+      * `LOD2`: Extract LOD2 only (PLATEAU standard, no fallback)
+      * `LOD1`: Extract LOD1 only (simple blocks, no fallback)
 
     **出力 / Output**:
     - STEP file (ISO 10303-21, AP214CD schema)
@@ -215,6 +227,16 @@ async def citygml_to_step(
                 status_code=400,
                 detail=f"shape_fix_level must be one of {valid_shape_fix_levels}, got: {normalized_shape_fix_level}",
             )
+
+        # Normalize and validate lod parameter (Issue #199)
+        normalized_lod = lod if lod and lod.strip() else None
+        if normalized_lod is not None:
+            valid_lod_levels = ["LOD1", "LOD2", "LOD3"]
+            if normalized_lod not in valid_lod_levels:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"lod must be one of {valid_lod_levels}, got: {normalized_lod}",
+                )
 
         if file is None and not normalized_gml_path:
             raise HTTPException(
@@ -280,6 +302,7 @@ async def citygml_to_step(
                 shape_fix_level=normalized_shape_fix_level,
                 building_ids=normalized_building_ids,
                 filter_attribute=normalized_filter_attribute,
+                target_lod=normalized_lod,
             ),
         )
         if not ok:

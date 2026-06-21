@@ -327,6 +327,7 @@ def export_step_from_citygml(
     target_longitude: Optional[float] = None,
     radius_meters: float = 100,
     use_streaming: bool = True,
+    target_lod: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Convert CityGML building(s) to STEP format (AP214).
@@ -358,6 +359,11 @@ def export_step_from_citygml(
             - True (default): Use streaming parser (recommended for files >100MB)
             - False: Use legacy ET.parse() method (for debugging/compatibility)
             - Note: Automatically falls back to legacy if coordinate filtering is used
+        target_lod: Target LOD level for extraction (Issue #199)
+            - None (default): Auto fallback LOD3 → LOD2 → LOD1 (backward-compatible)
+            - "LOD3": Extract LOD3 only (no fallback)
+            - "LOD2": Extract LOD2 only (no fallback)
+            - "LOD1": Extract LOD1 only (no fallback)
 
     Returns:
         Tuple of (success, message_or_output_path)
@@ -628,7 +634,8 @@ def export_step_from_citygml(
     def extract_single_solid(building_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
         """Extract solid from single building element using LOD extractor."""
         result = extract_building_geometry(
-            building_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode
+            building_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode,
+            target_lod=target_lod,
         )
         if not result.exterior_faces:
             return None
@@ -682,6 +689,7 @@ def export_step_from_citygml(
                 shape_fix_level=shape_fix_level,
                 merge_building_parts=merge_building_parts,
                 debug=debug,
+                target_lod=target_lod,
             )
 
             shape_cache = get_shape_cache()

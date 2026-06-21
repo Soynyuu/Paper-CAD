@@ -6,12 +6,15 @@ in order of priority (LOD3 → LOD2 → LOD1) and returns the first successful e
 
 ⚠️ CRITICAL: This orchestrator preserves the exact LOD priority order from the
 original implementation. Do NOT change the order without careful consideration.
+
+Issue #199: Added target_lod parameter for explicit LOD level selection.
 """
 
 from typing import Optional
 import xml.etree.ElementTree as ET
 
 from ..core.types import CoordinateTransform3D, IDIndex, LODExtractionResult
+from ..core.constants import LOD_PRIORITY
 from ..utils.logging import log
 from ..geometry.tolerance import compute_building_tolerance
 from .lod3_strategy import extract_lod3_geometry
@@ -25,6 +28,7 @@ def extract_building_geometry(
     id_index: IDIndex,
     debug: bool = False,
     precision_mode: str = "standard",
+    target_lod: Optional[str] = None,
 ) -> LODExtractionResult:
     """
     Extract building geometry using LOD3→LOD2→LOD1 fallback chain.
@@ -49,10 +53,16 @@ def extract_building_geometry(
         precision_mode: Precision level ("standard", "high", "maximum", "ultra").
             Used to precompute tolerance once per building instead of per polygon.
             Issue #192: Performance optimization.
+        target_lod: Target LOD level ("LOD1", "LOD2", "LOD3", or None).
+            None = automatic fallback LOD3→LOD2→LOD1 (default, backward-compatible).
+            When specified, only the target LOD is attempted; returns empty result on failure.
 
     Returns:
         LODExtractionResult with extracted faces and metadata.
         Always returns a result (may have empty faces if all strategies fail).
+
+    Raises:
+        ValueError: If target_lod is not a valid LOD level.
 
     Example:
         >>> result = extract_building_geometry(
@@ -95,97 +105,93 @@ def extract_building_geometry(
     # bounding box. This is both faster and more accurate.
     building_tolerance = compute_building_tolerance(elem, xyz_transform, precision_mode)
 
+    # =========================================================================
+    # Validate and resolve target_lod (Issue #199)
+    # =========================================================================
+    valid_lod_levels = set(LOD_PRIORITY)  # {'LOD3', 'LOD2', 'LOD1'}
+    if target_lod is not None and target_lod not in valid_lod_levels:
+        raise ValueError(
+            f"Invalid target_lod: '{target_lod}'. "
+            f"Must be one of {sorted(valid_lod_levels)} or None."
+        )
+
+    # Determine which LOD levels to attempt
+    if target_lod is not None:
+        # User specified a single LOD level — no fallback
+        lod_levels_to_try = [target_lod]
+    else:
+        # Default: try all levels in priority order (LOD3 → LOD2 → LOD1)
+        lod_levels_to_try = list(LOD_PRIORITY)
+
+    # LOD level → extraction function mapping
+    lod_extractors = {
+        'LOD3': extract_lod3_geometry,
+        'LOD2': extract_lod2_geometry,
+        'LOD1': extract_lod1_geometry,
+    }
+
     # Log extraction start
     if debug:
         log(f"\n{'=' * 80}")
         log(f"[PHASE:1] LOD STRATEGY SELECTION")
         log(f"{'=' * 80}")
         log(f"[INFO] Building ID: {elem_id}")
-        log(f"[INFO] Strategy: LOD3 → LOD2 → LOD1 (with fallback to boundedBy)")
+        if target_lod:
+            log(f"[INFO] Strategy: {target_lod} only (user-specified, no fallback)")
+        else:
+            log(f"[INFO] Strategy: {' → '.join(lod_levels_to_try)} (with fallback to boundedBy)")
         log(
             f"[INFO] Precomputed tolerance: {building_tolerance:.2e} (precision_mode={precision_mode})"
         )
         log(f"")
 
     # =========================================================================
-    # LOD3 Extraction - Highest detail level (architectural models)
+    # Iterate through LOD levels in priority order
     # =========================================================================
-    result = extract_lod3_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
-        if debug:
-            log(
-                f"[PHASE:1] ✓ LOD3 extraction succeeded with {len(result.exterior_faces)} faces"
-            )
-            log(f"[PHASE:1] Method: {result.method}")
-        return result
-
-    # LOD3 failed, log and continue
-    if debug:
-        log(f"[PHASE:1] LOD3 extraction failed, falling back to LOD2")
-
-    # =========================================================================
-    # LOD2 Extraction - PLATEAU's primary use case
-    # =========================================================================
-    # ⚠️ CRITICAL: LOD2 includes Issue #48 fix for boundedBy vs lod2Solid comparison
-    result = extract_lod2_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
-        if debug:
-            log(
-                f"[PHASE:1] ✓ LOD2 extraction succeeded with {len(result.exterior_faces)} faces"
-            )
-            log(f"[PHASE:1] Method: {result.method}")
-            if result.prefer_bounded_by:
+    for i, lod_level in enumerate(lod_levels_to_try):
+        extractor_fn = lod_extractors[lod_level]
+        result = extractor_fn(
+            elem,
+            xyz_transform,
+            id_index,
+            elem_id,
+            tolerance=building_tolerance,
+            debug=debug,
+        )
+        if result.exterior_faces:
+            if debug:
                 log(
-                    f"[PHASE:1] Note: boundedBy was preferred over lod2Solid (Issue #48 fix)"
+                    f"[PHASE:1] ✓ {lod_level} extraction succeeded with {len(result.exterior_faces)} faces"
                 )
-        return result
+                log(f"[PHASE:1] Method: {result.method}")
+                if lod_level == 'LOD2' and result.prefer_bounded_by:
+                    log(
+                        f"[PHASE:1] Note: boundedBy was preferred over lod2Solid (Issue #48 fix)"
+                    )
+            return result
 
-    # LOD2 failed, log and continue
-    if debug:
-        log(f"[PHASE:1] LOD2 extraction failed, falling back to LOD1")
-
-    # =========================================================================
-    # LOD1 Extraction - Simple block models (last resort)
-    # =========================================================================
-    result = extract_lod1_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
+        # Current LOD failed
         if debug:
-            log(
-                f"[PHASE:1] ✓ LOD1 extraction succeeded with {len(result.exterior_faces)} faces"
-            )
-            log(f"[PHASE:1] Method: {result.method}")
-        return result
+            remaining = lod_levels_to_try[i + 1:]
+            if remaining:
+                log(f"[PHASE:1] {lod_level} extraction failed, falling back to {remaining[0]}")
+            else:
+                log(f"[PHASE:1] {lod_level} extraction failed, no more levels to try")
 
     # All strategies failed
     if debug:
+        tried_str = ", ".join(lod_levels_to_try)
         log(f"[PHASE:1] ✗ All LOD extraction strategies failed for {elem_id}")
-        log(f"[PHASE:1] No geometry found in LOD3, LOD2, or LOD1")
+        log(f"[PHASE:1] Attempted: {tried_str}")
+        if target_lod:
+            log(f"[PHASE:1] Hint: target_lod='{target_lod}' was specified — try target_lod=None for auto-fallback")
 
     # Return empty result
+    failed_level = lod_levels_to_try[-1] if lod_levels_to_try else "LOD1"
+    failed_method = f"{target_lod} extraction failed" if target_lod else "All strategies failed"
     return LODExtractionResult(
         exterior_faces=[],
         interior_shells=[],
-        lod_level="LOD1",  # Default to LOD1 level for failed extractions
-        method="All strategies failed",
+        lod_level=failed_level,
+        method=failed_method,
     )

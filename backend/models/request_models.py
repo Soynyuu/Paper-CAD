@@ -139,6 +139,12 @@ class PlateauFetchAndConvertRequest(BaseModel):
     auto_reproject: Optional[bool] = True
     precision_mode: Optional[str] = "ultra"
     shape_fix_level: Optional[str] = "ultra"
+    lod: Optional[str] = Field(
+        default=None,
+        description="LODレベル指定 / Target LOD level (LOD1/LOD2/LOD3, None=自動フォールバック LOD3→LOD2→LOD1)",
+        pattern="^(LOD1|LOD2|LOD3)$",
+        example="LOD2"
+    )
 
 
 class BuildingInfoResponse(BaseModel):
@@ -221,6 +227,12 @@ class PlateauBuildingIdRequest(BaseModel):
         description="デバッグモード / Debug mode",
         example=False
     )
+    lod: Optional[str] = Field(
+        default=None,
+        description="LODレベル指定 / Target LOD level (LOD1/LOD2/LOD3, None=自動フォールバック LOD3→LOD2→LOD1)",
+        pattern="^(LOD1|LOD2|LOD3)$",
+        example="LOD2"
+    )
 
 
 class PlateauBuildingIdWithMeshRequest(BaseModel):
@@ -269,6 +281,12 @@ class PlateauBuildingIdWithMeshRequest(BaseModel):
         description="デバッグモード / Debug mode",
         example=False
     )
+    lod: Optional[str] = Field(
+        default=None,
+        description="LODレベル指定 / Target LOD level (LOD1/LOD2/LOD3, None=自動フォールバック LOD3→LOD2→LOD1)",
+        pattern="^(LOD1|LOD2|LOD3)$",
+        example="LOD2"
+    )
 
 
 class PlateauTexturedUnfoldRequest(BaseModel):
@@ -316,6 +334,12 @@ class PlateauTexturedUnfoldRequest(BaseModel):
         default=False,
         description="デバッグモード / Debug mode",
         example=False
+    )
+    lod: Optional[str] = Field(
+        default=None,
+        description="LODレベル指定 / Target LOD level (LOD1/LOD2/LOD3, None=自動フォールバック LOD3→LOD2→LOD1)",
+        pattern="^(LOD1|LOD2|LOD3)$",
+        example="LOD2"
     )
 
     # Unfold settings (compatible with BrepPapercraftRequest)

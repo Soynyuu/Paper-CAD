@@ -27,6 +27,7 @@ ENV/
 .venv/
 .env
 .env.local
+.env.local_demo
 .env.*.local
 
 # IDE
@@ -62,3 +63,4 @@ output/
 
 # CityGML cache data
 data/citygml_cache/
+data/local_demo_cache/

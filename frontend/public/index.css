@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap");
+
 html,
 body {
     margin: 0px;
@@ -6,8 +8,18 @@ body {
     width: 100%;
     height: 100%;
     font-size: 14px;
-    font-family: "Noto Sans JP", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--font-family-sans);
+    font-feature-settings: "palt" 1;
+    text-rendering: geometricPrecision;
     touch-action: none;
+}
+
+:root {
+    --font-family-sans:
+        "Inter", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+        "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Segoe UI", sans-serif;
+    --font-family-mono:
+        "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 :root[theme="light"] {

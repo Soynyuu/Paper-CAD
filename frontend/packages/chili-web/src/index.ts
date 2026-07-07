@@ -3,6 +3,7 @@
 
 import { AppBuilder } from "chili-builder";
 import { Logger } from "chili-core";
+import "chili-ui/src/react/shadcn.css";
 import { Loading } from "./loading";
 
 let loading = new Loading();

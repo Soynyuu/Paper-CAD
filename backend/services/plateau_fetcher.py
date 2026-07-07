@@ -625,6 +625,22 @@ def geocode_address(
         ...     print(f"Found: {result.display_name}")
         ...     print(f"Coordinates: ({result.latitude}, {result.longitude})")
     """
+    try:
+        from services.local_demo import get_manifest_target, is_local_demo
+
+        if is_local_demo():
+            target = get_manifest_target(query)
+            if target:
+                return GeocodingResult(
+                    query=query,
+                    latitude=float(target["latitude"]),
+                    longitude=float(target["longitude"]),
+                    display_name=str(target.get("display_name") or target["name"]),
+                    osm_type="local_demo",
+                )
+    except Exception as e:
+        logger.warning("[LOCAL_DEMO] Static geocoding failed: %s", e)
+
     # Nominatim API endpoint
     url = "https://nominatim.openstreetmap.org/search"
 

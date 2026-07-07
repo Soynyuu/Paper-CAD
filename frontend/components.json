@@ -1,0 +1,20 @@
+{
+    "$schema": "https://ui.shadcn.com/schema.json",
+    "style": "new-york",
+    "rsc": false,
+    "tsx": true,
+    "tailwind": {
+        "config": "tailwind.config.js",
+        "css": "packages/chili-ui/src/react/shadcn.css",
+        "baseColor": "neutral",
+        "cssVariables": true,
+        "prefix": ""
+    },
+    "aliases": {
+        "components": "packages/chili-ui/src/react/components",
+        "utils": "packages/chili-ui/src/react/lib/utils",
+        "ui": "packages/chili-ui/src/react/components/ui",
+        "lib": "packages/chili-ui/src/react/lib",
+        "hooks": "packages/chili-ui/src/react/hooks"
+    }
+}

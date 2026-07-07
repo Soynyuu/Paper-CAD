@@ -103,6 +103,7 @@ const config = defineConfig({
                 test: /\.css$/,
                 exclude: /\.module\.css$/,
                 type: "css/auto",
+                use: ["postcss-loader"],
             },
             {
                 test: /\.wasm$/,

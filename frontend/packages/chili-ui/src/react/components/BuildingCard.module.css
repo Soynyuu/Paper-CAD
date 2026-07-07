@@ -1,73 +1,79 @@
-/* Building Card - Paper-CAD Design System */
 .buildingCard {
-    background: color-mix(in srgb, var(--panel-background-color) 92%, #edf3f8 8%);
-    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9eb3c2 18%);
-    border-radius: var(--radius-sm, 4px);
-    padding: var(--spacing-12, 12px);
+    background: var(--panel-background-color);
+    border: 1px solid transparent;
+    border-bottom-color: var(--border-color);
+    border-radius: 0;
+    padding: 10px 8px;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs, 4px);
-    transition: all var(--transition-fast);
-    position: relative;
+    gap: 5px;
 }
 
 .buildingCard:hover {
-    border-color: color-mix(in srgb, var(--primary-color) 38%, #2d5273 62%);
-    box-shadow: var(--shadow-sm);
+    background: var(--hover-background-color);
+    border-color: var(--border-color);
 }
 
 .cardHeader {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 2px;
+    gap: var(--spacing-sm, 8px);
 }
 
 .buildingName {
     font-weight: var(--font-weight-medium, 500);
-    font-size: var(--font-size-sm, 14px);
+    font-size: 13px;
     color: var(--foreground-color);
     line-height: 1.4;
     flex: 1;
-    margin-right: var(--spacing-sm, 8px);
+    min-width: 0;
 }
 
 .removeButton {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     color: var(--neutral-500);
     cursor: pointer;
-    padding: var(--spacing-xs, 4px);
-    margin: -4px -4px 0 0;
+    padding: 0;
     border-radius: var(--radius-xs, 2px);
-    font-size: 18px;
+    font-size: 16px;
     line-height: 1;
-    transition: all var(--transition-fast);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
 }
 
 .removeButton:hover {
     color: var(--danger-color);
-    background: rgba(231, 76, 60, 0.15);
+    background: color-mix(in srgb, var(--danger-color, #e74c3c) 10%, transparent 90%);
 }
 
 .cardDetail {
-    font-size: var(--font-size-xs, 12px);
-    color: color-mix(in srgb, var(--neutral-500) 84%, #35566d 16%);
+    font-size: 11px;
+    color: var(--neutral-600);
     display: flex;
     justify-content: space-between;
+    gap: var(--spacing-sm, 8px);
 }
 
 .cardId {
-    font-family: "SF Mono", Monaco, "Consolas", monospace;
+    font-family: var(--font-family-mono);
     font-size: 10px;
-    color: var(--neutral-400);
+    color: var(--neutral-500);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: var(--spacing-xs, 4px);
+}
+
+.tooltipPopup {
+    padding: 5px 8px;
+    border-radius: var(--radius-sm, 4px);
+    background: var(--foreground-color);
+    color: var(--panel-background-color);
+    font-size: var(--font-size-xs, 12px);
+    box-shadow: var(--shadow-md);
+    z-index: var(--z-tooltip, 10001);
 }

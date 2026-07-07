@@ -49,10 +49,11 @@ export class StepUnfoldPanel extends HTMLElement {
     private _svgEditor: Editor | null = null;
     private _svgEditContainer: HTMLDivElement | null = null;
     private readonly _app: IApplication;
-    private _scaleSlider: HTMLInputElement;
+    private _scaleSelect: HTMLSelectElement;
     private _scaleValueDisplay: HTMLSpanElement;
     private _modelSizeDisplay: HTMLDivElement;
-    private _currentScale: number = 1; // Default to 1:1 scale
+    private _scaleMode: "fixed" | "fitPage" = "fixed";
+    private _currentScale: number = 150; // Default to Japanese N gauge 1:150 scale
     private _modelBoundingSize: number = 0; // Model's bounding box max dimension in mm
     private _textureService: FaceTextureService | null = null;
     private _lastStepData: BlobPart | null = null; // Cache last STEP data for PDF export
@@ -164,14 +165,19 @@ export class StepUnfoldPanel extends HTMLElement {
             this._pageOrientationSelect,
         );
 
-        // Create scale slider
-        this._scaleSlider = input({
-            type: "range",
-            min: "0",
-            max: "11",
-            value: "3",
-            className: style.scaleSlider,
-        });
+        // Create scale preset selector
+        this._scaleSelect = select(
+            {
+                className: style.scaleSelect,
+            },
+            option({ value: "fitPage", textContent: "用紙最大（自動）" }),
+            option({ value: "150", textContent: "1:150 日本N" }),
+            option({ value: "160", textContent: "1:160 N" }),
+            option({ value: "148", textContent: "1:148 UK N" }),
+            option({ value: "100", textContent: "1:100" }),
+            option({ value: "200", textContent: "1:200" }),
+        );
+        this._scaleSelect.value = "150";
 
         this._scaleValueDisplay = span({
             className: style.scaleValue,
@@ -295,8 +301,8 @@ export class StepUnfoldPanel extends HTMLElement {
             }
         };
 
-        // Add scale slider change handler
-        this._scaleSlider.oninput = () => this._updateScaleDisplay();
+        // Add scale selector change handler
+        this._scaleSelect.onchange = () => this._updateScaleDisplay();
 
         // Initialize scale display and calculate initial model size
         this._updateScaleDisplay();
@@ -378,7 +384,7 @@ export class StepUnfoldPanel extends HTMLElement {
                             span({ textContent: I18n.translate("stepUnfold.scale") + ": " }),
                             this._scaleValueDisplay,
                         ),
-                        this._scaleSlider,
+                        this._scaleSelect,
                     ),
                 ),
                 // Secondary controls (face highlight and PDF settings)
@@ -527,6 +533,7 @@ export class StepUnfoldPanel extends HTMLElement {
 
             // Send STEP data to backend for unfolding with options
             const options: UnfoldOptions = {
+                scaleMode: this._scaleMode,
                 scale: this._currentScale,
                 layoutMode: this._layoutMode,
                 pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
@@ -1365,30 +1372,30 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     private _updateScaleDisplay() {
-        const scaleMap = [0.1, 0.2, 0.5, 1, 2, 10, 50, 100, 150, 200, 300, 500];
-        const scaleIndex = parseInt(this._scaleSlider.value);
-        this._currentScale = scaleMap[scaleIndex];
+        const selectedScale = this._scaleSelect.value;
 
-        if (this._currentScale === 1) {
-            this._scaleValueDisplay.textContent = "1:1";
-        } else if (this._currentScale < 1) {
-            // Enlarge mode: display as "X:1" (e.g., 0.5 → "2:1" = 2× enlargement)
-            const enlargeFactor = (1 / this._currentScale).toFixed(1);
-            this._scaleValueDisplay.textContent = `${enlargeFactor}:1`;
+        if (selectedScale === "fitPage") {
+            this._scaleMode = "fitPage";
+            this._scaleValueDisplay.textContent = "用紙最大";
         } else {
-            // Reduce mode: display as "1:X" (e.g., 100 → "1:100" = 100× reduction)
+            this._scaleMode = "fixed";
+            this._currentScale = parseFloat(selectedScale);
             this._scaleValueDisplay.textContent = `1:${this._currentScale}`;
         }
 
-        // Update model size display - use a default size if not calculated yet
+        // Update model size display - use a default size if not calculated yet.
+        // fitPageの正確な縮尺はバックエンドで用紙・向きを見て計算される。
         const estimatedSize = this._modelBoundingSize > 0 ? this._modelBoundingSize : 200; // Default 200mm
-        const scaledSize = estimatedSize / this._currentScale;
-        const formattedSize =
-            scaledSize > 1000 ? `${(scaledSize / 1000).toFixed(2)}m` : `${scaledSize.toFixed(1)}mm`;
-        this._modelSizeDisplay.textContent = I18n.translate("stepUnfold.modelSize").replace(
-            "{0}",
-            formattedSize,
-        );
+        if (this._scaleMode === "fitPage") {
+            this._modelSizeDisplay.textContent = "用紙に収まる最大縮尺を生成時に計算";
+        } else {
+            const scaledSize = estimatedSize / this._currentScale;
+            const formattedSize = scaledSize.toFixed(1);
+            this._modelSizeDisplay.textContent = I18n.translate("stepUnfold.modelSize").replace(
+                "{0}",
+                formattedSize,
+            );
+        }
     }
 
     /**
@@ -1396,6 +1403,7 @@ export class StepUnfoldPanel extends HTMLElement {
      */
     public getCurrentOptions(): UnfoldOptions {
         return {
+            scaleMode: this._scaleMode,
             scale: this._currentScale,
             layoutMode: this._layoutMode,
             pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
@@ -1693,6 +1701,7 @@ export class StepUnfoldPanel extends HTMLElement {
 
             // Use cached unfold options or current settings
             const options: UnfoldOptions = this._lastUnfoldOptions || {
+                scaleMode: this._scaleMode,
                 scale: this._currentScale,
                 layoutMode: this._layoutMode,
                 pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
@@ -1700,6 +1709,8 @@ export class StepUnfoldPanel extends HTMLElement {
             };
 
             // Update with current page settings (user may have changed them)
+            options.scaleMode = this._scaleMode;
+            options.scale = this._currentScale;
             options.pageFormat = this._pageFormatSelect.value as "A4" | "A3" | "Letter";
             options.pageOrientation = this._pageOrientationSelect.value as "portrait" | "landscape";
             options.mirrorHorizontal = this._pdfMirrorCheckbox.checked;

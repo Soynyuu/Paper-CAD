@@ -122,6 +122,8 @@ class StepUnfoldGenerator:
         self.layout_mode = "canvas"  # デフォルトはフリーキャンバスモード
         self.page_format = "A4"
         self.page_orientation = "portrait"
+        self.scale_mode = "fixed"
+        self.applied_scale_factor = self.scale_factor
         self.units = "mm"  # 単位系：寸法の解釈基準
         self.tab_width = 5.0  # タブ幅：接着部の物理的寸法
         self.show_scale = True  # スケールバー：図面標準への準拠
@@ -362,6 +364,8 @@ class StepUnfoldGenerator:
         リクエストパラメータを内部設定へ反映する。
         """
         self.scale_factor = request.scale_factor
+        self.scale_mode = request.scale_mode
+        self.applied_scale_factor = request.scale_factor
         self.units = request.units
         self.tab_width = request.tab_width
         self.show_scale = request.show_scale
@@ -390,6 +394,103 @@ class StepUnfoldGenerator:
             page_orientation=self.page_orientation,
             mirror_horizontal=self.mirror_horizontal,
         )
+
+    def _calculate_fit_page_scale_factor(self, unfolded_groups: List[Dict]) -> float:
+        """
+        選択用紙の印刷可能領域に各展開グループが収まる最大縮尺を計算する。
+        戻り値は縮尺分母（例: 150 = 1:150）。
+        """
+        required_scale = 1.0
+        printable_width = self.layout_manager.printable_width_mm
+        printable_height = self.layout_manager.printable_height_mm
+
+        for group in unfolded_groups:
+            bbox = self.layout_manager._calculate_group_bbox(group.get("polygons", []))
+            width = bbox["width"]
+            height = bbox["height"]
+            if width > 0:
+                required_scale = max(required_scale, width / printable_width)
+            if height > 0:
+                required_scale = max(required_scale, height / printable_height)
+
+        return required_scale
+
+    def _scale_unfolded_groups_to_paper(
+        self, unfolded_groups: List[Dict], scale_factor: float
+    ) -> List[Dict]:
+        """
+        展開済みグループを実物寸法(mm)から紙上寸法(mm)へ変換する。
+        """
+        if scale_factor <= 0:
+            raise ValueError("scale_factorは0より大きい必要があります")
+
+        scale = 1.0 / scale_factor
+        scaled_groups = []
+
+        for group in unfolded_groups:
+            scaled_group = copy.deepcopy(group)
+            scaled_group["polygons"] = [
+                [(x * scale, y * scale) for x, y in polygon]
+                for polygon in group.get("polygons", [])
+            ]
+            scaled_group["tabs"] = [
+                [(x * scale, y * scale) for x, y in tab]
+                for tab in group.get("tabs", [])
+            ]
+            scaled_group["bbox"] = self.layout_manager._calculate_group_bbox(
+                scaled_group.get("polygons", [])
+            )
+            scaled_groups.append(scaled_group)
+
+        return scaled_groups
+
+    def _prepare_groups_for_layout(
+        self, unfolded_groups: List[Dict]
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """
+        縮尺モードに応じて、展開グループを紙上寸法に変換する。
+        """
+        warnings = []
+        requested_scale_factor = self.scale_factor
+
+        if self.scale_mode == "fit_page":
+            self.applied_scale_factor = self._calculate_fit_page_scale_factor(
+                unfolded_groups
+            )
+        else:
+            self.applied_scale_factor = requested_scale_factor
+
+        paper_groups = self._scale_unfolded_groups_to_paper(
+            unfolded_groups, self.applied_scale_factor
+        )
+
+        self.stats["scale_mode"] = self.scale_mode
+        self.stats["requested_scale_factor"] = requested_scale_factor
+        self.stats["applied_scale_factor"] = round(self.applied_scale_factor, 6)
+        self.stats["page_format"] = self.page_format
+        self.stats["page_orientation"] = self.page_orientation
+
+        if self.scale_mode == "fit_page":
+            warnings.append(
+                {
+                    "type": "fit_page_scale_applied",
+                    "message": (
+                        f"用紙最大モードにより 1:{self.applied_scale_factor:.1f} "
+                        "で展開図を生成しました。"
+                    ),
+                    "details": {
+                        "applied_scale_factor": round(self.applied_scale_factor, 6),
+                        "page_format": self.page_format,
+                        "page_orientation": self.page_orientation,
+                        "printable_area_mm": {
+                            "width": self.layout_manager.printable_width_mm,
+                            "height": self.layout_manager.printable_height_mm,
+                        },
+                    },
+                }
+            )
+
+        return paper_groups, warnings
 
     def export_to_svg(self, placed_groups: List[Dict], output_path: str) -> str:
         """
@@ -539,10 +640,14 @@ class StepUnfoldGenerator:
             self.analyze_brep_topology()
             self.group_faces_for_unfolding(request.max_faces)
             unfolded_groups = self.unfold_face_groups()
-
-            paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
+            paper_groups, scale_warnings = self._prepare_groups_for_layout(
                 unfolded_groups
             )
+
+            paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
+                paper_groups
+            )
+            warnings = scale_warnings + layout_warnings
 
             end_time = time.time()
             self.stats["processing_time"] = end_time - start_time
@@ -551,8 +656,8 @@ class StepUnfoldGenerator:
             )
             self.stats["layout_mode"] = "paged"
             self.stats["page_count"] = len(paged_groups)
-            if layout_warnings:
-                self.stats["warnings"] = layout_warnings
+            if warnings:
+                self.stats["warnings"] = warnings
 
             return paged_groups, self.stats
 
@@ -589,6 +694,9 @@ class StepUnfoldGenerator:
 
             # 3. 各グループの2D展開
             unfolded_groups = self.unfold_face_groups()
+            paper_groups, scale_warnings = self._prepare_groups_for_layout(
+                unfolded_groups
+            )
 
             # 4. レイアウトモードに応じた配置
             if self.layout_mode == "paged":
@@ -597,8 +705,9 @@ class StepUnfoldGenerator:
                     page_format=self.page_format, page_orientation=self.page_orientation
                 )
                 paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
-                    unfolded_groups
+                    paper_groups
                 )
+                warnings = scale_warnings + layout_warnings
 
                 # 5. 単一SVGファイルに全ページを出力
                 svg_path = self.export_to_svg_paged_single_file(
@@ -609,11 +718,11 @@ class StepUnfoldGenerator:
                 self.stats["page_count"] = len(paged_groups)
                 self.stats["svg_files"] = [svg_path]  # 単一ファイル
                 # 警告情報を追加
-                if layout_warnings:
-                    self.stats["warnings"] = layout_warnings
+                if warnings:
+                    self.stats["warnings"] = warnings
             else:
                 # キャンバスモード: 従来の単一SVG
-                placed_groups = self.layout_unfolded_groups(unfolded_groups)
+                placed_groups = self.layout_unfolded_groups(paper_groups)
 
                 # 5. SVG出力
                 svg_path = self.export_to_svg(placed_groups, output_path)

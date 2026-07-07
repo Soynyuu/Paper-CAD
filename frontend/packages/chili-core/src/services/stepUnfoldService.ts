@@ -7,6 +7,7 @@ import { Result } from "../foundation";
 import { IService } from "../service";
 
 export interface UnfoldOptions {
+    scaleMode?: "fixed" | "fitPage";
     scale?: number;
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
@@ -85,7 +86,8 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("file", stepFile);
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
-            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("scale_factor", (options.scale || 150).toString());
+            formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
@@ -131,7 +133,8 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("file", stepBlob, "model.step");
             formData.append("return_face_numbers", "true");
             formData.append("output_format", "json");
-            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("scale_factor", (options.scale || 150).toString());
+            formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
@@ -193,7 +196,8 @@ export class StepUnfoldService implements IStepUnfoldService {
             const formData = new FormData();
             const stepBlob = new Blob([stepData], { type: "application/octet-stream" });
             formData.append("file", stepBlob, "model.step");
-            formData.append("scale_factor", (options.scale || 1).toString());
+            formData.append("scale_factor", (options.scale || 150).toString());
+            formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
@@ -231,6 +235,10 @@ export class StepUnfoldService implements IStepUnfoldService {
         } catch (error) {
             return Result.err(error instanceof Error ? error.message : "Unknown error");
         }
+    }
+
+    private toBackendScaleMode(scaleMode?: UnfoldOptions["scaleMode"]): string {
+        return scaleMode === "fitPage" ? "fit_page" : "fixed";
     }
 
     private isValidStepFile(file: File): boolean {

@@ -11,7 +11,7 @@ def _flatten_pages(paged_groups):
     return [group for page in paged_groups for group in page]
 
 
-def test_layout_for_pages_scales_only_oversized_groups():
+def test_layout_for_pages_warns_without_rescaling_oversized_groups():
     manager = LayoutManager(page_format="A4", page_orientation="portrait")
 
     groups = [
@@ -24,9 +24,9 @@ def test_layout_for_pages_scales_only_oversized_groups():
 
     widths = sorted(group["bbox"]["width"] for group in all_groups)
     assert widths[0] == pytest.approx(80.0)
-    assert widths[1] == pytest.approx(manager.printable_width_mm)
+    assert widths[1] == pytest.approx(240.0)
 
-    assert any(warning["type"] == "size_exceeded" for warning in warnings)
+    assert any(warning["type"] == "page_overflow" for warning in warnings)
 
 
 def test_layout_for_pages_keeps_scale_when_groups_fit_width():

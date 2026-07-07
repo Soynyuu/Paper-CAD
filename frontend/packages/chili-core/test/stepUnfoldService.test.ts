@@ -1,0 +1,49 @@
+import { jest } from "@jest/globals";
+import { StepUnfoldService } from "../src/services/stepUnfoldService";
+
+function createFetchMock() {
+    return jest.fn(async () => ({
+        ok: true,
+        json: async () => ({ svg_content: "<svg />" }),
+    })) as unknown as jest.MockedFunction<typeof fetch>;
+}
+
+test("unfoldStepFromData sends fixed scale options to backend", async () => {
+    const fetchMock = createFetchMock();
+    global.fetch = fetchMock as any;
+
+    const service = new StepUnfoldService("http://example.test/api");
+    const result = await service.unfoldStepFromData("step-data", {
+        scaleMode: "fixed",
+        scale: 150,
+        layoutMode: "paged",
+        pageFormat: "A4",
+        pageOrientation: "portrait",
+    });
+
+    expect(result.isOk).toBe(true);
+    const body = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
+    expect(body.get("scale_mode")).toBe("fixed");
+    expect(body.get("scale_factor")).toBe("150");
+    expect(body.get("page_format")).toBe("A4");
+    expect(body.get("page_orientation")).toBe("portrait");
+});
+
+test("unfoldStepFromData maps fitPage scale mode for backend", async () => {
+    const fetchMock = createFetchMock();
+    global.fetch = fetchMock as any;
+
+    const service = new StepUnfoldService("http://example.test/api");
+    await service.unfoldStepFromData("step-data", {
+        scaleMode: "fitPage",
+        layoutMode: "paged",
+        pageFormat: "A3",
+        pageOrientation: "landscape",
+    });
+
+    const body = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
+    expect(body.get("scale_mode")).toBe("fit_page");
+    expect(body.get("scale_factor")).toBe("150");
+    expect(body.get("page_format")).toBe("A3");
+    expect(body.get("page_orientation")).toBe("landscape");
+});

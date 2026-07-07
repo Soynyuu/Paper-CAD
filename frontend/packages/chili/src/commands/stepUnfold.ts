@@ -87,7 +87,8 @@ export class StepUnfold extends CancelableCommand {
 
                     // StepUnfoldPanelから現在の設定を取得
                     let unfoldOptions: UnfoldOptions = {
-                        scale: 1,
+                        scaleMode: "fixed",
+                        scale: 150,
                         layoutMode: "paged",
                         pageFormat: "A4",
                         pageOrientation: "portrait",

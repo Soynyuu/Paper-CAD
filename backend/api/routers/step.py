@@ -22,6 +22,7 @@ router = APIRouter()
 def _log_pdf_parameters(request: BrepPapercraftRequest) -> None:
     logger.info("[PDF] Parameters set:")
     logger.info(f"  scale_factor: {request.scale_factor}")
+    logger.info(f"  scale_mode: {request.scale_mode}")
     logger.info(f"  units: {request.units}")
     logger.info(f"  tab_width: {request.tab_width}")
     logger.info(f"  show_scale: {request.show_scale}")
@@ -125,6 +126,9 @@ async def unfold_step_to_svg(
     scale_factor: float = Form(
         10.0, description="縮尺倍率 / Scale factor (例: 150=1/150)"
     ),
+    scale_mode: str = Form(
+        "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
+    ),
     texture_mappings: Optional[str] = Form(
         None, description="テクスチャマッピング情報（JSON） / Texture mappings (JSON)"
     ),
@@ -157,6 +161,7 @@ async def unfold_step_to_svg(
         page_format: ページフォーマット / Page format (A4/A3/Letter, default: "A4")
         page_orientation: ページ向き / Orientation (portrait/landscape, default: "portrait")
         scale_factor: 縮尺倍率 / Scale factor (例: 150 = 1/150 scale, default: 10.0)
+        scale_mode: 縮尺モード / Scale mode (fixed/fit_page, default: fixed)
         texture_mappings: テクスチャマッピング情報（JSON） / Texture mappings (JSON array)
         mirror_horizontal: 左右反転モード / Mirror horizontally
 
@@ -238,6 +243,7 @@ async def unfold_step_to_svg(
             page_format=page_format,
             page_orientation=page_orientation,
             scale_factor=scale_factor,
+            scale_mode=scale_mode,
             mirror_horizontal=mirror_horizontal,
         )
 
@@ -347,7 +353,7 @@ async def unfold_step_to_svg(
                 page_format,
                 page_orientation,
                 layout_mode,
-                scale_factor,
+                stats.get("applied_scale_factor", scale_factor),
                 page_count=stats.get("page_count"),
             ),
         )
@@ -409,6 +415,9 @@ async def unfold_step_to_pdf(
     ),
     scale_factor: float = Form(
         150.0, description="縮尺倍率 / Scale factor (e.g., 150 = 1:150 scale)"
+    ),
+    scale_mode: str = Form(
+        "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
     ),
     texture_mappings: Optional[str] = Form(
         None,
@@ -494,6 +503,7 @@ async def unfold_step_to_pdf(
             page_format=page_format,
             page_orientation=page_orientation,
             scale_factor=scale_factor,
+            scale_mode=scale_mode,
             mirror_horizontal=mirror_horizontal,
         )
 
@@ -524,7 +534,7 @@ async def unfold_step_to_pdf(
                 page_format,
                 page_orientation,
                 layout_mode,
-                scale_factor,
+                stats.get("applied_scale_factor", scale_factor),
                 page_count=stats.get("page_count"),
             ),
         )

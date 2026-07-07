@@ -101,12 +101,10 @@ class SVGExporter:
         logger.info(f"ページフォーマット: {self.page_format}")
         logger.info(f"全体境界ボックス: {overall_bbox}")
         
-        # scale_factorはAPIから渡される値を使用（自動調整しない）
-        # scale_factor=150なら1/150スケール → 実際の描画倍率は基準倍率/scale_factor
-        # 基準倍率を10とし、scale_factorで割る
-        base_scale = 10.0  # 基準描画倍率
-        actual_scale = base_scale / self.scale_factor if self.scale_factor > 0 else base_scale
-        logger.info(f"縮尺: 1/{self.scale_factor:.0f} (描画倍率: {actual_scale:.2f})")
+        # StepUnfoldGeneratorで実物寸法から紙上寸法(mm)へ変換済み。
+        # SVGExporterでは紙上寸法をpxへ変換するだけにする。
+        actual_scale = self.mm_to_px
+        logger.info(f"紙上寸法をSVGへ変換: {actual_scale:.2f}px/mm")
         
         # SVGサイズを内容に合わせて動的調整
         scaled_content_width = overall_bbox["width"] * actual_scale

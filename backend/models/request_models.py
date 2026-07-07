@@ -10,6 +10,12 @@ class BrepPapercraftRequest(BaseModel):
         gt=0,
         example=150.0
     )
+    scale_mode: str = Field(
+        default="fixed",
+        description="縮尺モード / Scale mode (fixed=指定縮尺, fit_page=用紙最大)",
+        pattern="^(fixed|fit_page)$",
+        example="fixed"
+    )
     units: str = Field(
         default="mm",
         description="単位 / Units (mm/cm/m)",

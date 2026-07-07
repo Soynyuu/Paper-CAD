@@ -1,0 +1,68 @@
+import pytest
+
+from models.request_models import BrepPapercraftRequest
+from services.step_processor import StepUnfoldGenerator
+
+
+def _rect(width: float, height: float):
+    return [(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)]
+
+
+def test_fixed_scale_converts_unfolded_groups_to_paper_dimensions():
+    generator = StepUnfoldGenerator()
+    generator.apply_request_settings(
+        BrepPapercraftRequest(
+            layout_mode="paged",
+            page_format="A4",
+            page_orientation="portrait",
+            scale_factor=150.0,
+            scale_mode="fixed",
+        )
+    )
+
+    groups, warnings = generator._prepare_groups_for_layout(
+        [{"polygons": [_rect(15000.0, 3000.0)], "tabs": [_rect(1500.0, 300.0)]}]
+    )
+
+    bbox = groups[0]["bbox"]
+    assert bbox["width"] == pytest.approx(100.0)
+    assert bbox["height"] == pytest.approx(20.0)
+    assert groups[0]["tabs"][0][1][0] == pytest.approx(10.0)
+    assert warnings == []
+    assert generator.stats["scale_mode"] == "fixed"
+    assert generator.stats["applied_scale_factor"] == pytest.approx(150.0)
+
+
+def test_fit_page_scale_uses_selected_page_orientation():
+    generator = StepUnfoldGenerator()
+    groups = [{"polygons": [_rect(3000.0, 1000.0)], "tabs": []}]
+
+    generator.apply_request_settings(
+        BrepPapercraftRequest(
+            layout_mode="paged",
+            page_format="A4",
+            page_orientation="portrait",
+            scale_factor=150.0,
+            scale_mode="fit_page",
+        )
+    )
+    portrait_groups, portrait_warnings = generator._prepare_groups_for_layout(groups)
+    portrait_printable_width = generator.layout_manager.printable_width_mm
+
+    generator.apply_request_settings(
+        BrepPapercraftRequest(
+            layout_mode="paged",
+            page_format="A4",
+            page_orientation="landscape",
+            scale_factor=150.0,
+            scale_mode="fit_page",
+        )
+    )
+    landscape_groups, landscape_warnings = generator._prepare_groups_for_layout(groups)
+    landscape_printable_width = generator.layout_manager.printable_width_mm
+
+    assert portrait_groups[0]["bbox"]["width"] == pytest.approx(portrait_printable_width)
+    assert landscape_groups[0]["bbox"]["width"] == pytest.approx(landscape_printable_width)
+    assert portrait_warnings[0]["type"] == "fit_page_scale_applied"
+    assert landscape_warnings[0]["type"] == "fit_page_scale_applied"
+    assert portrait_groups[0]["bbox"]["width"] < landscape_groups[0]["bbox"]["width"]

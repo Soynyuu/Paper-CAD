@@ -646,68 +646,35 @@ class LayoutManager:
         # 警告情報を収集するリスト
         warnings = []
 
-        # 各グループの境界ボックス計算と必要時のみ横幅スケール調整
-        # 縦方向は複数ページ分割で吸収するため、横幅超過時のみ対象とする。
+        # 各グループの境界ボックス計算。
+        # 縮尺はStepUnfoldGeneratorで紙上寸法へ変換済みのため、ここでは勝手に縮小しない。
         for group in unfolded_groups:
             bbox = self._calculate_group_bbox(group["polygons"])
             group["bbox"] = bbox
 
-            scale_applied = False
-            scale = 1.0
-            original_width = bbox["width"]
-            original_height = bbox["height"]
-
-            if bbox["width"] > self.printable_width_mm:
+            width_overflow = bbox["width"] > self.printable_width_mm
+            height_overflow = bbox["height"] > self.printable_height_mm
+            if width_overflow or height_overflow:
                 logger.info(
-                    f"警告: グループ横幅({bbox['width']:.1f}mm)が"
-                    f"印刷可能エリア({self.printable_width_mm}mm)を超えています"
+                    f"警告: グループサイズ({bbox['width']:.1f}x{bbox['height']:.1f}mm)が"
+                    f"印刷可能エリア({self.printable_width_mm}x{self.printable_height_mm}mm)を超えています"
                 )
-
-                scale = self.printable_width_mm / bbox["width"]
-                logger.info(f"横幅スケール調整: {scale:.3f}")
-                scale_applied = True
-
-                scaled_polygons = []
-                for polygon in group["polygons"]:
-                    scaled_polygon = [(x * scale, y * scale) for x, y in polygon]
-                    scaled_polygons.append(scaled_polygon)
-                group["polygons"] = scaled_polygons
-
-                scaled_tabs = []
-                for tab in group.get("tabs", []):
-                    scaled_tab = [(x * scale, y * scale) for x, y in tab]
-                    scaled_tabs.append(scaled_tab)
-                group["tabs"] = scaled_tabs
-
-                bbox = self._calculate_group_bbox(group["polygons"])
-                group["bbox"] = bbox
-                logger.info(
-                    f"  -> スケール調整後: {bbox['width']:.1f}x{bbox['height']:.1f}mm"
-                )
-
-            if scale_applied:
-                scale_ratio_text = self._format_scale_as_fraction(scale)
-                scale_percentage = int(scale * 100)
                 warnings.append(
                     {
-                        "type": "size_exceeded",
+                        "type": "page_overflow",
                         "message": (
-                            f"📐 一部の図形が用紙サイズを超えたため、該当グループのみ"
-                            f"{scale_ratio_text}（{scale_percentage}%）に縮小しました。\n"
-                            f"📐 Oversized groups were scaled to {scale_ratio_text} ({scale_percentage}%) to fit the page."
+                            "一部の展開パーツが選択した用紙の印刷可能領域を超えています。"
+                            "縮尺を小さくするか、用紙最大（自動）を選択してください。"
                         ),
                         "details": {
-                            "original_size_mm": {
-                                "width": round(original_width, 1),
-                                "height": round(original_height, 1),
-                            },
-                            "scaled_size_mm": {
+                            "size_mm": {
                                 "width": round(bbox["width"], 1),
                                 "height": round(bbox["height"], 1),
                             },
-                            "scale_factor": round(scale, 3),
-                            "scale_ratio_text": scale_ratio_text,
-                            "scale_percentage": scale_percentage,
+                            "overflow": {
+                                "width": width_overflow,
+                                "height": height_overflow,
+                            },
                             "page_format": self.page_format,
                             "page_orientation": self.page_orientation,
                             "printable_area_mm": {
@@ -717,15 +684,6 @@ class LayoutManager:
                         },
                     }
                 )
-
-        # 縦幅が印刷可能エリアを超える場合は情報メッセージ
-        for group in unfolded_groups:
-            bbox = group["bbox"]
-            if bbox["height"] > self.printable_height_mm:
-                logger.info(
-                    f"情報: グループ縦幅({bbox['height']:.1f}mm)が印刷可能エリア({self.printable_height_mm}mm)を超えています"
-                )
-                logger.info(f"  -> 複数ページに分割されます")
 
         # 面積の大きい順にソート
         unfolded_groups.sort(
@@ -824,8 +782,13 @@ class LayoutManager:
                 )
             bbox_tree = STRtree(bbox_geoms)
 
-        for y in range(0, int(max_height - bbox["height"]), grid_step):
-            for x in range(0, int(max_width - bbox["width"]), grid_step):
+        max_y = int(max_height - bbox["height"])
+        max_x = int(max_width - bbox["width"])
+        if max_x < 0 or max_y < 0:
+            return None
+
+        for y in range(0, max_y + 1, grid_step):
+            for x in range(0, max_x + 1, grid_step):
                 if bbox_tree is not None:
                     candidate_box = shapely_box(
                         x, y, x + bbox["width"], y + bbox["height"]

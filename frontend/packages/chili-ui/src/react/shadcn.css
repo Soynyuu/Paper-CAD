@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :where(.pc-shadcn) {
+        color: var(--foreground-color);
+        font-family: var(--font-family-sans);
+        font-feature-settings: "palt" 1;
+        letter-spacing: 0;
+    }
+
+    :where(.pc-shadcn *) {
+        box-sizing: border-box;
+    }
+}

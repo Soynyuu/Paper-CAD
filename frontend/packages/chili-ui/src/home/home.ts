@@ -78,7 +78,7 @@ export class Home extends HTMLElement {
     private logoSection() {
         return div(
             { className: style.logo },
-            span({ textContent: "PAPER-CAD" }),
+            span({ className: style.logoWordmark, textContent: "PaperCAD" }),
             span({ className: style.version, textContent: __APP_VERSION__ }),
         );
     }
@@ -162,19 +162,11 @@ export class Home extends HTMLElement {
                 },
                 svg({ icon: "icon-file-plus", className: style.heroIcon }),
                 div({ className: style.heroTitle, textContent: new Localize("command.doc.new") }),
-                div({
-                    className: style.heroDescription,
-                    textContent:
-                        I18n.translate("common.language") === "日本語"
-                            ? "何もない空間から自由に作成"
-                            : "Start from scratch",
-                }),
             ),
             // Card 2: Map (Primary)
             div(
                 {
                     className: style.heroCard,
-                    style: { borderColor: "var(--primary-color)", backgroundColor: "var(--neutral-0)" },
                     onclick: () => {
                         console.log("[Home] PLATEAU button clicked");
                         PubSub.default.pub("executeCommand", "file.importPlateauBuilding");
@@ -183,14 +175,10 @@ export class Home extends HTMLElement {
                 svg({ icon: "icon-position", className: style.heroIcon }),
                 div({
                     className: style.heroTitle,
-                    textContent: new Localize("command.file.importPlateauBuilding"),
-                }),
-                div({
-                    className: style.heroDescription,
                     textContent:
                         I18n.translate("common.language") === "日本語"
-                            ? "検索から3D地図で建物を選んで作成"
-                            : "Search and pick building from 3D Map",
+                            ? "建物から模型を作る"
+                            : "Create from building",
                 }),
             ),
         );

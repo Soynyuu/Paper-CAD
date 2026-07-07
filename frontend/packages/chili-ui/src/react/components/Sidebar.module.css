@@ -1,127 +1,148 @@
-/* Sidebar - Paper-CAD Design System */
 .sidebar {
-    width: 320px;
-    background: color-mix(in srgb, var(--panel-background-color) 92%, #e8eef4 8%);
-    border-left: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
+    width: 304px;
+    background: var(--panel-background-color);
+    border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
     z-index: 10;
 }
 
-/* Sidebar Header */
 .sidebarHeader {
-    padding: var(--spacing-md, 16px);
-    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .selectionCount {
     font-weight: var(--font-weight-semibold, 600);
-    color: color-mix(in srgb, var(--foreground-color) 76%, #2f5675 24%);
+    color: var(--foreground-color);
     font-size: var(--font-size-sm, 14px);
 }
 
 .emptyHeader {
     font-weight: var(--font-weight-medium, 500);
-    color: color-mix(in srgb, var(--neutral-500) 85%, #395a72 15%);
+    color: var(--neutral-500);
     font-size: var(--font-size-sm, 14px);
 }
 
-/* Building List */
 .sidebarList {
+    position: relative;
     flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-12, 12px);
+    min-height: 0;
+}
+
+.sidebarViewport {
+    height: 100%;
+    outline: none;
+}
+
+.sidebarContent {
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm, 8px);
+    gap: 6px;
 }
 
 .emptyState {
     text-align: center;
-    padding: var(--spacing-xl, 32px) var(--spacing-md, 16px);
-    color: color-mix(in srgb, var(--neutral-500) 85%, #3a5b73 15%);
-    font-size: var(--font-size-sm, 14px);
+    padding: 24px 16px;
+    color: var(--neutral-500);
+    font-size: 13px;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-12, 12px);
     align-items: center;
 }
 
-/* Sidebar Footer */
+.scrollbar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    width: 8px;
+    padding: 1px;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.sidebarList:hover .scrollbar,
+.scrollbar[data-scrolling] {
+    opacity: 1;
+}
+
+.scrollThumb {
+    flex: 1;
+    border-radius: var(--radius-sm, 4px);
+    background: var(--neutral-300);
+}
+
 .sidebarFooter {
-    padding: var(--spacing-md, 16px);
-    border-top: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
+    padding: 12px;
+    border-top: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm, 8px);
+    gap: 7px;
 }
 
 .importButton {
     width: 100%;
-    padding: var(--spacing-10, 10px);
-    background: linear-gradient(140deg, #2f5877, #1b3f5f);
-    color: #f7f8fa;
-    border: none;
+    min-height: 38px;
+    padding: 0 10px;
+    background: var(--primary-color);
+    color: var(--neutral-0);
+    border: 1px solid var(--primary-color);
     border-radius: var(--radius-sm, 4px);
     font-weight: var(--font-weight-semibold, 600);
     font-size: var(--font-size-sm, 14px);
     cursor: pointer;
-    transition: all var(--transition-fast);
 }
 
 .importButton:hover:not(:disabled) {
-    background: linear-gradient(140deg, #3a6484, #234b6b);
+    background: var(--primary-dark, var(--primary-color));
 }
 
-.importButton:disabled {
-    background: var(--neutral-300);
-    color: var(--neutral-500);
+.importButton:disabled,
+.unfoldBetaButton:disabled,
+.clearButton:disabled {
+    opacity: var(--opacity-disabled, 0.5);
     cursor: not-allowed;
 }
 
 .unfoldBetaButton {
     width: 100%;
-    padding: var(--spacing-10, 10px);
-    background: linear-gradient(140deg, #746f2a, #5d571f);
-    color: #f8f7ea;
-    border: none;
+    min-height: 36px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--foreground-color);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm, 4px);
     font-weight: var(--font-weight-semibold, 600);
     font-size: var(--font-size-sm, 14px);
     cursor: pointer;
-    transition: all var(--transition-fast);
 }
 
-.unfoldBetaButton:hover:not(:disabled) {
-    background: linear-gradient(140deg, #847f35, #6b6529);
-}
-
-.unfoldBetaButton:disabled {
-    background: var(--neutral-300);
-    color: var(--neutral-500);
-    cursor: not-allowed;
+.unfoldBetaButton:hover:not(:disabled),
+.clearButton:hover:not(:disabled) {
+    background: var(--hover-background-color);
 }
 
 .clearButton {
     width: 100%;
-    padding: var(--spacing-sm, 8px);
+    min-height: 32px;
+    padding: 0 10px;
     background: transparent;
-    border: 1px solid color-mix(in srgb, var(--border-color) 82%, #9fb3c2 18%);
-    color: color-mix(in srgb, var(--neutral-600) 86%, #3a5b73 14%);
+    border: 1px solid transparent;
+    color: var(--neutral-600);
     border-radius: var(--radius-sm, 4px);
     font-size: var(--font-size-sm, 14px);
     cursor: pointer;
-    transition: all var(--transition-fast);
 }
 
-.clearButton:hover:not(:disabled) {
-    background: var(--hover-background-color);
-    border-color: #2f597a;
-    color: var(--foreground-color);
-}
-
-.clearButton:disabled {
-    opacity: var(--opacity-disabled, 0.5);
-    cursor: not-allowed;
+@media (max-width: 920px) {
+    .sidebar {
+        width: 100%;
+        height: 240px;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+    }
 }

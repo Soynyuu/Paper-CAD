@@ -37,7 +37,7 @@
             font-weight: var(--font-weight-medium);
             margin: var(--spacing-sm) var(--spacing-xl);
             padding: 0px var(--spacing-xl);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border-color);
             background-color: var(--panel-background-color);
             cursor: pointer;
@@ -45,24 +45,21 @@
 
             &:hover {
                 background-color: var(--hover-background-color);
-                transform: translateY(-2px);
-                box-shadow: var(--shadow-md);
             }
 
             &:active {
-                transform: translateY(0);
-                box-shadow: var(--shadow-sm);
+                background-color: var(--background-color);
             }
         }
 
         .back {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: var(--primary-color);
             color: var(--neutral-0);
-            border: none;
+            border-color: var(--primary-color);
             font-weight: var(--font-weight-semibold);
 
             &:hover {
-                background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+                background: var(--primary-dark, var(--primary-color));
             }
         }
 
@@ -70,28 +67,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin: var(--spacing-xl);
+            margin: 48px var(--spacing-xl) 36px;
 
-            & svg {
-                width: 64px;
-                height: 64px;
-            }
-
-            & span {
-                margin-top: var(--spacing-md);
+            .logoWordmark {
+                margin: 0;
                 color: var(--primary-color);
-                letter-spacing: 6px;
-                font-size: var(--font-size-xl);
-                font-weight: var(--font-weight-bold);
-                font-family: "Noto Sans JP", "Helvetica Neue", Helvetica, Arial, sans-serif;
+                font-family: var(--font-family-sans);
+                font-size: 25px;
+                font-weight: 700;
+                letter-spacing: -0.03em;
+                line-height: 1;
             }
 
             .version {
-                font-size: var(--font-size-sm);
-                margin-top: var(--spacing-xs);
+                font-size: 12px;
+                margin-top: 8px;
                 letter-spacing: 0px;
-                opacity: var(--opacity-medium);
-                color: var(--neutral-600);
+                color: color-mix(in srgb, var(--primary-color) 72%, var(--neutral-600) 28%);
+                font-weight: var(--font-weight-medium);
             }
         }
     }
@@ -107,13 +100,13 @@
             margin: 0px var(--spacing-xl);
             padding: var(--spacing-md) var(--spacing-lg);
             justify-content: space-between;
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             background-color: var(--panel-background-color);
             border: 1px solid var(--border-color);
             transition: all var(--transition-fast);
 
             &:hover {
-                box-shadow: var(--shadow-sm);
+                background-color: var(--hover-background-color);
             }
         }
 
@@ -141,7 +134,7 @@
             transition: all var(--transition-fast);
 
             &:hover {
-                border-color: var(--primary-color);
+                border-color: var(--neutral-500);
             }
 
             &:focus {
@@ -167,7 +160,7 @@
             font-weight: var(--font-weight-bold);
             font-size: var(--font-size-sm);
             padding: var(--spacing-xs);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border-color);
             background-color: var(--panel-background-color);
             transition: all var(--transition-fast);
@@ -228,7 +221,7 @@
             display: flex;
             flex: 1 1 240px;
             flex-direction: column;
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             overflow: hidden;
 
             &:hover {
@@ -241,7 +234,7 @@
                 object-fit: cover;
                 height: 180px;
                 padding: var(--spacing-lg);
-                border-radius: var(--radius-md);
+                border-radius: var(--radius-sm);
                 background-color: var(--background-color);
                 border: 1px solid var(--border-color);
             }
@@ -286,9 +279,9 @@
 .heroSection {
     display: flex;
     justify-content: center;
-    gap: var(--spacing-xl);
-    padding: var(--spacing-lg) var(--spacing-xl);
-    margin-bottom: var(--spacing-xl);
+    gap: 24px;
+    padding: 14px 32px 20px;
+    margin-bottom: 28px;
 }
 
 .heroCard {
@@ -296,41 +289,35 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 240px;
-    height: 200px;
-    padding: var(--spacing-lg);
+    width: 230px;
+    height: 156px;
+    padding: 20px;
     background-color: var(--panel-background-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all var(--transition-base);
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast);
     text-align: center;
-    box-shadow: var(--shadow-md);
 }
 
 .heroCard:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--primary-color);
+    background-color: var(--hover-background-color);
+    border-color: var(--neutral-400, var(--border-color));
 }
 
 .heroIcon {
-    width: 48px;
-    height: 48px;
-    margin-bottom: var(--spacing-md);
-    color: var(--primary-color);
+    width: 42px;
+    height: 42px;
+    margin-bottom: 12px;
+    color: var(--neutral-600);
     fill: currentColor;
 }
 
 .heroTitle {
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-bold);
-    margin-bottom: var(--spacing-sm);
+    font-size: 15px;
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: 0;
     color: var(--foreground-color);
-}
-
-.heroDescription {
-    font-size: var(--font-size-sm);
-    color: var(--neutral-500);
-    line-height: 1.4;
 }

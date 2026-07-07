@@ -4,6 +4,11 @@
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import { useAtom } from "jotai";
 import * as Cesium from "cesium";
+import { Autocomplete } from "@base-ui/react/autocomplete";
+import { Dialog } from "@base-ui/react/dialog";
+import { Tabs } from "@base-ui/react/tabs";
+import { Tooltip } from "@base-ui/react/tooltip";
+import { Search, X } from "lucide-react";
 import { DialogResult, I18n, PubSub } from "chili-core";
 import {
     CesiumView,
@@ -14,9 +19,10 @@ import {
 } from "chili-cesium";
 import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
 import { Sidebar } from "./components/Sidebar";
-import { Instructions } from "./components/Instructions";
 import { Loading } from "./components/Loading";
 import { PlateauSearchLoading } from "./components/PlateauSearchLoading";
+import { Button, type ButtonProps } from "./components/ui/button";
+import { Input } from "./components/ui/input";
 import styles from "./PlateauCesiumPickerReact.module.css";
 import type { PlateauCesiumPickerResult } from "../plateauCesiumPickerDialog";
 
@@ -99,6 +105,31 @@ interface SearchResult {
     osmType?: string;
     osmId?: number;
     usage?: string;
+}
+
+const SEARCH_MODE_LABELS: Record<"facility" | "address" | "buildingId", string> = {
+    facility: "施設名",
+    address: "住所",
+    buildingId: "建物ID",
+};
+
+interface TooltipButtonProps extends ButtonProps {
+    label: string;
+}
+
+function TooltipButton({ label, children, ...buttonProps }: TooltipButtonProps) {
+    return (
+        <Tooltip.Root>
+            <Tooltip.Trigger render={<Button variant="outline" size="sm" {...buttonProps} aria-label={label} />}>
+                {children}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Positioner sideOffset={8}>
+                    <Tooltip.Popup className={styles.tooltipPopup}>{label}</Tooltip.Popup>
+                </Tooltip.Positioner>
+            </Tooltip.Portal>
+        </Tooltip.Root>
+    );
 }
 
 /**
@@ -991,6 +1022,25 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         buildingPickerRef.current?.clearPreviewHighlight();
     }, [searchResults.length]);
 
+    const handleSearchModeChange = useCallback((value: any) => {
+        if (value === "facility" || value === "address" || value === "buildingId") {
+            setSearchMode(value);
+            setSearchError(null);
+            setSelectedResultIndex(-1);
+        }
+    }, []);
+
+    const handleHighlightedResultChange = useCallback(
+        (result: SearchResult | undefined) => {
+            if (!result) return;
+            const index = searchResults.findIndex((candidate) => candidate.id === result.id);
+            if (index >= 0) {
+                setSelectedResultIndex(index);
+            }
+        },
+        [searchResults],
+    );
+
     const renderSearchPanel = (variant: "dialog" | "floating") => {
         const isDialogPanel = variant === "dialog";
         const showDetails = isDialogPanel || showExpandedSearch;
@@ -1008,127 +1058,133 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
 
         return (
             <div ref={searchContainerRef} className={containerClassName}>
-                <div
+                <form
                     className={`${styles.searchBox} ${showDetails ? styles.expanded : ""} ${
                         isDialogPanel ? styles.searchBoxDialog : styles.searchBoxFloating
                     }`}
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        handleSearchSubmit();
+                    }}
                 >
                     {isDialogPanel && (
                         <div className={styles.searchHeader}>
-                            <div className={styles.searchEyebrow}>PLATEAU Building Import</div>
-                            <div className={styles.searchTitle}>建物を検索</div>
-                            <div className={styles.searchSubtitle}>
-                                検索後は3D地図で結果を確認しながら候補をクリックできます。
-                            </div>
+                            <Dialog.Title className={styles.searchTitle}>建物を検索</Dialog.Title>
                         </div>
                     )}
 
-                    <div className={styles.searchInputWrapper}>
-                        <span className={styles.searchIcon}>
-                            <svg viewBox="0 0 24 24">
-                                <circle cx="11" cy="11" r="7" />
-                                <path d="M21 21l-4.35-4.35" />
-                            </svg>
-                        </span>
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            className={styles.searchInput}
-                            placeholder="場所や施設を検索"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onFocus={handleSearchFocus}
-                            onKeyDown={handleSearchKeyDown}
-                            onCompositionStart={handleCompositionStart}
-                            onCompositionEnd={handleCompositionEnd}
-                            disabled={isSearching}
-                            autoComplete="off"
-                        />
-                        <button
-                            className={styles.searchSubmitButton}
-                            onClick={handleSearchSubmit}
-                            disabled={isSearching || !searchQuery.trim()}
-                            type="button"
-                        >
-                            検索
-                        </button>
-                        {isSearching && <div className={styles.searchSpinner} />}
-                        {!isSearching && searchQuery && (
-                            <button
-                                className={styles.searchClearButton}
-                                onClick={handleSearchClear}
-                                onMouseDown={(e) => e.preventDefault()}
-                                type="button"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 6L6 18M6 6l12 12" />
-                                </svg>
-                            </button>
-                        )}
-                    </div>
-
-                    <div className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}>
-                        <button
-                            className={`${styles.searchModeChip} ${searchMode === "facility" ? styles.active : ""}`}
-                            onClick={() => setSearchMode("facility")}
-                        >
-                            施設名
-                        </button>
-                        <button
-                            className={`${styles.searchModeChip} ${searchMode === "address" ? styles.active : ""}`}
-                            onClick={() => setSearchMode("address")}
-                        >
-                            住所
-                        </button>
-                        <button
-                            className={`${styles.searchModeChip} ${searchMode === "buildingId" ? styles.active : ""}`}
-                            onClick={() => setSearchMode("buildingId")}
-                        >
-                            建物ID
-                        </button>
-                    </div>
-
-                    {showDetails && searchMode === "buildingId" && (
-                        <div className={styles.meshCodeSection}>
-                            <input
-                                type="text"
-                                className={styles.meshCodeInput}
-                                placeholder="メッシュコード（例: 53394511）"
-                                value={meshCode}
-                                onChange={(e) => setMeshCode(e.target.value)}
-                                disabled={isSearching}
-                            />
-                        </div>
-                    )}
-
-                    {showResults && <div className={styles.searchDivider} />}
-
-                    <div
-                        className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
-                        role="listbox"
+                    <Autocomplete.Root<SearchResult>
+                        items={searchResults}
+                        value={searchQuery}
+                        onValueChange={(value) => setSearchQuery(value)}
+                        onItemHighlighted={handleHighlightedResultChange}
+                        itemToStringValue={(result) => result.displayName}
+                        mode="none"
+                        inline
+                        open={showResults}
+                        openOnInputClick
                     >
-                        {searchError ? (
-                            <div className={styles.searchError}>{searchError}</div>
-                        ) : (
-                            searchResults.map((result, index) =>
-                                (() => {
+                        <div className={styles.searchInputWrapper}>
+                            <span className={styles.searchIcon}>
+                                <Search aria-hidden="true" />
+                            </span>
+                            <Autocomplete.Input
+                                ref={searchInputRef}
+                                className={styles.searchInput}
+                                placeholder={
+                                    searchMode === "buildingId"
+                                        ? "建物IDを入力"
+                                        : "場所や施設を検索"
+                                }
+                                onFocus={handleSearchFocus}
+                                onKeyDown={handleSearchKeyDown}
+                                onCompositionStart={handleCompositionStart}
+                                onCompositionEnd={handleCompositionEnd}
+                                disabled={isSearching}
+                                autoComplete="off"
+                            />
+                            {isSearching && <div className={styles.searchSpinner} />}
+                            {!isSearching && searchQuery && (
+                                <Autocomplete.Clear
+                                    render={
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={styles.searchClearButton}
+                                            onClick={handleSearchClear}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            aria-label="検索語を消去"
+                                            type="button"
+                                        />
+                                    }
+                                >
+                                    <X aria-hidden="true" />
+                                </Autocomplete.Clear>
+                            )}
+                            <Button
+                                className={styles.searchSubmitButton}
+                                disabled={isSearching || !searchQuery.trim()}
+                                type="submit"
+                                size="sm"
+                            >
+                                検索
+                            </Button>
+                        </div>
+
+                        <Tabs.Root
+                            className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}
+                            value={searchMode}
+                            onValueChange={handleSearchModeChange}
+                        >
+                            <Tabs.List className={styles.searchModeList} aria-label="検索種別">
+                                {Object.entries(SEARCH_MODE_LABELS).map(([value, label]) => (
+                                    <Tabs.Tab
+                                        key={value}
+                                        value={value}
+                                        render={<button className={styles.searchModeChip} type="button" />}
+                                    >
+                                        {label}
+                                    </Tabs.Tab>
+                                ))}
+                            </Tabs.List>
+                            <Tabs.Panel value="buildingId" className={styles.meshCodeSection}>
+                                {showDetails && (
+                                    <Input
+                                        type="text"
+                                        className={styles.meshCodeInput}
+                                        placeholder="メッシュコード（例: 53394511）"
+                                        value={meshCode}
+                                        onChange={(e) => setMeshCode(e.target.value)}
+                                        disabled={isSearching}
+                                    />
+                                )}
+                            </Tabs.Panel>
+                        </Tabs.Root>
+
+                        {showResults && <div className={styles.searchDivider} />}
+
+                        <Autocomplete.List
+                            className={`${styles.searchResults} ${showResults ? styles.visible : ""}`}
+                        >
+                            {searchError ? (
+                                <div className={styles.searchError}>{searchError}</div>
+                            ) : (
+                                searchResults.map((result, index) => {
                                     const isResultActive =
                                         index === selectedResultIndex || result.id === activeResultId;
-                                    const isResultSelected = !!result.gmlId
-                                        ? selectedBuildings.some(
-                                              (building) => building.gmlId === result.gmlId,
-                                          )
-                                        : false;
-
                                     return (
-                                        <div
+                                        <Autocomplete.Item
                                             key={result.id}
                                             className={`${styles.searchResultItem} ${
                                                 isResultActive ? styles.selected : ""
                                             }`}
+                                            value={result}
+                                            index={index}
+                                            onMouseDown={(event) => {
+                                                event.preventDefault();
+                                                handleResultClick(result);
+                                            }}
                                             onClick={() => handleResultClick(result)}
-                                            role="option"
-                                            aria-selected={isResultActive}
                                         >
                                             <div className={styles.locationName}>{result.displayName}</div>
                                             <div className={styles.resultMetaRow}>
@@ -1142,86 +1198,114 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                                         {result.buildingId}
                                                     </span>
                                                 )}
-                                                {isResultSelected && (
-                                                    <span className={styles.resultTag}>選択済み</span>
-                                                )}
                                                 {result.id === previewHighlightedResultId && (
-                                                    <span
-                                                        className={`${styles.resultTag} ${styles.resultTagActive}`}
-                                                    >
-                                                        ハイライト中
-                                                    </span>
+                                                    <span className={styles.resultDot} aria-label="確認中" />
                                                 )}
                                             </div>
-                                        </div>
+                                        </Autocomplete.Item>
                                     );
-                                })(),
-                            )
-                        )}
-                    </div>
+                                })
+                            )}
+                        </Autocomplete.List>
+                    </Autocomplete.Root>
 
-                    {!showResults && !searchQuery && (
-                        <div className={styles.searchHint}>
-                            Enterで検索。結果をクリックすると地図でハイライト表示されます。
-                        </div>
-                    )}
-                </div>
+                </form>
             </div>
         );
     };
 
     return (
-        <div className={styles.dialog} onKeyDown={handleDialogKeyDown}>
-            {isSearchStage ? (
-                <div className={styles.searchStage}>
-                    <button
-                        className={`${styles.closeButton} ${styles.searchStageCloseButton}`}
-                        onClick={handleClose}
-                        aria-label="閉じる"
-                    >
-                        <svg viewBox="0 0 24 24" fill="none">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
-                    {renderSearchPanel("dialog")}
-                </div>
-            ) : (
-                <div className={styles.body}>
-                    <div className={styles.mapContainer}>
-                        <div className={styles.cesiumContainer}>
-                            <div
-                                ref={containerRef}
-                                id="plateau-cesium-host"
-                                style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-                            />
-                        </div>
+        <Tooltip.Provider>
+            <Dialog.Root
+                open
+                onOpenChange={(open) => {
+                    if (!open) {
+                        handleClose();
+                    }
+                }}
+            >
+                <Dialog.Portal>
+                    <Dialog.Popup className={`pc-shadcn ${styles.dialog}`} onKeyDown={handleDialogKeyDown}>
+                        {isSearchStage ? (
+                            <div className={styles.searchStage}>
+                                <div className={styles.stageLogo} aria-hidden="true">
+                                    <span>Paper</span>
+                                    <span>CAD</span>
+                                </div>
+                                <Dialog.Close
+                                    render={
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className={`${styles.closeButton} ${styles.searchStageCloseButton}`}
+                                            onClick={handleClose}
+                                            aria-label="閉じる"
+                                            type="button"
+                                        />
+                                    }
+                                >
+                                    <X aria-hidden="true" />
+                                </Dialog.Close>
+                                {renderSearchPanel("dialog")}
+                            </div>
+                        ) : (
+                            <div className={styles.body}>
+                                <div className={styles.mapContainer}>
+                                    <div className={styles.cesiumContainer}>
+                                        <div
+                                            ref={containerRef}
+                                            id="plateau-cesium-host"
+                                            style={{
+                                                position: "absolute",
+                                                inset: 0,
+                                                width: "100%",
+                                                height: "100%",
+                                            }}
+                                        />
+                                    </div>
 
-                        <button className={styles.closeButton} onClick={handleClose} aria-label="閉じる">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                        </button>
+                                    <Dialog.Close
+                                        render={
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className={styles.closeButton}
+                                                onClick={handleClose}
+                                                aria-label="閉じる"
+                                                type="button"
+                                            />
+                                        }
+                                    >
+                                        <X aria-hidden="true" />
+                                    </Dialog.Close>
 
-                        <button className={styles.backButton} onClick={handleBackToSearch} type="button">
-                            検索に戻る
-                        </button>
+                                    <TooltipButton
+                                        label="検索に戻る"
+                                        className={styles.backButton}
+                                        onClick={handleBackToSearch}
+                                        type="button"
+                                    >
+                                        検索に戻る
+                                    </TooltipButton>
 
-                        {renderSearchPanel("floating")}
+                                    {renderSearchPanel("floating")}
 
-                        <Instructions />
-                        {!viewerReady && <Loading message="地図ビューを準備中..." />}
-                        {loading && <Loading message={loadingMessage} />}
-                    </div>
+                                    {!viewerReady && <Loading message="地図ビューを準備中..." />}
+                                    {loading && <Loading message={loadingMessage} />}
+                                </div>
 
-                    <Sidebar
-                        selectedBuildings={selectedBuildings}
-                        onRemove={handleRemoveBuilding}
-                        onImport={handleImport}
-                        onUnfoldBeta={handleUnfoldBeta}
-                        onClear={handleClear}
-                    />
-                </div>
-            )}
-        </div>
+                                <Sidebar
+                                    selectedBuildings={selectedBuildings}
+                                    onRemove={handleRemoveBuilding}
+                                    onImport={handleImport}
+                                    onUnfoldBeta={handleUnfoldBeta}
+                                    onClear={handleClear}
+                                />
+                            </div>
+                        )}
+                    </Dialog.Popup>
+                </Dialog.Portal>
+            </Dialog.Root>
+        </Tooltip.Provider>
     );
 }

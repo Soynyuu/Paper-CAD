@@ -1,5 +1,5 @@
 module.exports = {
-    extensionsToTreatAsEsm: [".ts"],
+    extensionsToTreatAsEsm: [".ts", ".tsx"],
     preset: "ts-jest/presets/default-esm",
     testRegex: "packages/.*/test/(.+)\\.test\\.(js|ts)$",
     testEnvironment: "jsdom",

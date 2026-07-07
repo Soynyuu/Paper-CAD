@@ -1,7 +1,7 @@
 import React, { act } from "react";
 import { renderReactDialog } from "../src/react/renderReactDialog";
 
-test("renderReactDialog mounts above popovers and cleans up", async () => {
+test("renderReactDialog mounts without intercepting clicks and cleans up", async () => {
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
     const Dialog = () => React.createElement("div", { "data-testid": "content" }, "hello");
@@ -16,7 +16,9 @@ test("renderReactDialog mounts above popovers and cleans up", async () => {
 
     const container = content!.parentElement as HTMLDivElement | null;
     expect(container).not.toBeNull();
-    expect(container!.style.zIndex).toBe("var(--z-tooltip, 10001)");
+    expect(container!.style.width).toBe("0px");
+    expect(container!.style.height).toBe("0px");
+    expect(container!.style.pointerEvents).toBe("none");
 
     await act(async () => {
         cleanup?.();

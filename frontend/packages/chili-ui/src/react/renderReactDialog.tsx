@@ -31,15 +31,17 @@ export function renderReactDialog<P extends object>(
     Component: React.ComponentType<P>,
     props: P,
 ): () => void {
-    // Create container for React component (full screen, no backdrop centering)
+    // Create a React owner node. Base UI portals the visible dialog to <body>,
+    // so this mount point must not cover the app or intercept pointer events.
     const container = document.createElement("div");
     container.style.cssText = `
-        position: fixed;
+        position: relative;
         top: 0;
         left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: var(--z-tooltip, 10001);
+        width: 0;
+        height: 0;
+        overflow: visible;
+        pointer-events: none;
     `;
     document.body.appendChild(container);
 

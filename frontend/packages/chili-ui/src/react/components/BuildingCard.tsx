@@ -2,8 +2,11 @@
 // See LICENSE file in the project root for full license information.
 
 import React from "react";
+import { Tooltip } from "@base-ui/react/tooltip";
+import { X } from "lucide-react";
 import { I18n } from "chili-core";
 import type { PickedBuilding } from "chili-cesium";
+import { Button } from "./ui/button";
 import styles from "./BuildingCard.module.css";
 
 export interface BuildingCardProps {
@@ -35,7 +38,7 @@ export function BuildingCard({ building, index, onRemove }: BuildingCardProps) {
     const height = building.properties.measuredHeight || 0;
     const usageLabel = building.properties.usage
         ? USAGE_CODE_MAP[building.properties.usage] || building.properties.usage
-        : "N/A";
+        : "用途未設定";
 
     const handleRemove = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -46,23 +49,37 @@ export function BuildingCard({ building, index, onRemove }: BuildingCardProps) {
         <div className={styles.buildingCard}>
             <div className={styles.cardHeader}>
                 <div className={styles.buildingName}>
-                    #{index + 1} {building.properties.name || "Unnamed Building"}
+                    {building.properties.name || `建物 ${index + 1}`}
                 </div>
-                <button
-                    className={styles.removeButton}
-                    onClick={handleRemove}
-                    title={I18n.translate("items.tool.delete")}
-                    type="button"
-                    aria-label={`Remove ${building.properties.name || "building"}`}
-                >
-                    ×
-                </button>
+                <Tooltip.Root>
+                    <Tooltip.Trigger
+                        render={
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={styles.removeButton}
+                                onClick={handleRemove}
+                                type="button"
+                                aria-label={`Remove ${building.properties.name || "building"}`}
+                            />
+                        }
+                    >
+                        <X aria-hidden="true" />
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Positioner sideOffset={8}>
+                            <Tooltip.Popup className={styles.tooltipPopup}>
+                                {I18n.translate("items.tool.delete")}
+                            </Tooltip.Popup>
+                        </Tooltip.Positioner>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
             </div>
             <div className={styles.cardDetail}>
                 <div>{height.toFixed(1)}m</div>
                 <div>{usageLabel}</div>
             </div>
-            <div className={styles.cardId}>ID: {building.gmlId}</div>
+            <div className={styles.cardId}>{building.gmlId}</div>
         </div>
     );
 }

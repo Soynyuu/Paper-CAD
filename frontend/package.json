@@ -6,10 +6,13 @@
     "description": "A browser-based 3D CAD for building model creation and papercraft unfolding",
     "scripts": {
         "dev": "NODE_ENV=development npx rspack dev",
+        "dev:select": "node scripts/select-env.mjs dev",
         "build": "NODE_ENV=production npx rspack build",
         "build:wasm": "cd cpp && cmake --preset release && cmake --build --preset release",
         "demo:build": "NODE_ENV=demo npx rspack build",
         "demo": "npm run demo:build && npx serve dist --listen 8080",
+        "local_demo:build": "NODE_ENV=local_demo npx rspack build",
+        "local_demo": "npm run local_demo:build && npx serve dist --listen 8080",
         "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
         "testc": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
         "format": "npx prettier --write . && npx clang-format --style=Webkit --sort-includes -i ./cpp/src/**",

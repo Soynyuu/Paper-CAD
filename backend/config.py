@@ -65,10 +65,11 @@ try:
             env_file = ".env.production"
         elif os.path.exists(".env"):
             env_file = ".env"
-    elif ENV == "demo":
-        # デモ環境: .env.demo → .env の順で探す
-        if os.path.exists(".env.demo"):
-            env_file = ".env.demo"
+    elif ENV in {"demo", "local_demo"}:
+        # デモ環境: .env.demo/.env.local_demo → .env の順で探す
+        local_env_file = f".env.{ENV}"
+        if os.path.exists(local_env_file):
+            env_file = local_env_file
         elif os.path.exists(".env"):
             env_file = ".env"
     else:

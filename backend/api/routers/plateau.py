@@ -37,6 +37,7 @@ from services.plateau_fetcher import (
     search_building_by_id_and_mesh,
     search_buildings_by_address,
 )
+from services.local_demo import get_local_tilesets, is_local_demo
 from services.plateau_texture_mapper import build_plateau_texture_mappings
 from services.step_processor import StepUnfoldGenerator
 from utils.logger import get_logger
@@ -1561,6 +1562,30 @@ async def mesh_to_tilesets(request: MeshToTilesetsRequest) -> MeshToTilesetsResp
         logger.info(f"[API] LOD: {request.lod}")
         logger.info(f"[API] Prefer no texture: {request.prefer_no_texture}")
         logger.info(f"{'=' * 60}\n")
+
+        if is_local_demo():
+            tilesets_data = get_local_tilesets(
+                request.mesh_codes,
+                request.lod,
+                request.municipality_code,
+            )
+            tilesets = [
+                TilesetInfo(
+                    mesh_code=data["mesh_code"],
+                    tileset_url=data["tileset_url"],
+                    municipality_name=data.get("municipality_name"),
+                    municipality_code=data.get("municipality_code"),
+                )
+                for data in tilesets_data
+            ]
+            total_requested = len(request.mesh_codes)
+            total_found = len(tilesets)
+            return MeshToTilesetsResponse(
+                tilesets=tilesets,
+                total_requested=total_requested,
+                total_found=total_found,
+                total_not_found=max(total_requested - total_found, 0),
+            )
 
         if request.municipality_code:
             dataset = await fetch_plateau_dataset_by_municipality(

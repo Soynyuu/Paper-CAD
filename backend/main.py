@@ -47,6 +47,24 @@ async def read_index():
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+try:
+    from services.local_demo import (
+        LOCAL_DEMO_ROUTE_PREFIX,
+        get_local_demo_static_dir,
+        is_local_demo,
+    )
+
+    local_demo_dir = get_local_demo_static_dir()
+    if is_local_demo() and local_demo_dir.exists():
+        app.mount(
+            LOCAL_DEMO_ROUTE_PREFIX,
+            StaticFiles(directory=str(local_demo_dir)),
+            name="local-demo-cache",
+        )
+        logger.info("Mounted local demo cache at %s from %s", LOCAL_DEMO_ROUTE_PREFIX, local_demo_dir)
+except Exception as e:
+    logger.warning("Local demo cache was not mounted: %s", e)
+
 
 # 簡易アクセスログ用ミドルウェア（1行/リクエスト）
 @app.middleware("http")
@@ -90,7 +108,7 @@ def main():
     # 環境変数から設定を取得
     port = int(os.getenv("PORT", 8001))
     env = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
-    is_production_like = env in ["production", "demo"]  # demo も本番設定を使用
+    is_production_like = env in ["production", "demo", "local_demo"]  # demo も本番設定を使用
 
     # 本番環境またはデモ環境ではreloadを無効化、ワーカー数を設定
     reload_enabled = not is_production_like
@@ -106,6 +124,8 @@ def main():
     )
     if env == "demo":
         logger.info("SERVER: デモモード: 本番パフォーマンス + localhost対応")
+    elif env == "local_demo":
+        logger.info("SERVER: ローカルデモモード: 本番パフォーマンス + オフラインキャッシュ対応")
 
     uvicorn.run(
         "main:app",

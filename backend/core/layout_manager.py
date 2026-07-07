@@ -9,6 +9,7 @@ It provides functionality for:
 - Polygon-level overlap detection for accurate placement
 """
 
+import copy
 from typing import List, Dict, Tuple, Optional
 from utils.logger import get_logger
 
@@ -209,8 +210,46 @@ class LayoutManager:
             translated_tab = [(x + offset_x, y + offset_y) for x, y in tab]
             translated_tabs.append(translated_tab)
         translated_group["tabs"] = translated_tabs
+        translated_group["bbox"] = self._calculate_group_bbox(translated_polygons)
 
         return translated_group
+
+    def _rotate_group_90_clockwise(self, group: Dict) -> Dict:
+        """
+        グループ全体を90度回転する。紙面配置用の剛体変換なので形状寸法は変えない。
+        """
+        rotated_group = copy.deepcopy(group)
+
+        def rotate_points(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+            return [(y, -x) for x, y in points]
+
+        rotated_group["polygons"] = [
+            rotate_points(polygon) for polygon in group.get("polygons", [])
+        ]
+        rotated_group["tabs"] = [rotate_points(tab) for tab in group.get("tabs", [])]
+        rotated_group["bbox"] = self._calculate_group_bbox(rotated_group["polygons"])
+        rotated_group["layout_rotation"] = 90
+        rotated_group.pop("_merged_geometry", None)
+        return rotated_group
+
+    def _layout_orientations(self, group: Dict) -> List[Dict]:
+        """
+        配置候補として元向きと90度回転を返す。
+        """
+        base_group = copy.deepcopy(group)
+        base_group["bbox"] = self._calculate_group_bbox(base_group.get("polygons", []))
+        base_group["layout_rotation"] = 0
+        base_group.pop("_merged_geometry", None)
+
+        rotated_group = self._rotate_group_90_clockwise(base_group)
+        if (
+            abs(base_group["bbox"]["width"] - rotated_group["bbox"]["width"]) < 1e-6
+            and abs(base_group["bbox"]["height"] - rotated_group["bbox"]["height"])
+            < 1e-6
+        ):
+            return [base_group]
+
+        return [base_group, rotated_group]
 
     def _create_shapely_polygon(
         self, polygon_points: List[Tuple[float, float]]
@@ -652,9 +691,13 @@ class LayoutManager:
             bbox = self._calculate_group_bbox(group["polygons"])
             group["bbox"] = bbox
 
-            width_overflow = bbox["width"] > self.printable_width_mm
-            height_overflow = bbox["height"] > self.printable_height_mm
-            if width_overflow or height_overflow:
+            orientations = self._layout_orientations(group)
+            fits_any_orientation = any(
+                variant["bbox"]["width"] <= self.printable_width_mm
+                and variant["bbox"]["height"] <= self.printable_height_mm
+                for variant in orientations
+            )
+            if not fits_any_orientation:
                 logger.info(
                     f"警告: グループサイズ({bbox['width']:.1f}x{bbox['height']:.1f}mm)が"
                     f"印刷可能エリア({self.printable_width_mm}x{self.printable_height_mm}mm)を超えています"
@@ -672,8 +715,14 @@ class LayoutManager:
                                 "height": round(bbox["height"], 1),
                             },
                             "overflow": {
-                                "width": width_overflow,
-                                "height": height_overflow,
+                                "width": all(
+                                    variant["bbox"]["width"] > self.printable_width_mm
+                                    for variant in orientations
+                                ),
+                                "height": all(
+                                    variant["bbox"]["height"] > self.printable_height_mm
+                                    for variant in orientations
+                                ),
                             },
                             "page_format": self.page_format,
                             "page_orientation": self.page_orientation,
@@ -697,18 +746,16 @@ class LayoutManager:
         margin_mm = 5  # ページ内のアイテム間マージン
 
         for group in unfolded_groups:
-            bbox = group["bbox"]
-
             # 現在のページに配置を試みる
-            position = self._find_position_in_page(
-                bbox,
+            placement = self._find_oriented_position_in_page(
+                group,
                 page_occupied_areas,
                 self.printable_width_mm,
                 self.printable_height_mm,
                 margin_mm,
             )
 
-            if position is None:
+            if placement is None:
                 # 現在のページに収まらない場合、新しいページを開始
                 if current_page:
                     paged_groups.append(current_page)
@@ -716,14 +763,19 @@ class LayoutManager:
                     page_occupied_areas = []
 
                 # 新しいページの最初に配置
-                position = {"x": 0, "y": 0}
+                placement = self._first_page_position(group)
+
+            variant = placement["group"]
+            bbox = variant["bbox"]
+            position = placement["position"]
 
             # グループを配置
             offset_x = position["x"] - bbox["min_x"]
             offset_y = position["y"] - bbox["min_y"]
 
-            positioned_group = self._translate_group(group, offset_x, offset_y)
+            positioned_group = self._translate_group(variant, offset_x, offset_y)
             positioned_group["position"] = position
+            positioned_group["layout_rotation"] = variant.get("layout_rotation", 0)
             current_page.append(positioned_group)
 
             # 占有エリアを記録
@@ -741,6 +793,97 @@ class LayoutManager:
 
         logger.info(f"ページレイアウト完了: {len(paged_groups)}ページに分割")
         return paged_groups, warnings
+
+    def can_pack_groups_on_single_page(
+        self, unfolded_groups: List[Dict], margin_mm: float = 5
+    ) -> bool:
+        """
+        与えられた紙上寸法のグループ群が、選択用紙1枚に配置できるかを判定する。
+        実際の配置と同じ向き候補・候補点探索を使う。
+        """
+        page_occupied_areas: List[Dict] = []
+
+        groups = copy.deepcopy(unfolded_groups)
+        for group in groups:
+            group["bbox"] = self._calculate_group_bbox(group.get("polygons", []))
+
+        groups.sort(
+            key=lambda g: (
+                max(g["bbox"]["width"], g["bbox"]["height"]),
+                g["bbox"]["width"] * g["bbox"]["height"],
+            ),
+            reverse=True,
+        )
+
+        for group in groups:
+            placement = self._find_oriented_position_in_page(
+                group,
+                page_occupied_areas,
+                self.printable_width_mm,
+                self.printable_height_mm,
+                margin_mm,
+            )
+            if placement is None:
+                return False
+
+            bbox = placement["group"]["bbox"]
+            position = placement["position"]
+            page_occupied_areas.append(
+                {
+                    "min_x": position["x"] - margin_mm,
+                    "min_y": position["y"] - margin_mm,
+                    "max_x": position["x"] + bbox["width"] + margin_mm,
+                    "max_y": position["y"] + bbox["height"] + margin_mm,
+                }
+            )
+
+        return True
+
+    def _first_page_position(self, group: Dict) -> Dict:
+        orientations = self._layout_orientations(group)
+        fitting_orientations = [
+            variant
+            for variant in orientations
+            if variant["bbox"]["width"] <= self.printable_width_mm
+            and variant["bbox"]["height"] <= self.printable_height_mm
+        ]
+        selected = fitting_orientations[0] if fitting_orientations else orientations[0]
+        return {"group": selected, "position": {"x": 0, "y": 0}}
+
+    def _find_oriented_position_in_page(
+        self,
+        group: Dict,
+        occupied_areas: List[Dict],
+        max_width: float,
+        max_height: float,
+        margin: float,
+    ) -> Optional[Dict]:
+        placements = []
+        for variant in self._layout_orientations(group):
+            position = self._find_position_in_page(
+                variant["bbox"], occupied_areas, max_width, max_height, margin
+            )
+            if position is None:
+                continue
+            bbox = variant["bbox"]
+            placements.append(
+                {
+                    "group": variant,
+                    "position": position,
+                    "score": (
+                        position["y"] + bbox["height"],
+                        position["x"] + bbox["width"],
+                        position["y"],
+                        position["x"],
+                    ),
+                }
+            )
+
+        if not placements:
+            return None
+
+        placements.sort(key=lambda item: item["score"])
+        return {"group": placements[0]["group"], "position": placements[0]["position"]}
 
     def _find_position_in_page(
         self,
@@ -764,55 +907,68 @@ class LayoutManager:
         Returns:
             配置位置またはNone（配置不可の場合）
         """
-        # グリッドベースで位置を探索
-        grid_step = 5  # 5mm刻み
-
-        # 配置済みbboxからSTRtreeを構築
-        bbox_tree = None
-        bbox_geoms = []
-        if SHAPELY_AVAILABLE and occupied_areas:
-            for area in occupied_areas:
-                bbox_geoms.append(
-                    shapely_box(
-                        area["min_x"],
-                        area["min_y"],
-                        area["max_x"],
-                        area["max_y"],
-                    )
-                )
-            bbox_tree = STRtree(bbox_geoms)
-
-        max_y = int(max_height - bbox["height"])
-        max_x = int(max_width - bbox["width"])
-        if max_x < 0 or max_y < 0:
+        max_y = max_height - bbox["height"]
+        max_x = max_width - bbox["width"]
+        if max_x < -1e-6 or max_y < -1e-6:
             return None
 
-        for y in range(0, max_y + 1, grid_step):
-            for x in range(0, max_x + 1, grid_step):
-                if bbox_tree is not None:
-                    candidate_box = shapely_box(
-                        x, y, x + bbox["width"], y + bbox["height"]
-                    )
-                    nearby_indices = bbox_tree.query(candidate_box)
-                    has_overlap = False
-                    for idx in nearby_indices:
-                        if candidate_box.intersects(bbox_geoms[idx]):
-                            has_overlap = True
-                            break
-                    if not has_overlap:
-                        return {"x": x, "y": y}
-                else:
-                    # Shapelyなしのフォールバック
-                    candidate_area = {
-                        "min_x": x,
-                        "min_y": y,
-                        "max_x": x + bbox["width"],
-                        "max_y": y + bbox["height"],
-                    }
-                    if not self._areas_overlap(candidate_area, occupied_areas):
-                        return {"x": x, "y": y}
+        for x, y in self._candidate_page_positions(
+            occupied_areas, max_x=max_x, max_y=max_y
+        ):
+            candidate_area = {
+                "min_x": x,
+                "min_y": y,
+                "max_x": x + bbox["width"],
+                "max_y": y + bbox["height"],
+            }
+            if not self._areas_overlap(candidate_area, occupied_areas):
+                return {"x": x, "y": y}
 
         return None  # 配置可能な位置が見つからない
+
+    def _candidate_page_positions(
+        self, occupied_areas: List[Dict], max_x: float, max_y: float
+    ) -> List[Tuple[float, float]]:
+        """
+        bottom-left配置の候補点を作る。
+        既存矩形の右辺・下辺からできる空き角を優先し、紙面内の候補だけ返す。
+        """
+        candidates = {(0.0, 0.0)}
+        x_edges = {0.0}
+        y_edges = {0.0}
+
+        for area in occupied_areas:
+            x_values = [max(0.0, area["min_x"]), max(0.0, area["max_x"])]
+            y_values = [max(0.0, area["min_y"]), max(0.0, area["max_y"])]
+
+            for x in x_values:
+                if x <= max_x + 1e-6:
+                    x_edges.add(round(x, 6))
+            for y in y_values:
+                if y <= max_y + 1e-6:
+                    y_edges.add(round(y, 6))
+
+            corner_candidates = [
+                (area["max_x"], area["min_y"]),
+                (area["min_x"], area["max_y"]),
+                (area["max_x"], area["max_y"]),
+                (area["max_x"], 0.0),
+                (0.0, area["max_y"]),
+            ]
+            for x, y in corner_candidates:
+                x = max(0.0, round(x, 6))
+                y = max(0.0, round(y, 6))
+                if x <= max_x + 1e-6 and y <= max_y + 1e-6:
+                    candidates.add((x, y))
+
+        # 少数のエッジ同士も組み合わせ、棚配置だけでは届かない空きに入れる。
+        if len(x_edges) * len(y_edges) <= 900:
+            for x in x_edges:
+                for y in y_edges:
+                    if x <= max_x + 1e-6 and y <= max_y + 1e-6:
+                        candidates.add((x, y))
+
+        return sorted(candidates, key=lambda point: (point[1], point[0]))
 
     def update_scale_factor(self, scale_factor: float):
         """

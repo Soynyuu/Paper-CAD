@@ -74,7 +74,8 @@ def test_fit_page_scale_uses_selected_page_orientation():
         )
     )
     portrait_groups, portrait_warnings = generator._prepare_groups_for_layout(groups)
-    portrait_printable_width = generator.layout_manager.printable_width_mm
+    portrait_scale = generator.applied_scale_factor
+    portrait_printable_height = generator.layout_manager.printable_height_mm
 
     generator.apply_request_settings(
         BrepPapercraftRequest(
@@ -86,13 +87,15 @@ def test_fit_page_scale_uses_selected_page_orientation():
         )
     )
     landscape_groups, landscape_warnings = generator._prepare_groups_for_layout(groups)
+    landscape_scale = generator.applied_scale_factor
     landscape_printable_width = generator.layout_manager.printable_width_mm
 
-    assert portrait_groups[0]["bbox"]["width"] == pytest.approx(portrait_printable_width)
+    assert portrait_groups[0]["bbox"]["width"] == pytest.approx(portrait_printable_height)
     assert landscape_groups[0]["bbox"]["width"] == pytest.approx(landscape_printable_width)
     assert portrait_warnings[0]["type"] == "fit_page_scale_applied"
     assert landscape_warnings[0]["type"] == "fit_page_scale_applied"
-    assert portrait_groups[0]["bbox"]["width"] < landscape_groups[0]["bbox"]["width"]
+    assert portrait_scale < 3000.0 / generator.layout_manager.page_sizes_mm["A4"]["width"]
+    assert landscape_scale == pytest.approx(portrait_scale)
 
 
 def test_fit_page_scale_respects_meter_units():
@@ -112,9 +115,33 @@ def test_fit_page_scale_respects_meter_units():
     paper_groups, warnings = generator._prepare_groups_for_layout(groups)
 
     assert paper_groups[0]["bbox"]["width"] == pytest.approx(
-        generator.layout_manager.printable_width_mm
+        generator.layout_manager.printable_height_mm
     )
     assert warnings[0]["type"] == "fit_page_scale_applied"
     assert generator.stats["applied_scale_factor"] == pytest.approx(
-        30000.0 / generator.layout_manager.printable_width_mm
+        30000.0 / generator.layout_manager.printable_height_mm
     )
+
+
+def test_fit_page_scale_uses_actual_single_page_packing():
+    generator = StepUnfoldGenerator()
+    groups = [
+        {"polygons": [_rect(1000.0, 1000.0)], "tabs": []},
+        {"polygons": [_rect(1000.0, 1000.0)], "tabs": []},
+    ]
+
+    generator.apply_request_settings(
+        BrepPapercraftRequest(
+            layout_mode="paged",
+            page_format="A4",
+            page_orientation="portrait",
+            scale_factor=150.0,
+            scale_mode="fit_page",
+        )
+    )
+    paper_groups, warnings = generator._prepare_groups_for_layout(groups)
+
+    individual_only_scale = 1000.0 / generator.layout_manager.printable_width_mm
+    assert generator.applied_scale_factor > individual_only_scale
+    assert generator.layout_manager.can_pack_groups_on_single_page(paper_groups)
+    assert warnings[0]["type"] == "fit_page_scale_applied"

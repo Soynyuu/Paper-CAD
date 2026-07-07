@@ -129,6 +129,9 @@ async def unfold_step_to_svg(
     scale_mode: str = Form(
         "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
     ),
+    units: str = Form(
+        "mm", description="入力寸法単位 / Source units (mm/cm/m)"
+    ),
     texture_mappings: Optional[str] = Form(
         None, description="テクスチャマッピング情報（JSON） / Texture mappings (JSON)"
     ),
@@ -162,6 +165,7 @@ async def unfold_step_to_svg(
         page_orientation: ページ向き / Orientation (portrait/landscape, default: "portrait")
         scale_factor: 縮尺倍率 / Scale factor (例: 150 = 1/150 scale, default: 10.0)
         scale_mode: 縮尺モード / Scale mode (fixed/fit_page, default: fixed)
+        units: 入力寸法単位 / Source units (mm/cm/m, default: mm)
         texture_mappings: テクスチャマッピング情報（JSON） / Texture mappings (JSON array)
         mirror_horizontal: 左右反転モード / Mirror horizontally
 
@@ -244,6 +248,7 @@ async def unfold_step_to_svg(
             page_orientation=page_orientation,
             scale_factor=scale_factor,
             scale_mode=scale_mode,
+            units=units,
             mirror_horizontal=mirror_horizontal,
         )
 
@@ -419,6 +424,9 @@ async def unfold_step_to_pdf(
     scale_mode: str = Form(
         "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
     ),
+    units: str = Form(
+        "mm", description="入力寸法単位 / Source units (mm/cm/m)"
+    ),
     texture_mappings: Optional[str] = Form(
         None,
         description="テクスチャマッピング情報（JSON配列） / Texture mappings as JSON array",
@@ -504,6 +512,7 @@ async def unfold_step_to_pdf(
             page_orientation=page_orientation,
             scale_factor=scale_factor,
             scale_mode=scale_mode,
+            units=units,
             mirror_horizontal=mirror_horizontal,
         )
 

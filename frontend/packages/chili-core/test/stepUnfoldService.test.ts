@@ -16,6 +16,7 @@ test("unfoldStepFromData sends fixed scale options to backend", async () => {
     const result = await service.unfoldStepFromData("step-data", {
         scaleMode: "fixed",
         scale: 150,
+        units: "m",
         layoutMode: "paged",
         pageFormat: "A4",
         pageOrientation: "portrait",
@@ -25,6 +26,7 @@ test("unfoldStepFromData sends fixed scale options to backend", async () => {
     const body = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
     expect(body.get("scale_mode")).toBe("fixed");
     expect(body.get("scale_factor")).toBe("150");
+    expect(body.get("units")).toBe("m");
     expect(body.get("page_format")).toBe("A4");
     expect(body.get("page_orientation")).toBe("portrait");
 });

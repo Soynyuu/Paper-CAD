@@ -395,6 +395,20 @@ class StepUnfoldGenerator:
             mirror_horizontal=self.mirror_horizontal,
         )
 
+    def _source_unit_to_mm_factor(self) -> float:
+        """
+        入力座標の単位を実寸mmへ変換する係数を返す。
+        """
+        factors = {
+            "mm": 1.0,
+            "cm": 10.0,
+            "m": 1000.0,
+        }
+        try:
+            return factors[self.units]
+        except KeyError as exc:
+            raise ValueError("unitsはmm/cm/mのいずれかを指定してください") from exc
+
     def _calculate_fit_page_scale_factor(self, unfolded_groups: List[Dict]) -> float:
         """
         選択用紙の印刷可能領域に各展開グループが収まる最大縮尺を計算する。
@@ -403,11 +417,12 @@ class StepUnfoldGenerator:
         required_scale = 1.0
         printable_width = self.layout_manager.printable_width_mm
         printable_height = self.layout_manager.printable_height_mm
+        unit_to_mm = self._source_unit_to_mm_factor()
 
         for group in unfolded_groups:
             bbox = self.layout_manager._calculate_group_bbox(group.get("polygons", []))
-            width = bbox["width"]
-            height = bbox["height"]
+            width = bbox["width"] * unit_to_mm
+            height = bbox["height"] * unit_to_mm
             if width > 0:
                 required_scale = max(required_scale, width / printable_width)
             if height > 0:
@@ -424,7 +439,7 @@ class StepUnfoldGenerator:
         if scale_factor <= 0:
             raise ValueError("scale_factorは0より大きい必要があります")
 
-        scale = 1.0 / scale_factor
+        scale = self._source_unit_to_mm_factor() / scale_factor
         scaled_groups = []
 
         for group in unfolded_groups:
@@ -467,6 +482,8 @@ class StepUnfoldGenerator:
         self.stats["scale_mode"] = self.scale_mode
         self.stats["requested_scale_factor"] = requested_scale_factor
         self.stats["applied_scale_factor"] = round(self.applied_scale_factor, 6)
+        self.stats["source_units"] = self.units
+        self.stats["unit_to_mm_factor"] = self._source_unit_to_mm_factor()
         self.stats["page_format"] = self.page_format
         self.stats["page_orientation"] = self.page_orientation
 

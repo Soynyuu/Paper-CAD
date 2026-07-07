@@ -3,3 +3,4 @@
 
 export * from "./stepUnfoldPanel";
 export * from "./testUtils";
+export * from "./unfoldSettingsDialog";

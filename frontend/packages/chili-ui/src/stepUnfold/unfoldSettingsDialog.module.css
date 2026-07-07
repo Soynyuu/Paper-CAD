@@ -1,0 +1,107 @@
+.dialog {
+    width: min(520px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid #2f3742;
+    border-radius: 8px;
+    color: #edf2f7;
+    background: #202630;
+    box-shadow: 0 18px 60px rgb(0 0 0 / 45%);
+}
+
+.dialog::backdrop {
+    background: rgb(0 0 0 / 45%);
+}
+
+.root {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.selectionCount {
+    color: #a9b4c2;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.label {
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.select,
+.numberInput {
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 9px;
+    border: 1px solid #445266;
+    border-radius: 6px;
+    color: #f8fafc;
+    background: #111827;
+    font: inherit;
+}
+
+.numberInput:disabled {
+    color: #7d8794;
+    background: #18202b;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.button {
+    min-width: 96px;
+    padding: 8px 14px;
+    border: 1px solid #4b5563;
+    border-radius: 6px;
+    color: #edf2f7;
+    background: #374151;
+    font: inherit;
+    cursor: pointer;
+}
+
+.primaryButton {
+    border-color: #2563eb;
+    background: #2563eb;
+}
+
+.button:hover {
+    filter: brightness(1.08);
+}
+
+@media (max-width: 520px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}

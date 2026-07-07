@@ -9,6 +9,7 @@ import { IService } from "../service";
 export interface UnfoldOptions {
     scaleMode?: "fixed" | "fitPage";
     scale?: number;
+    units?: "mm" | "cm" | "m";
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
@@ -88,6 +89,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("output_format", "json");
             formData.append("scale_factor", (options.scale || 150).toString());
             formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
+            formData.append("units", options.units || "mm");
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
@@ -135,6 +137,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("output_format", "json");
             formData.append("scale_factor", (options.scale || 150).toString());
             formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
+            formData.append("units", options.units || "mm");
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
@@ -198,6 +201,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("file", stepBlob, "model.step");
             formData.append("scale_factor", (options.scale || 150).toString());
             formData.append("scale_mode", this.toBackendScaleMode(options.scaleMode));
+            formData.append("units", options.units || "mm");
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");

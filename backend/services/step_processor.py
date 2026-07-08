@@ -3,7 +3,6 @@ import tempfile
 import uuid
 import base64
 import json
-import math
 import time
 import hashlib
 import copy
@@ -411,46 +410,19 @@ class StepUnfoldGenerator:
 
     def _calculate_fit_page_scale_factor(self, unfolded_groups: List[Dict]) -> float:
         """
-        選択用紙1枚に全展開グループが収まる最大縮尺を計算する。
+        一番大きい展開グループが選択用紙1枚に収まる最大縮尺を計算する。
+        複数グループのページ分割は後段のlayout_for_pagesに委譲する。
         戻り値は縮尺分母（例: 150 = 1:150）。
-        """
-        lower_bound = self._calculate_fit_page_scale_lower_bound(unfolded_groups)
-        if self._can_pack_groups_at_scale(unfolded_groups, lower_bound):
-            return lower_bound
-
-        high = max(lower_bound, self.scale_factor, 1.0)
-        while not self._can_pack_groups_at_scale(unfolded_groups, high):
-            high *= 1.25
-            if high > 1_000_000:
-                raise ValueError("用紙最大縮尺の計算に失敗しました")
-
-        low = lower_bound
-        for _ in range(16):
-            mid = (low + high) / 2
-            if self._can_pack_groups_at_scale(unfolded_groups, mid):
-                high = mid
-            else:
-                low = mid
-
-        return high
-
-    def _calculate_fit_page_scale_lower_bound(
-        self, unfolded_groups: List[Dict]
-    ) -> float:
-        """
-        個別パーツ寸法と総bbox面積から、探索開始用の理論下限を計算する。
         """
         required_scale = 1.0
         printable_width = self.layout_manager.printable_width_mm
         printable_height = self.layout_manager.printable_height_mm
         unit_to_mm = self._source_unit_to_mm_factor()
-        total_bbox_area_mm2 = 0.0
 
         for group in unfolded_groups:
             bbox = self.layout_manager._calculate_group_bbox(group.get("polygons", []))
             width = bbox["width"] * unit_to_mm
             height = bbox["height"] * unit_to_mm
-            total_bbox_area_mm2 += max(0.0, width) * max(0.0, height)
 
             if width > 0 or height > 0:
                 unrotated = max(
@@ -463,21 +435,7 @@ class StepUnfoldGenerator:
                 )
                 required_scale = max(required_scale, min(unrotated, rotated))
 
-        printable_area = printable_width * printable_height
-        if printable_area > 0 and total_bbox_area_mm2 > 0:
-            required_scale = max(
-                required_scale, math.sqrt(total_bbox_area_mm2 / printable_area)
-            )
-
         return required_scale
-
-    def _can_pack_groups_at_scale(
-        self, unfolded_groups: List[Dict], scale_factor: float
-    ) -> bool:
-        paper_groups = self._scale_unfolded_groups_to_paper(
-            unfolded_groups, scale_factor
-        )
-        return self.layout_manager.can_pack_groups_on_single_page(paper_groups)
 
     def _scale_unfolded_groups_to_paper(
         self, unfolded_groups: List[Dict], scale_factor: float

@@ -123,7 +123,7 @@ def test_fit_page_scale_respects_meter_units():
     )
 
 
-def test_fit_page_scale_uses_actual_single_page_packing():
+def test_fit_page_scale_uses_largest_single_group_not_single_page_packing():
     generator = StepUnfoldGenerator()
     groups = [
         {"polygons": [_rect(1000.0, 1000.0)], "tabs": []},
@@ -142,6 +142,6 @@ def test_fit_page_scale_uses_actual_single_page_packing():
     paper_groups, warnings = generator._prepare_groups_for_layout(groups)
 
     individual_only_scale = 1000.0 / generator.layout_manager.printable_width_mm
-    assert generator.applied_scale_factor > individual_only_scale
-    assert generator.layout_manager.can_pack_groups_on_single_page(paper_groups)
+    assert generator.applied_scale_factor == pytest.approx(individual_only_scale)
+    assert not generator.layout_manager.can_pack_groups_on_single_page(paper_groups)
     assert warnings[0]["type"] == "fit_page_scale_applied"

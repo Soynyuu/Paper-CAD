@@ -1,41 +1,74 @@
 .dialog {
+    --dialog-background: #ffffff;
+    --dialog-foreground: #18181b;
+    --dialog-muted: #71717a;
+    --dialog-border: #e4e4e7;
+    --dialog-input: #ffffff;
+    --dialog-accent: #fff7ed;
+    --dialog-primary: #f97316;
+    --dialog-primary-hover: #ea580c;
+    --dialog-ring: rgb(249 115 22 / 28%);
+
     width: min(520px, calc(100vw - 32px));
     padding: 0;
-    border: 1px solid #2f3742;
+    border: 1px solid var(--dialog-border);
     border-radius: 8px;
-    color: #edf2f7;
-    background: #202630;
-    box-shadow: 0 18px 60px rgb(0 0 0 / 45%);
+    color: var(--dialog-foreground);
+    background: var(--dialog-background);
+    box-shadow:
+        0 18px 48px rgb(15 23 42 / 18%),
+        0 2px 8px rgb(15 23 42 / 8%);
 }
 
 .dialog::backdrop {
-    background: rgb(0 0 0 / 45%);
+    background: rgb(15 23 42 / 42%);
+    backdrop-filter: blur(2px);
 }
 
 .root {
     display: flex;
     flex-direction: column;
     gap: 18px;
-    padding: 20px;
+    padding: 22px;
 }
 
 .header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
+    padding-bottom: 2px;
+}
+
+.titleBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
 }
 
 .title {
     margin: 0;
+    color: var(--dialog-foreground);
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 650;
     line-height: 1.25;
+    letter-spacing: 0;
 }
 
 .selectionCount {
-    color: #a9b4c2;
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 9px;
+    border: 1px solid #fed7aa;
+    border-radius: 999px;
+    color: #9a3412;
+    background: var(--dialog-accent);
     font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
     white-space: nowrap;
 }
 
@@ -48,60 +81,125 @@
 .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
+    min-width: 0;
 }
 
 .label {
-    color: #cbd5e1;
-    font-size: 12px;
-    font-weight: 600;
+    color: #3f3f46;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
 }
 
 .select,
 .numberInput {
     width: 100%;
-    min-height: 34px;
-    padding: 6px 9px;
-    border: 1px solid #445266;
+    min-height: 38px;
+    padding: 0 11px;
+    border: 1px solid var(--dialog-border);
     border-radius: 6px;
-    color: #f8fafc;
-    background: #111827;
+    color: var(--dialog-foreground);
+    background: var(--dialog-input);
     font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    outline: none;
+    transition:
+        border-color 120ms ease,
+        box-shadow 120ms ease,
+        background-color 120ms ease;
 }
 
+.select {
+    cursor: pointer;
+}
+
+.select:hover,
+.numberInput:hover {
+    border-color: #fdba74;
+}
+
+.select:focus-visible,
+.numberInput:focus-visible {
+    border-color: var(--dialog-primary);
+    box-shadow: 0 0 0 3px var(--dialog-ring);
+}
+
+.select:disabled,
 .numberInput:disabled {
-    color: #7d8794;
-    background: #18202b;
+    cursor: not-allowed;
+    color: #a1a1aa;
+    background: #f4f4f5;
 }
 
 .actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    padding-top: 2px;
 }
 
 .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 96px;
-    padding: 8px 14px;
-    border: 1px solid #4b5563;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--dialog-border);
     border-radius: 6px;
-    color: #edf2f7;
-    background: #374151;
+    color: var(--dialog-foreground);
+    background: #ffffff;
     font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
     cursor: pointer;
-}
-
-.primaryButton {
-    border-color: #2563eb;
-    background: #2563eb;
+    outline: none;
+    transition:
+        border-color 120ms ease,
+        background-color 120ms ease,
+        color 120ms ease,
+        box-shadow 120ms ease;
 }
 
 .button:hover {
-    filter: brightness(1.08);
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+.button:focus-visible {
+    border-color: var(--dialog-primary);
+    box-shadow: 0 0 0 3px var(--dialog-ring);
+}
+
+.primaryButton {
+    border-color: var(--dialog-primary);
+    color: #ffffff;
+    background: var(--dialog-primary);
+}
+
+.primaryButton:hover {
+    border-color: var(--dialog-primary-hover);
+    color: #ffffff;
+    background: var(--dialog-primary-hover);
 }
 
 @media (max-width: 520px) {
+    .root {
+        padding: 18px;
+    }
+
     .grid {
         grid-template-columns: 1fr;
+    }
+
+    .actions {
+        flex-direction: column-reverse;
+    }
+
+    .button {
+        width: 100%;
     }
 }

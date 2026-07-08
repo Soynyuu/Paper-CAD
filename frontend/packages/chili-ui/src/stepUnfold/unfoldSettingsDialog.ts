@@ -130,11 +130,14 @@ export class StepUnfoldSettingsDialog {
                     { className: style.root },
                     div(
                         { className: style.header },
-                        h2({ className: style.title, textContent: "展開図設定" }),
-                        span({
-                            className: style.selectionCount,
-                            textContent: `${context.selectedCount ?? 0} item`,
-                        }),
+                        div(
+                            { className: style.titleBlock },
+                            h2({ className: style.title, textContent: "展開図設定" }),
+                            span({
+                                className: style.selectionCount,
+                                textContent: `${context.selectedCount ?? 0}個選択中`,
+                            }),
+                        ),
                     ),
                     div(
                         { className: style.grid },

@@ -417,23 +417,12 @@ class StepUnfoldGenerator:
         required_scale = 1.0
         printable_width = self.layout_manager.printable_width_mm
         printable_height = self.layout_manager.printable_height_mm
-        unit_to_mm = self._source_unit_to_mm_factor()
-
         for group in unfolded_groups:
-            bbox = self.layout_manager._calculate_group_bbox(group.get("polygons", []))
-            width = bbox["width"] * unit_to_mm
-            height = bbox["height"] * unit_to_mm
-
-            if width > 0 or height > 0:
-                unrotated = max(
-                    width / printable_width if printable_width > 0 else 1.0,
-                    height / printable_height if printable_height > 0 else 1.0,
-                )
-                rotated = max(
-                    height / printable_width if printable_width > 0 else 1.0,
-                    width / printable_height if printable_height > 0 else 1.0,
-                )
-                required_scale = max(required_scale, min(unrotated, rotated))
+            paper_unit_group = self._scale_unfolded_groups_to_paper([group], 1.0)[0]
+            group_required_scale = self.layout_manager.required_scale_to_fit_group(
+                paper_unit_group, printable_width, printable_height
+            )
+            required_scale = max(required_scale, group_required_scale)
 
         return required_scale
 
@@ -459,8 +448,8 @@ class StepUnfoldGenerator:
                 [(x * scale, y * scale) for x, y in tab]
                 for tab in group.get("tabs", [])
             ]
-            scaled_group["bbox"] = self.layout_manager._calculate_group_bbox(
-                scaled_group.get("polygons", [])
+            scaled_group["bbox"] = self.layout_manager.calculate_group_bbox(
+                scaled_group
             )
             scaled_groups.append(scaled_group)
 

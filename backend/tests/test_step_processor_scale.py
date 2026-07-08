@@ -123,6 +123,31 @@ def test_fit_page_scale_respects_meter_units():
     )
 
 
+def test_fit_page_scale_includes_tabs_in_largest_part():
+    generator = StepUnfoldGenerator()
+    groups = [
+        {
+            "polygons": [_rect(180.0, 260.0)],
+            "tabs": [[(180.0, 0.0), (205.0, 0.0), (205.0, 20.0), (180.0, 20.0)]],
+        }
+    ]
+
+    generator.apply_request_settings(
+        BrepPapercraftRequest(
+            layout_mode="paged",
+            page_format="A4",
+            page_orientation="portrait",
+            scale_factor=150.0,
+            scale_mode="fit_page",
+        )
+    )
+    paper_groups, warnings = generator._prepare_groups_for_layout(groups)
+
+    assert generator.applied_scale_factor > 1.0
+    assert warnings[0]["type"] == "fit_page_scale_applied"
+    assert generator.layout_manager.can_pack_groups_on_single_page(paper_groups)
+
+
 def test_fit_page_scale_uses_largest_single_group_not_single_page_packing():
     generator = StepUnfoldGenerator()
     groups = [

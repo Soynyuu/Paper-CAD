@@ -10,6 +10,7 @@ It provides functionality for:
 """
 
 import copy
+import math
 from typing import List, Dict, Tuple, Optional
 from utils.logger import get_logger
 
@@ -78,7 +79,7 @@ class LayoutManager:
 
         # 各グループの境界ボックス計算
         for group in unfolded_groups:
-            bbox = self._calculate_group_bbox(group["polygons"])
+            bbox = self.calculate_group_bbox(group)
             group["bbox"] = bbox
 
         # 面積の大きい順にソート
@@ -183,6 +184,14 @@ class LayoutManager:
             "height": max_y - min_y,
         }
 
+    def calculate_group_bbox(self, group: Dict) -> Dict:
+        """
+        ポリゴンとタブを含むグループ全体の境界ボックスを計算する。
+        """
+        return self._calculate_group_bbox(
+            list(group.get("polygons", [])) + list(group.get("tabs", []))
+        )
+
     def _translate_group(self, group: Dict, offset_x: float, offset_y: float) -> Dict:
         """
         グループ全体を指定オフセットで移動
@@ -210,46 +219,72 @@ class LayoutManager:
             translated_tab = [(x + offset_x, y + offset_y) for x, y in tab]
             translated_tabs.append(translated_tab)
         translated_group["tabs"] = translated_tabs
-        translated_group["bbox"] = self._calculate_group_bbox(translated_polygons)
+        translated_group["bbox"] = self.calculate_group_bbox(translated_group)
 
         return translated_group
 
-    def _rotate_group_90_clockwise(self, group: Dict) -> Dict:
+    def _rotate_group(self, group: Dict, angle_degrees: float) -> Dict:
         """
-        グループ全体を90度回転する。紙面配置用の剛体変換なので形状寸法は変えない。
+        グループ全体を指定角度で回転する。紙面配置用の剛体変換なので形状寸法は変えない。
         """
         rotated_group = copy.deepcopy(group)
+        theta = math.radians(angle_degrees)
+        cos_theta = math.cos(theta)
+        sin_theta = math.sin(theta)
 
         def rotate_points(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-            return [(y, -x) for x, y in points]
+            return [
+                (x * cos_theta - y * sin_theta, x * sin_theta + y * cos_theta)
+                for x, y in points
+            ]
 
         rotated_group["polygons"] = [
             rotate_points(polygon) for polygon in group.get("polygons", [])
         ]
         rotated_group["tabs"] = [rotate_points(tab) for tab in group.get("tabs", [])]
-        rotated_group["bbox"] = self._calculate_group_bbox(rotated_group["polygons"])
-        rotated_group["layout_rotation"] = 90
+        rotated_group["bbox"] = self.calculate_group_bbox(rotated_group)
+        rotated_group["layout_rotation"] = angle_degrees
         rotated_group.pop("_merged_geometry", None)
         return rotated_group
 
     def _layout_orientations(self, group: Dict) -> List[Dict]:
         """
-        配置候補として元向きと90度回転を返す。
+        配置候補として複数の回転角を返す。
         """
-        base_group = copy.deepcopy(group)
-        base_group["bbox"] = self._calculate_group_bbox(base_group.get("polygons", []))
-        base_group["layout_rotation"] = 0
-        base_group.pop("_merged_geometry", None)
+        orientations = []
+        seen_dimensions = set()
+        for angle in range(0, 180, 15):
+            rotated_group = self._rotate_group(group, float(angle))
+            bbox = rotated_group["bbox"]
+            key = (round(bbox["width"], 3), round(bbox["height"], 3))
+            if key in seen_dimensions:
+                continue
+            seen_dimensions.add(key)
+            orientations.append(rotated_group)
 
-        rotated_group = self._rotate_group_90_clockwise(base_group)
-        if (
-            abs(base_group["bbox"]["width"] - rotated_group["bbox"]["width"]) < 1e-6
-            and abs(base_group["bbox"]["height"] - rotated_group["bbox"]["height"])
-            < 1e-6
-        ):
-            return [base_group]
+        return orientations
 
-        return [base_group, rotated_group]
+    def required_scale_to_fit_group(
+        self, group: Dict, max_width: float, max_height: float
+    ) -> float:
+        """
+        グループ単体が指定矩形に入るために必要な最小縮尺分母を返す。
+        回転候補のうち最も大きく置ける向きを採用する。
+        """
+        best_scale = None
+        for variant in self._layout_orientations(group):
+            bbox = variant["bbox"]
+            width = bbox["width"]
+            height = bbox["height"]
+            if width <= 0 and height <= 0:
+                continue
+            candidate = max(
+                width / max_width if max_width > 0 else 1.0,
+                height / max_height if max_height > 0 else 1.0,
+            )
+            best_scale = candidate if best_scale is None else min(best_scale, candidate)
+
+        return max(1.0, best_scale or 1.0)
 
     def _create_shapely_polygon(
         self, polygon_points: List[Tuple[float, float]]
@@ -688,7 +723,7 @@ class LayoutManager:
         # 各グループの境界ボックス計算。
         # 縮尺はStepUnfoldGeneratorで紙上寸法へ変換済みのため、ここでは勝手に縮小しない。
         for group in unfolded_groups:
-            bbox = self._calculate_group_bbox(group["polygons"])
+            bbox = self.calculate_group_bbox(group)
             group["bbox"] = bbox
 
             orientations = self._layout_orientations(group)
@@ -805,7 +840,7 @@ class LayoutManager:
 
         groups = copy.deepcopy(unfolded_groups)
         for group in groups:
-            group["bbox"] = self._calculate_group_bbox(group.get("polygons", []))
+            group["bbox"] = self.calculate_group_bbox(group)
 
         groups.sort(
             key=lambda g: (

@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from core.layout_manager import LayoutManager
@@ -5,6 +7,16 @@ from core.layout_manager import LayoutManager
 
 def _rect(width: float, height: float):
     return [(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)]
+
+
+def _rotated_rect(width: float, height: float, angle_degrees: float):
+    theta = math.radians(angle_degrees)
+    cos_theta = math.cos(theta)
+    sin_theta = math.sin(theta)
+    return [
+        (x * cos_theta - y * sin_theta, x * sin_theta + y * cos_theta)
+        for x, y in _rect(width, height)
+    ]
 
 
 def _flatten_pages(paged_groups):
@@ -59,6 +71,47 @@ def test_layout_for_pages_rotates_group_when_that_makes_it_fit():
     assert group["bbox"]["height"] == pytest.approx(260.0)
     assert group["bbox"]["width"] <= manager.printable_width_mm
     assert group["bbox"]["height"] <= manager.printable_height_mm
+
+
+def test_layout_for_pages_includes_tabs_in_fit_and_bbox():
+    manager = LayoutManager(page_format="A4", page_orientation="portrait")
+
+    groups = [
+        {
+            "polygons": [_rect(180.0, 60.0)],
+            "tabs": [[(180.0, 0.0), (205.0, 0.0), (205.0, 20.0), (180.0, 20.0)]],
+        }
+    ]
+
+    paged_groups, warnings = manager.layout_for_pages(groups)
+    group = paged_groups[0][0]
+
+    assert warnings == []
+    assert group["bbox"]["width"] <= manager.printable_width_mm
+    assert group["bbox"]["height"] <= manager.printable_height_mm
+
+
+def test_required_scale_to_fit_group_uses_oblique_rotation_candidates():
+    manager = LayoutManager(page_format="A4", page_orientation="portrait")
+    group = {"polygons": [_rotated_rect(260.0, 100.0, 30.0)], "tabs": []}
+
+    scale = manager.required_scale_to_fit_group(
+        group, manager.printable_width_mm, manager.printable_height_mm
+    )
+
+    zero_ninety_scale = min(
+        max(
+            manager.calculate_group_bbox(group)["width"] / manager.printable_width_mm,
+            manager.calculate_group_bbox(group)["height"] / manager.printable_height_mm,
+        ),
+        max(
+            manager.calculate_group_bbox(manager._rotate_group(group, 90.0))["width"]
+            / manager.printable_width_mm,
+            manager.calculate_group_bbox(manager._rotate_group(group, 90.0))["height"]
+            / manager.printable_height_mm,
+        ),
+    )
+    assert scale < zero_ninety_scale
 
 
 def test_can_pack_groups_on_single_page_requires_actual_packing_not_only_individual_fit():

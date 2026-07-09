@@ -122,6 +122,38 @@
     flex-shrink: 0;
 }
 
+.faceNumberPopover {
+    position: relative;
+}
+
+.faceNumberPopoverContent {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-popover);
+    display: none;
+    width: min(360px, calc(100vw - 32px));
+    padding: var(--spacing-md);
+    color: var(--foreground-color);
+    background-color: var(--panel-background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow:
+        0 12px 32px rgb(15 23 42 / 14%),
+        0 2px 8px rgb(15 23 42 / 8%);
+}
+
+.faceNumberPopover.open .faceNumberPopoverContent {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.faceNumberPopoverContent .faceHighlightContainer {
+    padding: 0;
+    border: 0;
+}
+
 /* Secondary controls area */
 .secondaryControls {
     display: flex;
@@ -144,9 +176,29 @@
 
 .faceSearchRow {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(120px, 1fr) auto auto;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-sm);
+}
+
+.faceSearchRow > * {
+    min-width: 0;
+}
+
+.faceNumberInput {
+    box-sizing: border-box;
+    appearance: textfield;
+    border-radius: var(--radius-sm);
+}
+
+.faceControlButton {
+    border-radius: var(--radius-sm);
+}
+
+.faceNumberInput::-webkit-inner-spin-button,
+.faceNumberInput::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
 }
 
 .faceSearchLabel {
@@ -154,71 +206,6 @@
     font-weight: var(--font-weight-semibold);
     color: var(--neutral-700);
     white-space: nowrap;
-}
-
-.faceNumberInput {
-    width: 100%;
-    max-width: 132px;
-    min-width: 0;
-    height: 28px;
-    padding: 0 8px;
-    background-color: var(--neutral-0);
-    color: var(--neutral-800);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: var(--font-size-sm);
-}
-
-.faceNumberInput:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.16);
-}
-
-.highlightButton,
-.clearButton {
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    cursor: pointer;
-    white-space: nowrap;
-    transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast),
-        color var(--transition-fast);
-}
-
-.highlightButton {
-    grid-column: 1 / 2;
-}
-
-.clearButton {
-    grid-column: 2 / 3;
-    justify-self: start;
-}
-
-.highlightButton {
-    color: var(--neutral-0);
-    background-color: var(--primary-color);
-    border-color: var(--primary-color-dark);
-}
-
-.highlightButton:hover {
-    background-color: var(--primary-color-dark);
-}
-
-.clearButton {
-    color: var(--neutral-700);
-    background-color: var(--neutral-0);
-}
-
-.clearButton:hover {
-    color: var(--neutral-900);
-    background-color: var(--neutral-50);
-    border-color: var(--neutral-400);
 }
 
 .highlightedFacesList,
@@ -254,12 +241,12 @@
 
 /* Face number button */
 .faceNumberButton {
-    min-width: 104px;
+    min-width: 88px;
     padding: 0 var(--spacing-sm);
     background-color: var(--neutral-0);
     color: var(--neutral-800);
     border: 1px solid var(--neutral-300);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
     cursor: pointer;

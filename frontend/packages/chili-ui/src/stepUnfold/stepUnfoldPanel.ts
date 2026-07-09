@@ -20,6 +20,8 @@ import "svgedit/dist/editor/svgedit.css";
 import "./svgedit-override.css"; // Apply our design system overrides
 import style from "./stepUnfoldPanel.module.css";
 import { Dialog } from "../dialog";
+import { buttonVariants } from "../react/components/ui/button";
+import { cn } from "../react/lib/utils";
 
 export class StepUnfoldPanel extends HTMLElement {
     private static _instance: StepUnfoldPanel | null = null;
@@ -27,6 +29,8 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _svgContainer: HTMLDivElement;
     private readonly _svgWrapper: HTMLDivElement;
     private readonly _showFaceNumbersButton: HTMLButtonElement;
+    private readonly _toggleFaceNumbersButton: HTMLButtonElement;
+    private readonly _faceNumberPopover: HTMLDivElement;
     private _faceNumbersVisible: boolean = false;
     // 面ハイライト用のUI要素
     private readonly _faceHighlightContainer: HTMLDivElement;
@@ -67,27 +71,54 @@ export class StepUnfoldPanel extends HTMLElement {
         });
 
         this._showFaceNumbersButton = button({
-            textContent: "面番号を表示",
-            className: style.faceNumberButton,
+            textContent: "面番号",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceNumberButton,
+            ),
+            title: "面番号の表示と検索",
         });
+        this._showFaceNumbersButton.setAttribute("aria-haspopup", "dialog");
+        this._showFaceNumbersButton.setAttribute("aria-expanded", "false");
         this._faceNumbersVisible = false;
+
+        this._toggleFaceNumbersButton = button({
+            textContent: "面番号を表示",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            ),
+        });
 
         // Create face highlight UI components
         this._faceNumberInput = input({
             type: "number",
             min: "1",
             placeholder: "面番号を検索",
-            className: style.faceNumberInput,
+            className: cn(
+                "pc-shadcn box-border flex h-8 min-w-0 w-full rounded-md border border-input bg-background px-2.5 font-sans text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                style.faceNumberInput,
+            ),
         });
 
         this._highlightFaceButton = button({
             textContent: "検索",
-            className: style.highlightButton,
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ size: "sm" }),
+                style.faceControlButton,
+            ),
         });
 
         this._clearHighlightsButton = button({
             textContent: "解除",
-            className: style.clearButton,
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            ),
         });
 
         this._highlightedFacesList = div({
@@ -113,6 +144,20 @@ export class StepUnfoldPanel extends HTMLElement {
             ),
             this._highlightedFacesList,
             this._faceSearchStatus,
+        );
+
+        this._faceNumberPopover = div(
+            {
+                className: style.faceNumberPopover,
+                role: "dialog",
+                ariaLabel: "面番号の表示と検索",
+            },
+            this._showFaceNumbersButton,
+            div(
+                { className: style.faceNumberPopoverContent },
+                this._toggleFaceNumbersButton,
+                this._faceHighlightContainer,
+            ),
         );
 
         this._modelSizeDisplay = div({
@@ -201,8 +246,9 @@ export class StepUnfoldPanel extends HTMLElement {
         // PubSubイベントリスナーを追加
         (PubSub.default as any).sub("stepUnfold.showResult", this._handleUnfoldResult);
 
-        // Add click handler for face numbers button
-        this._showFaceNumbersButton.onclick = () => this._toggleFaceNumbers();
+        // Add click handler for face number controls
+        this._showFaceNumbersButton.onclick = () => this._toggleFaceNumberPopover();
+        this._toggleFaceNumbersButton.onclick = () => this._toggleFaceNumbers();
 
         // Add PDF export button handler
         this._pdfExportButton.onclick = () => this._handlePDFExport();
@@ -225,6 +271,16 @@ export class StepUnfoldPanel extends HTMLElement {
         this._initializeTextureService();
 
         console.log("StepUnfoldPanel fully initialized, element:", this);
+    }
+
+    connectedCallback() {
+        document.addEventListener("pointerdown", this._handleFaceNumberPopoverOutsideClick);
+        document.addEventListener("keydown", this._handleFaceNumberPopoverKeydown);
+    }
+
+    disconnectedCallback() {
+        document.removeEventListener("pointerdown", this._handleFaceNumberPopoverOutsideClick);
+        document.removeEventListener("keydown", this._handleFaceNumberPopoverKeydown);
     }
 
     private _initializeTextureService() {
@@ -256,7 +312,6 @@ export class StepUnfoldPanel extends HTMLElement {
                 className: style.secondaryControls,
                 style: { display: "flex" }, // Visible by default (paged mode)
             },
-            this._faceHighlightContainer,
             this._pdfSettingsContainer,
             // Model size info and experimental badge (moved to secondary area)
             div(
@@ -282,7 +337,7 @@ export class StepUnfoldPanel extends HTMLElement {
                     // Left section: Buttons
                     div(
                         { className: style.buttonGroup },
-                        this._showFaceNumbersButton,
+                        this._faceNumberPopover,
                         this._pdfExportButton,
                     ),
                 ),
@@ -1142,6 +1197,32 @@ export class StepUnfoldPanel extends HTMLElement {
         this._setFaceNumbersVisible(!this._faceNumbersVisible);
     }
 
+    private _toggleFaceNumberPopover() {
+        const isOpen = this._faceNumberPopover.classList.toggle(style.open);
+        this._showFaceNumbersButton.setAttribute("aria-expanded", String(isOpen));
+        if (isOpen) {
+            this._faceNumberInput.focus();
+        }
+    }
+
+    private _closeFaceNumberPopover() {
+        this._faceNumberPopover.classList.remove(style.open);
+        this._showFaceNumbersButton.setAttribute("aria-expanded", "false");
+    }
+
+    private readonly _handleFaceNumberPopoverOutsideClick = (event: PointerEvent) => {
+        if (!this._faceNumberPopover.contains(event.target as Node)) {
+            this._closeFaceNumberPopover();
+        }
+    };
+
+    private readonly _handleFaceNumberPopoverKeydown = (event: KeyboardEvent) => {
+        if (event.key === "Escape" && this._faceNumberPopover.classList.contains(style.open)) {
+            this._closeFaceNumberPopover();
+            this._showFaceNumbersButton.focus();
+        }
+    };
+
     private _setFaceNumbersVisible(visible: boolean) {
         this._faceNumbersVisible = visible;
         console.log(`Toggling face numbers: ${this._faceNumbersVisible}`);
@@ -1149,10 +1230,20 @@ export class StepUnfoldPanel extends HTMLElement {
         // Update button appearance
         if (this._faceNumbersVisible) {
             this._showFaceNumbersButton.classList.add(style.active);
-            this._showFaceNumbersButton.textContent = "面番号を隠す";
+            this._toggleFaceNumbersButton.className = cn(
+                "pc-shadcn",
+                buttonVariants({ size: "sm" }),
+                style.faceControlButton,
+            );
+            this._toggleFaceNumbersButton.textContent = "面番号を隠す";
         } else {
             this._showFaceNumbersButton.classList.remove(style.active);
-            this._showFaceNumbersButton.textContent = "面番号を表示";
+            this._toggleFaceNumbersButton.className = cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            );
+            this._toggleFaceNumbersButton.textContent = "面番号を表示";
         }
 
         // Toggle 3D view face numbers

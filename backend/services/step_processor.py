@@ -91,6 +91,7 @@ class StepUnfoldGenerator:
 
         # ファイルハッシュ（キャッシュキー用）
         self._file_hash: Optional[str] = None
+        self._analysis_ready = False
 
         # ファイル読み込み処理クラス
         self.file_loader = FileLoader()
@@ -124,11 +125,12 @@ class StepUnfoldGenerator:
         self.scale_mode = "fixed"
         self.applied_scale_factor = self.scale_factor
         self.units = "mm"  # 単位系：寸法の解釈基準
-        self.tab_width = 5.0  # タブ幅：接着部の物理的寸法
+        self.tab_width = 0.0  # タブ幅：0の場合は接着タブを生成しない
         self.show_scale = True  # スケールバー：図面標準への準拠
         self.show_fold_lines = True  # 折り線：組み立て指示の視覚化
         self.show_cut_lines = True  # 切断線：加工指示の視覚化
         self.mirror_horizontal = False  # 左右反転モード：水平方向の反転
+        self.merge_mode = "improved"
 
         # SVGエクスポーター
         self.svg_exporter = SVGExporter(
@@ -185,6 +187,8 @@ class StepUnfoldGenerator:
         except Exception:
             self._file_hash = None
 
+        self._analysis_ready = False
+
         # FileLoaderクラスのload_from_fileメソッドを使用
         result = self.file_loader.load_from_file(file_path)
         # 読み込んだ形状を自分のインスタンスに設定
@@ -205,6 +209,7 @@ class StepUnfoldGenerator:
         # ファイルハッシュを計算（キャッシュキー用）
         self._file_hash = hashlib.sha256(file_content).hexdigest()
 
+        self._analysis_ready = False
         result = self.file_loader.load_from_bytes(file_content, file_ext)
         # 読み込んだ形状を自分のインスタンスに設定
         self.solid_shape = self.file_loader.solid_shape
@@ -220,6 +225,7 @@ class StepUnfoldGenerator:
         # ファイルハッシュを計算（キャッシュキー用）
         self._file_hash = hashlib.sha256(file_content).hexdigest()
 
+        self._analysis_ready = False
         result = self.file_loader.load_brep_from_bytes(file_content)
         # 読み込んだ形状を自分のインスタンスに設定
         self.solid_shape = self.file_loader.solid_shape
@@ -235,6 +241,8 @@ class StepUnfoldGenerator:
         """
         if self.solid_shape is None:
             raise ValueError("BREPデータが読み込まれていません")
+        if self._analysis_ready:
+            return
 
         # キャッシュヒットチェック
         if self._file_hash and self._file_hash in self._analysis_cache:
@@ -267,6 +275,7 @@ class StepUnfoldGenerator:
                 self.edges_data,
                 self.geometry_analyzer.adjacency_map,
             )
+            self._analysis_ready = True
             return
 
         # キャッシュミス: 通常の解析を実行
@@ -320,6 +329,8 @@ class StepUnfoldGenerator:
                 f"(キャッシュサイズ: {len(self._analysis_cache)}/{self._CACHE_MAX_SIZE})"
             )
 
+        self._analysis_ready = True
+
     def group_faces_for_unfolding(self, max_faces: int = 20) -> List[List[int]]:
         """
         展開可能な面をグループ化。
@@ -328,10 +339,13 @@ class StepUnfoldGenerator:
         # 展開エンジンの設定を更新
         self.unfold_engine.scale_factor = self.scale_factor
         self.unfold_engine.tab_width = self.tab_width
+        self.unfold_engine.merge_mode = self.merge_mode
+        self.unfold_engine.merge_mode = self.merge_mode
 
         # 展開エンジンに処理を委譲
         self.unfold_groups = self.unfold_engine.group_faces_for_unfolding(
-            max_faces=max_faces, generate_unfolding_net=self.generate_unfolding_net
+            max_faces=max_faces,
+            generate_unfolding_net=self.generate_unfolding_net,
         )
         return self.unfold_groups
 
@@ -374,9 +388,11 @@ class StepUnfoldGenerator:
         self.page_format = request.page_format
         self.page_orientation = request.page_orientation
         self.mirror_horizontal = request.mirror_horizontal
+        self.merge_mode = request.merge_mode
 
         self.unfold_engine.scale_factor = self.scale_factor
         self.unfold_engine.tab_width = self.tab_width
+        self.unfold_engine.merge_mode = self.merge_mode
         self.layout_manager.update_scale_factor(self.scale_factor)
         self.layout_manager.update_page_settings(
             page_format=self.page_format, page_orientation=self.page_orientation
@@ -414,7 +430,7 @@ class StepUnfoldGenerator:
         複数グループのページ分割は後段のlayout_for_pagesに委譲する。
         戻り値は縮尺分母（例: 150 = 1:150）。
         """
-        required_scale = 1.0
+        required_scale = None
         printable_width = self.layout_manager.printable_width_mm
         printable_height = self.layout_manager.printable_height_mm
         for group in unfolded_groups:
@@ -422,9 +438,13 @@ class StepUnfoldGenerator:
             group_required_scale = self.layout_manager.required_scale_to_fit_group(
                 paper_unit_group, printable_width, printable_height
             )
-            required_scale = max(required_scale, group_required_scale)
+            required_scale = (
+                group_required_scale
+                if required_scale is None
+                else max(required_scale, group_required_scale)
+            )
 
-        return required_scale
+        return required_scale or 1.0
 
     def _scale_unfolded_groups_to_paper(
         self, unfolded_groups: List[Dict], scale_factor: float
@@ -448,12 +468,58 @@ class StepUnfoldGenerator:
                 [(x * scale, y * scale) for x, y in tab]
                 for tab in group.get("tabs", [])
             ]
+            scaled_group["fold_lines"] = [
+                [(x * scale, y * scale) for x, y in line]
+                for line in group.get("fold_lines", [])
+            ]
+            scaled_group["cut_lines"] = [
+                [(x * scale, y * scale) for x, y in line]
+                for line in group.get("cut_lines", [])
+            ]
             scaled_group["bbox"] = self.layout_manager.calculate_group_bbox(
                 scaled_group
             )
             scaled_groups.append(scaled_group)
 
         return scaled_groups
+
+    def _split_extreme_multi_ring_groups(self, unfolded_groups: List[Dict]) -> List[Dict]:
+        """
+        同方向結合で発生する極端に細長い複数リンググループを分割する。
+        PLATEAUでは同じ向きの小面が長い列として結合されることがあり、
+        その全体bboxを1パーツ扱いすると用紙最大縮尺が過剰に小さくなる。
+        """
+        split_groups = []
+
+        for group in unfolded_groups:
+            polygons = group.get("polygons", [])
+            face_indices = group.get("face_indices", [])
+            if len(polygons) <= 1 or len(face_indices) <= 1:
+                split_groups.append(group)
+                continue
+
+            bbox = self.layout_manager.calculate_group_bbox(group)
+            shorter = max(min(bbox["width"], bbox["height"]), 1e-9)
+            aspect_ratio = max(bbox["width"], bbox["height"]) / shorter
+            if aspect_ratio < 20.0:
+                split_groups.append(group)
+                continue
+
+            face_numbers = group.get("face_numbers", [])
+            for polygon_index, polygon in enumerate(polygons):
+                split_group = copy.deepcopy(group)
+                split_group["polygons"] = [polygon]
+                split_group["tabs"] = []
+                split_group["fold_lines"] = []
+                split_group["cut_lines"] = []
+                if polygon_index < len(face_indices):
+                    split_group["face_indices"] = [face_indices[polygon_index]]
+                if polygon_index < len(face_numbers):
+                    split_group["face_numbers"] = [face_numbers[polygon_index]]
+                split_group["component_index"] = polygon_index
+                split_groups.append(split_group)
+
+        return split_groups
 
     def _prepare_groups_for_layout(
         self, unfolded_groups: List[Dict]
@@ -463,6 +529,8 @@ class StepUnfoldGenerator:
         """
         warnings = []
         requested_scale_factor = self.scale_factor
+        if self.merge_mode == "improved":
+            unfolded_groups = self._split_extreme_multi_ring_groups(unfolded_groups)
 
         if self.scale_mode == "fit_page":
             self.applied_scale_factor = self._calculate_fit_page_scale_factor(
@@ -482,6 +550,7 @@ class StepUnfoldGenerator:
         self.stats["unit_to_mm_factor"] = self._source_unit_to_mm_factor()
         self.stats["page_format"] = self.page_format
         self.stats["page_orientation"] = self.page_orientation
+        self.stats["merge_mode"] = self.merge_mode
 
         if self.scale_mode == "fit_page":
             warnings.append(

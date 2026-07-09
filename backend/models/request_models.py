@@ -36,10 +36,10 @@ class BrepPapercraftRequest(BaseModel):
         example=0.1
     )
     tab_width: float = Field(
-        default=5.0,
+        default=0.0,
         description="接着タブの幅 (mm) / Tab width for assembly (mm)",
         ge=0,
-        example=5.0
+        example=0.0
     )
     min_face_area: float = Field(
         default=1.0,
@@ -52,6 +52,12 @@ class BrepPapercraftRequest(BaseModel):
         description="展開アルゴリズム / Unfold algorithm (planar/geodesic)",
         pattern="^(planar|geodesic)$",
         example="planar"
+    )
+    merge_mode: str = Field(
+        default="improved",
+        description="面結合モード / Face merge mode (improved=改善版, legacy=旧方式)",
+        pattern="^(improved|legacy)$",
+        example="improved"
     )
     show_scale: bool = Field(
         default=True,
@@ -348,6 +354,12 @@ class PlateauTexturedUnfoldRequest(BaseModel):
         description="縮尺倍率 / Scale factor (例: 150=1/150)",
         gt=0,
         example=150.0
+    )
+    scale_mode: Optional[str] = Field(
+        default="fixed",
+        description="縮尺モード / Scale mode (fixed=指定縮尺, fit_page=用紙最大)",
+        pattern="^(fixed|fit_page)$",
+        example="fit_page"
     )
     mirror_horizontal: Optional[bool] = Field(
         default=False,

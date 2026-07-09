@@ -13,6 +13,8 @@ import os
 import tempfile
 from typing import List, Dict, Optional
 import logging
+import copy
+import xml.etree.ElementTree as ET
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -96,6 +98,9 @@ class PDFExporter:
             # 縦向きの場合、そのまま使用
             self.page_width_mm = base_size["width"]
             self.page_height_mm = base_size["height"]
+
+    def _format_mm_length(self, value: float) -> str:
+        return f"{value:g}mm"
 
     def export_svg_list_to_pdf(self, svg_paths: List[str], output_path: str) -> str:
         """
@@ -310,6 +315,65 @@ class PDFExporter:
             str: 出力されたPDFファイルのパス
         """
         return self.export_svg_list_to_pdf([svg_path], output_path)
+
+    def export_stacked_svg_to_pdf(self, svg_path: str, output_path: str) -> str:
+        """
+        複数ページを縦に積んだ表示用SVGを、page-border単位のPDFページに変換する。
+
+        This keeps PDF export aligned with the same single SVG generated for the preview.
+        """
+        page_svgs = self._split_stacked_svg_by_page_border(svg_path)
+        if not page_svgs:
+            return self.export_single_svg_to_pdf(svg_path, output_path)
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            svg_paths = []
+            for index, svg_data in enumerate(page_svgs, 1):
+                page_path = os.path.join(temp_dir, f"page_{index:03d}.svg")
+                with open(page_path, "wb") as page_file:
+                    page_file.write(svg_data)
+                svg_paths.append(page_path)
+
+            return self.export_svg_list_to_pdf(svg_paths, output_path)
+        finally:
+            import shutil
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+
+    def _split_stacked_svg_by_page_border(self, svg_path: str) -> List[bytes]:
+        ET.register_namespace("", "http://www.w3.org/2000/svg")
+        ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
+
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
+        page_borders = [
+            element
+            for element in root.iter()
+            if "page-border" in (element.attrib.get("class") or "").split()
+        ]
+
+        if len(page_borders) <= 1:
+            return []
+
+        page_svgs: List[bytes] = []
+        for index, border in enumerate(page_borders, 1):
+            x = float(border.attrib.get("x", "0") or 0)
+            y = float(border.attrib.get("y", "0") or 0)
+            width = float(border.attrib.get("width", "0") or 0)
+            height = float(border.attrib.get("height", "0") or 0)
+            if width <= 0 or height <= 0:
+                raise ValueError(f"Invalid page-border size on page {index}")
+
+            page_root = copy.deepcopy(root)
+            page_root.set("width", self._format_mm_length(self.page_width_mm))
+            page_root.set("height", self._format_mm_length(self.page_height_mm))
+            page_root.set("viewBox", f"{x:g} {y:g} {width:g} {height:g}")
+            page_root.set("preserveAspectRatio", "xMidYMid meet")
+            page_svgs.append(ET.tostring(page_root, encoding="utf-8", xml_declaration=True))
+
+        logger.info(f"PDFExporter: stacked SVGを{len(page_svgs)}ページに分割")
+        return page_svgs
 
     def update_settings(self, page_format: Optional[str] = None,
                        page_orientation: Optional[str] = None):

@@ -79,14 +79,27 @@ def _get_cache_config() -> Dict[str, Any]:
         - cache_dir: Path - Cache directory path
         - mesh_index_path: Path - Path to mesh_to_ward_index.json
     """
-    default_cache_dir = (
-        Path(__file__).resolve().parent.parent / "data" / "citygml_cache"
+    backend_dir = Path(__file__).resolve().parent.parent
+    default_cache_dir = backend_dir / "data" / "citygml_cache"
+
+    env = os.getenv("ENV", os.getenv("PYTHON_ENV", "development"))
+    local_demo_cache_dir = Path(
+        os.getenv(
+            "LOCAL_DEMO_CACHE_DIR",
+            str(backend_dir / "data" / "local_demo_cache"),
+        )
     )
+    if env == "local_demo":
+        default_cache_dir = local_demo_cache_dir / "citygml_cache"
+
     cache_dir_str = os.getenv("CITYGML_CACHE_DIR", str(default_cache_dir))
     cache_dir = Path(cache_dir_str)
 
     return {
-        "enabled": os.getenv("CITYGML_CACHE_ENABLED", "false").lower() == "true",
+        "enabled": (
+            env == "local_demo"
+            or os.getenv("CITYGML_CACHE_ENABLED", "false").lower() == "true"
+        ),
         "cache_dir": cache_dir,
         "mesh_index_path": cache_dir / "mesh_to_ward_index.json",
     }
@@ -528,6 +541,105 @@ def _is_shibuya_fukuras_query(query: str) -> bool:
         or "ﾌｸﾗｽ" in query
         or "fukuras" in lowered
     )
+
+
+def _search_local_demo_target(
+    query: str,
+    limit: Optional[int],
+    search_mode: str,
+) -> Optional[Dict[str, Any]]:
+    """Resolve bundled local-demo targets without any network dependency."""
+    try:
+        from services.local_demo import get_manifest_target, is_local_demo
+
+        if not is_local_demo():
+            return None
+
+        target = get_manifest_target(query)
+        if not target:
+            return None
+    except Exception as e:
+        logger.warning("[LOCAL_DEMO] Target lookup failed: %s", e)
+        return None
+
+    building_id = target.get("building_id")
+    mesh_code = target.get("mesh_code")
+    target_name = str(target.get("name") or query)
+    if not building_id or not mesh_code:
+        return {
+            "success": False,
+            "geocoding": GeocodingResult(
+                query=query,
+                latitude=float(target["latitude"]),
+                longitude=float(target["longitude"]),
+                display_name=str(target.get("display_name") or target_name),
+                osm_type="local_demo",
+            ),
+            "buildings": [],
+            "citygml_xml": None,
+            "search_mode": search_mode,
+            "error": f"Local demo target is missing building_id or mesh_code: {target_name}",
+        }
+
+    logger.info(
+        "[LOCAL_DEMO] Resolving target from cache: %s (mesh=%s, building=%s)",
+        target_name,
+        mesh_code,
+        building_id,
+    )
+    result = search_building_by_id_and_mesh(
+        building_id=str(building_id),
+        mesh_code=str(mesh_code),
+        debug=False,
+        include_building_info=True,
+    )
+
+    geocoding = GeocodingResult(
+        query=query,
+        latitude=float(target["latitude"]),
+        longitude=float(target["longitude"]),
+        display_name=str(target.get("display_name") or target_name),
+        osm_type="local_demo",
+    )
+
+    if not result["success"] or not result.get("building"):
+        return {
+            "success": False,
+            "geocoding": geocoding,
+            "buildings": [],
+            "citygml_xml": result.get("citygml_xml"),
+            "search_mode": search_mode,
+            "error": (
+                result.get("error_details")
+                or result.get("error")
+                or f"Local demo cache does not contain target: {target_name}"
+            ),
+        }
+
+    building = result["building"]
+    building.name = target_name
+    building.distance_meters = 0.0
+    building.relevance_score = 1.0
+    building.name_similarity = 1.0
+    building.match_reason = "local_demo"
+    building.municipality_code = str(
+        target.get("municipality_code") or building.municipality_code or ""
+    ) or None
+    if not building.building_id or not building.building_id.startswith("bldg_"):
+        building.building_id = building.gml_id
+
+    buildings = [building]
+    if limit is not None and limit > 0:
+        buildings = buildings[:limit]
+
+    return {
+        "success": True,
+        "geocoding": geocoding,
+        "buildings": buildings,
+        "citygml_xml": result.get("citygml_xml"),
+        "search_mode": search_mode,
+        "error": None,
+    }
 
 
 @dataclass
@@ -1602,6 +1714,10 @@ def search_buildings_by_address(
         ...     for building in result["buildings"]:
         ...         print(f"{building.building_id}: {building.match_reason}")
     """
+    local_demo_result = _search_local_demo_target(query, limit, search_mode)
+    if local_demo_result is not None:
+        return local_demo_result
+
     # 渋谷フクラスの特別処理（ハードコーディング）
     if _is_shibuya_fukuras_query(query):
         logger.info(

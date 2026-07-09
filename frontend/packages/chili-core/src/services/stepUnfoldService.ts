@@ -13,6 +13,7 @@ export interface UnfoldOptions {
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
+    mergeMode?: "improved" | "legacy";
     returnFaceNumbers?: boolean;
     mirrorHorizontal?: boolean; // 左右反転モード
     textureMappings?: Array<{
@@ -47,6 +48,10 @@ export interface IStepUnfoldService extends IService {
     unfoldStep(stepFile: File, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
     unfoldStepFromData(stepData: BlobPart, options?: UnfoldOptions): Promise<Result<UnfoldResponse>>;
     unfoldStepToPDF(stepData: BlobPart, options?: UnfoldOptions): Promise<Result<Blob>>;
+    convertSvgPagesToPDF(
+        svgPages: string[],
+        options?: Pick<UnfoldOptions, "pageFormat" | "pageOrientation">,
+    ): Promise<Result<Blob>>;
     checkBackendHealth(): Promise<Result<HealthResponse>>;
 }
 
@@ -93,6 +98,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
+            formData.append("merge_mode", options.mergeMode || "improved");
 
             // テクスチャマッピングを追加
             if (options.textureMappings && options.textureMappings.length > 0) {
@@ -141,6 +147,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
+            formData.append("merge_mode", options.mergeMode || "improved");
 
             // テクスチャマッピングを追加
             if (options.textureMappings && options.textureMappings.length > 0) {
@@ -205,6 +212,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("layout_mode", options.layoutMode || "paged");
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
+            formData.append("merge_mode", options.mergeMode || "improved");
             formData.append("mirror_horizontal", (options.mirrorHorizontal || false).toString());
 
             // テクスチャマッピングを追加
@@ -236,6 +244,39 @@ export class StepUnfoldService implements IStepUnfoldService {
             // Get PDF as Blob
             const pdfBlob = await response.blob();
             return Result.ok(pdfBlob);
+        } catch (error) {
+            return Result.err(error instanceof Error ? error.message : "Unknown error");
+        }
+    }
+
+    async convertSvgPagesToPDF(
+        svgPages: string[],
+        options: Pick<UnfoldOptions, "pageFormat" | "pageOrientation"> = {},
+    ): Promise<Result<Blob>> {
+        try {
+            if (svgPages.length === 0) {
+                return Result.err("No SVG pages to export.");
+            }
+
+            const formData = new FormData();
+            svgPages.forEach((svgPage, index) => {
+                const svgBlob = new Blob([svgPage], { type: "image/svg+xml" });
+                formData.append("files", svgBlob, `page_${String(index + 1).padStart(3, "0")}.svg`);
+            });
+            formData.append("page_format", options.pageFormat || "A4");
+            formData.append("page_orientation", options.pageOrientation || "portrait");
+
+            const response = await fetch(`${this.baseUrl}/svg/to-pdf`, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                return Result.err(errorMessage);
+            }
+
+            return Result.ok(await response.blob());
         } catch (error) {
             return Result.err(error instanceof Error ? error.message : "Unknown error");
         }

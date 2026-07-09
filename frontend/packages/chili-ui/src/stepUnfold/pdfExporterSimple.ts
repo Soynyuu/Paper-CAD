@@ -180,16 +180,6 @@ export class SimplePDFExporter {
                     height: renderHeight,
                 });
 
-                // Add debug info to PDF
-                pdf.setFontSize(8);
-                pdf.setTextColor(150);
-                pdf.text(
-                    `Page ${page.pageNumber}/${pages.length} | Backend: ${svgWidthPx.toFixed(0)}x${svgPageHeightPx.toFixed(0)}px | Scale: ${scale.toFixed(2)} | Render: ${renderWidth.toFixed(1)}x${renderHeight.toFixed(1)}mm`,
-                    pageWidth / 2,
-                    pageHeight - 5,
-                    { align: "center" },
-                );
-
                 console.log(`Page ${page.pageNumber} rendered successfully`);
             } catch (error) {
                 console.error(`Error rendering page ${page.pageNumber}:`, error);
@@ -274,15 +264,6 @@ export class SimplePDFExporter {
                 width: renderWidth,
                 height: renderHeight,
             });
-
-            // Add debug info to PDF
-            pdf.setFontSize(8);
-            pdf.setTextColor(150);
-            pdf.text(
-                `SVG: ${svgInfo.width}x${svgInfo.height}px | Scale: ${scale.toFixed(2)} | Size: ${renderWidth.toFixed(1)}x${renderHeight.toFixed(1)}mm`,
-                options.margin,
-                pageHeight - 5,
-            );
 
             // Save PDF and return Blob
             const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);

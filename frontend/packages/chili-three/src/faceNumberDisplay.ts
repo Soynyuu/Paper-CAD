@@ -1,11 +1,31 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { CanvasTexture, Sprite, SpriteMaterial, Vector3, Group } from "three";
-import { IShape, IFace, ShapeType } from "chili-core";
+import {
+    CanvasTexture,
+    DoubleSide,
+    Group,
+    Mesh,
+    MeshBasicMaterial,
+    Sprite,
+    SpriteMaterial,
+    Vector3,
+} from "three";
+import { type FaceMeshData, IShape, IFace, ShapeType } from "chili-core";
+import { ThreeGeometryFactory } from "./threeGeometryFactory";
+
+interface FaceNumberMarker {
+    faceIndex: number;
+    faceNumber: number;
+    position: Vector3;
+    normal?: Vector3;
+    faceMesh?: FaceMeshData;
+}
 
 export class FaceNumberDisplay extends Group {
-    private sprites: Map<number, Sprite> = new Map();
+    private sprites: Map<string, Sprite> = new Map();
+    private markers: Map<number, FaceNumberMarker[]> = new Map();
+    private highlightOverlays: Map<string, Mesh> = new Map();
     private _visible: boolean = false;
     // バックエンドから受信した面番号データを保存
     private backendFaceNumbers: Map<number, number> = new Map();
@@ -15,6 +35,8 @@ export class FaceNumberDisplay extends Group {
     private highlightedFaces: Set<number> = new Set();
     // 面インデックスから面番号へのマッピング（ハイライト時に使用）
     private faceIndexToNumber: Map<number, number> = new Map();
+    private focusedFaceNumber: number | null = null;
+    private readonly maxAutoVisibleNumbers = 36;
 
     constructor() {
         super();
@@ -23,12 +45,40 @@ export class FaceNumberDisplay extends Group {
         this.modelSize = 100;
     }
 
+    private getMarkerKey(marker: FaceNumberMarker): string {
+        return `${marker.faceNumber}:${marker.faceIndex}`;
+    }
+
+    private setMarker(marker: FaceNumberMarker): void {
+        const markers = this.markers.get(marker.faceNumber) ?? [];
+        const existingIndex = markers.findIndex((item) => item.faceIndex === marker.faceIndex);
+        if (existingIndex >= 0) {
+            markers[existingIndex] = marker;
+        } else {
+            markers.push(marker);
+        }
+        this.markers.set(marker.faceNumber, markers);
+    }
+
+    private getMarkers(faceNumber: number): FaceNumberMarker[] {
+        return this.markers.get(faceNumber) ?? [];
+    }
+
+    private getAllMarkers(): FaceNumberMarker[] {
+        return Array.from(this.markers.values()).flat();
+    }
+
+    private getMarkerCount(): number {
+        return this.getAllMarkers().length;
+    }
+
     /**
      * 面番号の表示/非表示を切り替え
      */
     setVisible(visible: boolean): void {
         this._visible = visible;
         this.visible = visible;
+        this.applyDisplayFilter();
     }
 
     /**
@@ -135,8 +185,10 @@ export class FaceNumberDisplay extends Group {
             currentSpriteCount: this.sprites.size,
         });
 
-        // 既に表示されているスプライトがある場合は、面番号を更新
-        if (this.sprites.size > 0) {
+        if (this.markers.size > 0) {
+            console.log("🟢 FaceNumberDisplay: 既存の面番号マーカーを更新します");
+            this.remapExistingMarkers();
+        } else if (this.sprites.size > 0) {
             console.log("🟢 FaceNumberDisplay: 既存の表示を更新します");
             this.updateExistingSprites();
         } else {
@@ -150,6 +202,9 @@ export class FaceNumberDisplay extends Group {
     generateFromShape(shape: IShape): void {
         // 既存のスプライトをクリア
         this.clearNumbers();
+        this.clearHighlightOverlays();
+        this.markers.clear();
+        this.faceIndexToNumber.clear();
 
         if (!shape) {
             console.log("FaceNumberDisplay: No shape provided");
@@ -205,33 +260,40 @@ export class FaceNumberDisplay extends Group {
                     "Final face number:",
                     faceNumber,
                 );
-                const sprite = this.createNumberSprite(faceNumber);
-                sprite.position.copy(center);
+                const position = center.clone();
 
                 // スプライトを面の表面から適切な距離に配置
                 if (normal) {
-                    const originalPosition = sprite.position.clone();
+                    const originalPosition = position.clone();
                     // モデルサイズに基づく動的オフセット（モデルサイズの1%、最小値2）
                     const offset = Math.max(this.modelSize * 0.01, 2);
-                    sprite.position.addScaledVector(normal, offset);
+                    position.addScaledVector(normal, offset);
                     console.log(
                         `FaceNumberDisplay: Face ${faceNumber} - Original:`,
                         originalPosition,
                         "Final:",
-                        sprite.position,
+                        position,
                         "Offset:",
                         offset,
                     );
                 }
 
-                this.sprites.set(faceNumber, sprite);
-                this.add(sprite);
+                this.setMarker({
+                    faceIndex: index,
+                    faceNumber,
+                    position,
+                    normal: normal?.clone().normalize(),
+                    faceMesh: this.asFaceMeshData((face as IFace).mesh),
+                });
             } else {
                 console.log(`FaceNumberDisplay: ERROR - Could not get center for face ${index}`);
             }
         });
 
-        console.log(`FaceNumberDisplay: Created ${this.sprites.size} sprites using backend face numbers`);
+        this.applyDisplayFilter();
+        console.log(
+            `FaceNumberDisplay: Prepared ${this.markers.size} face numbers, rendering ${this.sprites.size}`,
+        );
     }
 
     /**
@@ -242,20 +304,20 @@ export class FaceNumberDisplay extends Group {
 
         // 現在のスプライトの位置情報を保存
         const spritePositions = new Map<number, Vector3>();
-        const spriteKeys = Array.from(this.sprites.keys());
+        const sprites = Array.from(this.sprites.values());
 
-        spriteKeys.forEach((oldFaceNumber, index) => {
-            const sprite = this.sprites.get(oldFaceNumber);
-            if (sprite) {
-                spritePositions.set(index, sprite.position.clone());
-            }
+        sprites.forEach((sprite, index) => {
+            const faceIndex = (sprite.userData["faceIndex"] as number | undefined) ?? index;
+            spritePositions.set(faceIndex, sprite.position.clone());
         });
 
         // 全てのスプライトをクリア
         this.clearNumbers();
+        this.markers.clear();
+        this.faceIndexToNumber.clear();
 
         // バックエンドの面番号を使用して新しいスプライトを作成
-        spriteKeys.forEach((_, faceIndex) => {
+        Array.from(spritePositions.keys()).forEach((faceIndex) => {
             const position = spritePositions.get(faceIndex);
             const backendFaceNumber = this.backendFaceNumbers.get(faceIndex);
 
@@ -264,15 +326,49 @@ export class FaceNumberDisplay extends Group {
                     `Updating face ${faceIndex}: old number was at position, new number is ${backendFaceNumber}`,
                 );
 
-                const sprite = this.createNumberSprite(backendFaceNumber);
-                sprite.position.copy(position);
-
-                this.sprites.set(backendFaceNumber, sprite);
-                this.add(sprite);
+                this.setMarker({
+                    faceIndex,
+                    faceNumber: backendFaceNumber,
+                    position,
+                });
+                this.faceIndexToNumber.set(faceIndex, backendFaceNumber);
             }
         });
 
+        this.applyDisplayFilter();
         console.log(`FaceNumberDisplay: Updated ${this.sprites.size} sprites with backend face numbers`);
+    }
+
+    private remapExistingMarkers(): void {
+        const existingMarkers = this.getAllMarkers();
+        this.clearNumbers();
+        this.clearHighlightOverlays();
+        this.markers.clear();
+        this.faceIndexToNumber.clear();
+
+        const nextHighlighted = new Set<number>();
+        existingMarkers.forEach((marker) => {
+            const nextFaceNumber = this.backendFaceNumbers.get(marker.faceIndex) ?? marker.faceNumber;
+            const nextMarker: FaceNumberMarker = {
+                ...marker,
+                faceNumber: nextFaceNumber,
+                position: marker.position.clone(),
+                normal: marker.normal?.clone(),
+            };
+
+            this.setMarker(nextMarker);
+            this.faceIndexToNumber.set(marker.faceIndex, nextFaceNumber);
+
+            if (this.highlightedFaces.has(marker.faceNumber)) {
+                nextHighlighted.add(nextFaceNumber);
+            }
+        });
+
+        this.highlightedFaces = nextHighlighted;
+        this.focusedFaceNumber =
+            this.focusedFaceNumber === null ? null : (Array.from(nextHighlighted.values())[0] ?? null);
+
+        this.applyDisplayFilter();
     }
 
     /**
@@ -673,7 +769,11 @@ export class FaceNumberDisplay extends Group {
     /**
      * 番号スプライトを作成
      */
-    private createNumberSprite(number: number, isHighlighted: boolean = false): Sprite {
+    private createNumberSprite(
+        number: number,
+        isHighlighted: boolean = false,
+        isDense: boolean = false,
+    ): Sprite {
         const canvas = document.createElement("canvas");
         const size = 256;
         canvas.width = size;
@@ -684,41 +784,31 @@ export class FaceNumberDisplay extends Group {
             throw new Error("Failed to get canvas context");
         }
 
-        // ハイライト時は背景色を変更
-        if (isHighlighted) {
-            // 背景を黄色の円で描画（ハイライト時）
-            context.fillStyle = "#ffff00";
-            context.beginPath();
-            context.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
-            context.fill();
+        const label = number.toString();
+        const radius = 56;
+        const badgeWidth = Math.min(210, Math.max(132, 82 + label.length * 42));
+        const badgeHeight = 116;
+        const x = (size - badgeWidth) / 2;
+        const y = (size - badgeHeight) / 2;
 
-            // 枠線を描画（ハイライト時は太くて濃い色）
-            context.strokeStyle = "#ff0000";
-            context.lineWidth = 12;
-            context.stroke();
+        context.shadowColor = "rgba(15, 23, 42, 0.22)";
+        context.shadowBlur = 14;
+        context.shadowOffsetY = 8;
+        context.fillStyle = isHighlighted ? "rgba(255, 248, 220, 0.96)" : "rgba(255, 255, 255, 0.92)";
+        this.roundRect(context, x, y, badgeWidth, badgeHeight, radius);
+        context.fill();
 
-            // 番号を描画（ハイライト時は濃い赤）
-            context.fillStyle = "#cc0000";
-        } else {
-            // 背景を白色の円で描画（通常時）
-            context.fillStyle = "white";
-            context.beginPath();
-            context.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
-            context.fill();
+        context.shadowColor = "transparent";
+        context.lineWidth = isHighlighted ? 10 : 7;
+        context.strokeStyle = isHighlighted ? "#f59e0b" : "rgba(37, 99, 235, 0.88)";
+        this.roundRect(context, x + 4, y + 4, badgeWidth - 8, badgeHeight - 8, radius - 4);
+        context.stroke();
 
-            // 枠線を描画（通常時）
-            context.strokeStyle = "red";
-            context.lineWidth = 8;
-            context.stroke();
-
-            // 番号を描画（通常時）
-            context.fillStyle = "red";
-        }
-
-        context.font = "bold 120px Arial";
+        context.fillStyle = isHighlighted ? "#92400e" : "#1e3a8a";
+        context.font = `700 ${label.length >= 3 ? 78 : 92}px Arial, sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.fillText(number.toString(), size / 2, size / 2);
+        context.fillText(label, size / 2, size / 2 + 3);
 
         // テクスチャとマテリアルを作成
         const texture = new CanvasTexture(canvas);
@@ -732,7 +822,7 @@ export class FaceNumberDisplay extends Group {
         const sprite = new Sprite(material);
         // 画面上で一定のサイズを保つ固定スケール
         // ハイライト時は少し大きくする
-        const scale = isHighlighted ? 0.04 : 0.03;
+        const scale = isHighlighted ? 0.03 : isDense ? 0.018 : 0.024;
         sprite.scale.set(scale, scale, 1);
         sprite.name = `FaceNumber_${number}`;
         sprite.renderOrder = 999; // 最前面に表示
@@ -741,23 +831,218 @@ export class FaceNumberDisplay extends Group {
         return sprite;
     }
 
+    private applyDisplayFilter(): void {
+        const visibleNumbers = this.getVisibleFaceNumbers();
+
+        Array.from(this.sprites.entries()).forEach(([key, sprite]) => {
+            const faceNumber = sprite.userData["faceNumber"] as number | undefined;
+            if (faceNumber === undefined || !this._visible || !visibleNumbers.has(faceNumber)) {
+                this.removeSprite(key);
+            }
+        });
+
+        if (!this._visible) {
+            this.syncHighlightOverlays();
+            return;
+        }
+
+        const isDense = this.getMarkerCount() > this.maxAutoVisibleNumbers;
+        visibleNumbers.forEach((faceNumber) => {
+            const markers = this.getMarkers(faceNumber);
+            if (markers.length === 0) return;
+
+            const highlighted = this.highlightedFaces.has(faceNumber);
+            markers.forEach((marker) => {
+                const key = this.getMarkerKey(marker);
+                const existing = this.sprites.get(key);
+                if (existing) {
+                    if (
+                        existing.userData["highlighted"] !== highlighted ||
+                        existing.userData["dense"] !== isDense
+                    ) {
+                        this.removeSprite(key);
+                    } else {
+                        existing.position.copy(marker.position);
+                        return;
+                    }
+                }
+
+                const sprite = this.createNumberSprite(faceNumber, highlighted, isDense);
+                sprite.userData["highlighted"] = highlighted;
+                sprite.userData["dense"] = isDense;
+                sprite.userData["faceNumber"] = faceNumber;
+                sprite.userData["faceIndex"] = marker.faceIndex;
+                sprite.position.copy(marker.position);
+                this.sprites.set(key, sprite);
+                this.add(sprite);
+            });
+        });
+
+        this.syncHighlightOverlays();
+    }
+
+    private getVisibleFaceNumbers(): Set<number> {
+        const numbers = Array.from(this.markers.keys()).sort((a, b) => a - b);
+        const visible = new Set<number>();
+        if (numbers.length <= this.maxAutoVisibleNumbers) {
+            numbers.forEach((number) => visible.add(number));
+        } else {
+            visible.add(numbers[0]);
+            visible.add(numbers[numbers.length - 1]);
+            const remainingSlots = Math.max(1, this.maxAutoVisibleNumbers - 2);
+            const stride = Math.ceil(numbers.length / remainingSlots);
+            numbers.forEach((number, index) => {
+                if (index % stride === 0) {
+                    visible.add(number);
+                }
+            });
+        }
+
+        this.highlightedFaces.forEach((number) => {
+            if (this.markers.has(number)) {
+                visible.add(number);
+            }
+        });
+
+        if (this.focusedFaceNumber !== null && this.markers.has(this.focusedFaceNumber)) {
+            visible.add(this.focusedFaceNumber);
+        }
+
+        return visible;
+    }
+
+    private asFaceMeshData(mesh: unknown): FaceMeshData | undefined {
+        const candidate = mesh as Partial<FaceMeshData> | undefined;
+        if (candidate?.position && candidate.index && candidate.normal && candidate.uv && candidate.groups) {
+            return candidate as FaceMeshData;
+        }
+
+        return undefined;
+    }
+
+    private removeSprite(key: string): void {
+        const sprite = this.sprites.get(key);
+        if (!sprite) return;
+
+        sprite.material.dispose();
+        (sprite.material as SpriteMaterial).map?.dispose();
+        this.remove(sprite);
+        this.sprites.delete(key);
+    }
+
+    private syncHighlightOverlays(): void {
+        Array.from(this.highlightOverlays.entries()).forEach(([key, overlay]) => {
+            const faceNumber = overlay.userData["faceNumber"] as number | undefined;
+            if (faceNumber === undefined || !this._visible || !this.highlightedFaces.has(faceNumber)) {
+                this.removeHighlightOverlay(key);
+            }
+        });
+
+        if (!this._visible) return;
+
+        this.highlightedFaces.forEach((faceNumber) => {
+            this.getMarkers(faceNumber).forEach((marker) => {
+                const key = this.getMarkerKey(marker);
+                if (this.highlightOverlays.has(key) || !marker.faceMesh) return;
+
+                const overlay = this.createHighlightOverlay(marker);
+                this.highlightOverlays.set(key, overlay);
+                this.add(overlay);
+            });
+        });
+    }
+
+    private createHighlightOverlay(marker: FaceNumberMarker): Mesh {
+        const geometry = ThreeGeometryFactory.createFaceBufferGeometry(marker.faceMesh!);
+        const material = new MeshBasicMaterial({
+            color: 0xf59e0b,
+            transparent: true,
+            opacity: 0.42,
+            side: DoubleSide,
+            depthTest: false,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -8,
+            polygonOffsetUnits: -8,
+        });
+        const overlay = new Mesh(geometry, material);
+        overlay.name = `FaceNumberHighlight_${marker.faceNumber}_${marker.faceIndex}`;
+        overlay.userData["faceNumber"] = marker.faceNumber;
+        overlay.userData["faceIndex"] = marker.faceIndex;
+        overlay.renderOrder = 998;
+        overlay.frustumCulled = false;
+
+        if (marker.normal) {
+            overlay.position.addScaledVector(marker.normal, Math.max(this.modelSize * 0.0025, 0.4));
+        }
+
+        return overlay;
+    }
+
+    private removeHighlightOverlay(key: string): void {
+        const overlay = this.highlightOverlays.get(key);
+        if (!overlay) return;
+
+        overlay.geometry.dispose();
+        if (Array.isArray(overlay.material)) {
+            overlay.material.forEach((material) => material.dispose());
+        } else {
+            overlay.material.dispose();
+        }
+        this.remove(overlay);
+        this.highlightOverlays.delete(key);
+    }
+
+    private clearHighlightOverlays(): void {
+        Array.from(this.highlightOverlays.keys()).forEach((faceNumber) => {
+            this.removeHighlightOverlay(faceNumber);
+        });
+    }
+
+    private roundRect(
+        context: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        radius: number,
+    ): void {
+        const r = Math.min(radius, width / 2, height / 2);
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.lineTo(x + width - r, y);
+        context.quadraticCurveTo(x + width, y, x + width, y + r);
+        context.lineTo(x + width, y + height - r);
+        context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        context.lineTo(x + r, y + height);
+        context.quadraticCurveTo(x, y + height, x, y + height - r);
+        context.lineTo(x, y + r);
+        context.quadraticCurveTo(x, y, x + r, y);
+        context.closePath();
+    }
+
     /**
      * 指定された位置に面番号を作成
      */
     createFaceNumbersAtPositions(positions: Array<{ x: number; y: number; z: number }>): void {
         // 既存のスプライトをクリア
         this.clearNumbers();
+        this.clearHighlightOverlays();
+        this.markers.clear();
+        this.faceIndexToNumber.clear();
 
         positions.forEach((pos, index) => {
             const faceNumber = index + 1;
-            const sprite = this.createNumberSprite(faceNumber);
-            sprite.position.set(pos.x, pos.y, pos.z);
-
-            this.sprites.set(faceNumber, sprite);
-            this.add(sprite);
+            this.setMarker({
+                faceIndex: index,
+                faceNumber,
+                position: new Vector3(pos.x, pos.y, pos.z),
+            });
+            this.faceIndexToNumber.set(index, faceNumber);
             console.log(`FaceNumberDisplay: Added face number ${faceNumber} at`, pos);
         });
 
+        this.applyDisplayFilter();
         console.log(`FaceNumberDisplay: Total sprites created: ${this.sprites.size}`);
         console.log(`FaceNumberDisplay: Children count: ${this.children.length}`);
     }
@@ -766,8 +1051,6 @@ export class FaceNumberDisplay extends Group {
      * 簡易的に面番号を作成（位置は自動配置）
      */
     createSimpleFaceNumber(faceNumber: number): void {
-        const sprite = this.createNumberSprite(faceNumber);
-
         // 立方体の6面に対応する位置を設定（より離れた位置に配置）
         const positions = [
             new Vector3(0, 0, 100), // 前面
@@ -779,19 +1062,26 @@ export class FaceNumberDisplay extends Group {
         ];
 
         if (faceNumber <= positions.length) {
-            sprite.position.copy(positions[faceNumber - 1]);
+            this.setMarker({
+                faceIndex: faceNumber - 1,
+                faceNumber,
+                position: positions[faceNumber - 1].clone(),
+            });
         } else {
             // 追加の面の場合はランダム配置
-            sprite.position.set(
-                (Math.random() - 0.5) * 60,
-                (Math.random() - 0.5) * 60,
-                (Math.random() - 0.5) * 60,
-            );
+            this.setMarker({
+                faceIndex: faceNumber - 1,
+                faceNumber,
+                position: new Vector3(
+                    (Math.random() - 0.5) * 60,
+                    (Math.random() - 0.5) * 60,
+                    (Math.random() - 0.5) * 60,
+                ),
+            });
         }
 
-        this.sprites.set(faceNumber, sprite);
-        this.add(sprite);
-        console.log(`FaceNumberDisplay: Added simple face number ${faceNumber} at`, sprite.position);
+        this.applyDisplayFilter();
+        console.log(`FaceNumberDisplay: Added simple face number ${faceNumber}`);
     }
 
     /**
@@ -804,21 +1094,42 @@ export class FaceNumberDisplay extends Group {
             this.remove(sprite);
         });
         this.sprites.clear();
+        this.clearHighlightOverlays();
     }
 
     /**
      * 特定の面番号をハイライト
      * @param faceNumber ハイライトする面番号
      */
-    highlightFace(faceNumber: number): void {
+    highlightFace(faceNumber: number): boolean {
+        if (!this.markers.has(faceNumber)) {
+            console.warn(`Face ${faceNumber} not found`);
+            return false;
+        }
+
         if (this.highlightedFaces.has(faceNumber)) {
             console.log(`Face ${faceNumber} is already highlighted`);
-            return;
+            return true;
         }
 
         this.highlightedFaces.add(faceNumber);
-        this.updateSpriteHighlight(faceNumber, true);
+        this.focusedFaceNumber = faceNumber;
+        this.applyDisplayFilter();
         console.log(`Highlighted face ${faceNumber}`);
+        return true;
+    }
+
+    focusFace(faceNumber: number): boolean {
+        if (!this.markers.has(faceNumber)) {
+            console.warn(`Face ${faceNumber} not found`);
+            return false;
+        }
+
+        this.highlightedFaces.clear();
+        this.highlightedFaces.add(faceNumber);
+        this.focusedFaceNumber = faceNumber;
+        this.applyDisplayFilter();
+        return true;
     }
 
     /**
@@ -832,7 +1143,10 @@ export class FaceNumberDisplay extends Group {
         }
 
         this.highlightedFaces.delete(faceNumber);
-        this.updateSpriteHighlight(faceNumber, false);
+        if (this.focusedFaceNumber === faceNumber) {
+            this.focusedFaceNumber = null;
+        }
+        this.applyDisplayFilter();
         console.log(`Unhighlighted face ${faceNumber}`);
     }
 
@@ -840,10 +1154,9 @@ export class FaceNumberDisplay extends Group {
      * すべての面のハイライトを解除
      */
     clearHighlights(): void {
-        this.highlightedFaces.forEach((faceNumber) => {
-            this.updateSpriteHighlight(faceNumber, false);
-        });
         this.highlightedFaces.clear();
+        this.focusedFaceNumber = null;
+        this.applyDisplayFilter();
         console.log("Cleared all highlights");
     }
 
@@ -859,11 +1172,12 @@ export class FaceNumberDisplay extends Group {
      * 面番号のハイライト状態を切り替え
      * @param faceNumber 切り替える面番号
      */
-    toggleHighlight(faceNumber: number): void {
+    toggleHighlight(faceNumber: number): boolean {
         if (this.highlightedFaces.has(faceNumber)) {
             this.unhighlightFace(faceNumber);
+            return true;
         } else {
-            this.highlightFace(faceNumber);
+            return this.highlightFace(faceNumber);
         }
     }
 
@@ -873,7 +1187,9 @@ export class FaceNumberDisplay extends Group {
      * @param isHighlighted ハイライト状態
      */
     private updateSpriteHighlight(faceNumber: number, isHighlighted: boolean): void {
-        const sprite = this.sprites.get(faceNumber);
+        const marker = this.getMarkers(faceNumber)[0];
+        const key = marker ? this.getMarkerKey(marker) : "";
+        const sprite = this.sprites.get(key);
         if (!sprite) {
             console.warn(`Sprite for face ${faceNumber} not found`);
             return;
@@ -886,14 +1202,15 @@ export class FaceNumberDisplay extends Group {
         sprite.material.dispose();
         (sprite.material as SpriteMaterial).map?.dispose();
         this.remove(sprite);
-        this.sprites.delete(faceNumber);
+        this.sprites.delete(key);
 
         // 新しいスプライトを作成（ハイライト状態を反映）
         const newSprite = this.createNumberSprite(faceNumber, isHighlighted);
         newSprite.position.copy(position);
 
-        this.sprites.set(faceNumber, newSprite);
+        this.sprites.set(key, newSprite);
         this.add(newSprite);
+        this.applyDisplayFilter();
     }
 
     /**
@@ -910,7 +1227,38 @@ export class FaceNumberDisplay extends Group {
      * @returns 面番号の配列
      */
     getAllFaceNumbers(): number[] {
-        return Array.from(this.sprites.keys()).sort((a, b) => a - b);
+        if (this.markers.size > 0) {
+            return Array.from(this.markers.keys()).sort((a, b) => a - b);
+        }
+
+        const spriteNumbers = Array.from(this.sprites.values())
+            .map((sprite) => sprite.userData["faceNumber"] as number | undefined)
+            .filter((faceNumber): faceNumber is number => faceNumber !== undefined);
+        return Array.from(new Set(spriteNumbers)).sort((a, b) => a - b);
+    }
+
+    getFaceNumberOccurrences(faceNumber: number): number {
+        return this.getMarkers(faceNumber).length;
+    }
+
+    getMultiFaceNumbers(): Array<{ faceNumber: number; count: number }> {
+        return Array.from(this.markers.entries())
+            .filter(([, markers]) => markers.length > 1)
+            .map(([faceNumber, markers]) => ({ faceNumber, count: markers.length }))
+            .sort((a, b) => a.faceNumber - b.faceNumber);
+    }
+
+    getFaceOccurrenceCount(): number {
+        return this.getMarkerCount();
+    }
+
+    getDisplayStats(): { total: number; visible: number; limited: boolean } {
+        const total = this.getMarkerCount();
+        return {
+            total,
+            visible: this.sprites.size,
+            limited: total > this.maxAutoVisibleNumbers,
+        };
     }
 
     /**
@@ -918,7 +1266,10 @@ export class FaceNumberDisplay extends Group {
      */
     dispose(): void {
         this.clearNumbers();
+        this.clearHighlightOverlays();
+        this.markers.clear();
         this.highlightedFaces.clear();
         this.faceIndexToNumber.clear();
+        this.focusedFaceNumber = null;
     }
 }

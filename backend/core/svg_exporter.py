@@ -15,7 +15,7 @@ class SVGExporter:
     """
     
     def __init__(self, scale_factor: float = 10.0, units: str = "mm",
-                 tab_width: float = 5.0, show_scale: bool = True,
+                 tab_width: float = 0.0, show_scale: bool = True,
                  show_fold_lines: bool = True, show_cut_lines: bool = True,
                  page_format: str = "A4", layout_mode: str = "canvas",
                  page_orientation: str = "portrait", mirror_horizontal: bool = False):
@@ -142,7 +142,10 @@ class SVGExporter:
             .title-text { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #000000; }
             .scale-text { font-family: Arial, sans-serif; font-size: 16px; fill: #000000; }
             .note-text { font-family: Arial, sans-serif; font-size: 14px; fill: #666666; }
-            .face-number { font-family: Arial, sans-serif; font-size: 140px; font-weight: bold; fill: #ff0000; text-anchor: middle; }
+            .face-number { pointer-events: none; }
+            .face-number-badge { fill: rgba(255,255,255,0.96); stroke: #2563eb; stroke-width: 1; }
+            .face-number-text { font-family: Arial, sans-serif; font-weight: 700; fill: #1e3a8a; text-anchor: middle; }
+            .face-number-callout { stroke: #2563eb; stroke-width: 0.8; fill: none; }
         """))
 
         # テクスチャパターンの定義を生成
@@ -243,12 +246,9 @@ class SVGExporter:
 
                     font_size = self._calculate_face_number_size(first_polygon_points)
 
-                    dwg.add(dwg.text(
-                        str(face_number),
-                        insert=(center_x, center_y),
-                        style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                        dominant_baseline="middle"
-                    ))
+                    self._add_face_number_badge(
+                        dwg, face_number, center_x, center_y, font_size, first_polygon_points
+                    )
                     logger.info(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
 
             else:
@@ -291,18 +291,24 @@ class SVGExporter:
                             # 面のサイズに基づいてフォントサイズを計算
                             font_size = self._calculate_face_number_size(points)
 
-                            # 面番号テキストを追加（動的サイズで）
-                            dwg.add(dwg.text(
-                                str(face_number),
-                                insert=(center_x, center_y),
-                                style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                                dominant_baseline="middle"  # 垂直中央揃え
-                            ))
+                            self._add_face_number_badge(
+                                dwg, face_number, center_x, center_y, font_size, points
+                            )
                             logger.info(f"    面番号{face_number}を中心({center_x:.1f}, {center_y:.1f})にサイズ{font_size:.1f}pxで描画")
                     else:
                         logger.info(f"  ポリゴン{poly_idx}: 点数不足({len(polygon)}点)")
             
-            # タブ描画
+            # 折り線・タブ描画
+            self._draw_line_segments(
+                dwg,
+                group.get("fold_lines", []),
+                lambda x, y: (
+                    x * actual_scale + content_offset_x,
+                    y * actual_scale + content_offset_y,
+                ),
+                "fold-line",
+                self.show_fold_lines,
+            )
             for tab_idx, tab in enumerate(group.get("tabs", [])):
                 if len(tab) >= 3:
                     # スケールファクターを適用
@@ -313,7 +319,7 @@ class SVGExporter:
         logger.info(f"SVG描画完了: {polygon_count}個のポリゴンを描画")
         
         # タイトル描画 (ページ上部中央)
-        title = f"Paper-CAD(mitou-jr) - {len(placed_groups)} Groups"
+        title = f"Paper-CAD - {len(placed_groups)} Groups"
         title_x = svg_width / 2
         title_y = 40
         dwg.add(dwg.text(title, insert=(title_x, title_y), text_anchor="middle", class_="title-text"))
@@ -505,7 +511,7 @@ class SVGExporter:
             適切なフォントサイズ（px）
         """
         if len(polygon_points) < 3:
-            return 12  # デフォルトサイズを小さく
+            return 8
 
         # 境界ボックスを計算
         xs = [p[0] for p in polygon_points]
@@ -517,15 +523,173 @@ class SVGExporter:
         # 最小辺長を取得
         min_dimension = min(bbox_width, bbox_height)
         
-        # フォントサイズを面の最小辺の25%に設定（より控えめなサイズ）
-        font_size = min_dimension * 0.25
+        # 図面線を邪魔しないよう、面の最小辺に対して控えめなサイズにする
+        font_size = min_dimension * 0.12
         
         # 最小・最大サイズでクリップ（A4印刷向けに調整）
-        # 最小: 10px（読める最小サイズ）
-        # 最大: 48px（印刷向け上限）
-        font_size = max(10, min(48, font_size))
+        # 最小: 7px（小面でも読める下限）
+        # 最大: 18px（面番号が主張しすぎない上限）
+        font_size = max(7, min(18, font_size))
         
         return font_size
+
+    def _add_face_number_badge(self, dwg, face_number: int, center_x: float,
+                               center_y: float, font_size: float, polygon_points=None):
+        """面番号を面内に収め、難しい場合はコールアウトとして描画する。"""
+        label = str(face_number)
+        badge_height = font_size * 1.25
+        badge_width = max(badge_height, len(label) * font_size * 0.62 + font_size * 0.65)
+        radius = badge_height / 2
+        label_x = center_x
+        label_y = center_y
+        callout_start = None
+        callout_end = None
+        occupied_boxes = self._get_face_number_label_boxes(dwg)
+
+        if polygon_points and len(polygon_points) >= 3:
+            xs = [p[0] for p in polygon_points]
+            ys = [p[1] for p in polygon_points]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            padding = max(3, font_size * 0.45)
+            fits_inside = (
+                badge_width + padding * 2 <= max_x - min_x
+                and badge_height + padding * 2 <= max_y - min_y
+            )
+
+            if fits_inside:
+                label_x = min(max(center_x, min_x + padding + badge_width / 2), max_x - padding - badge_width / 2)
+                label_y = min(max(center_y, min_y + padding + badge_height / 2), max_y - padding - badge_height / 2)
+            else:
+                offset = max(8, font_size * 1.8)
+                label_x = max_x + offset + badge_width / 2
+                label_y = min(max(center_y, min_y + badge_height / 2), max_y - badge_height / 2)
+                callout_start = (center_x, center_y)
+                callout_end = (label_x - badge_width / 2, label_y)
+
+            label_x, label_y, callout_start, callout_end = self._resolve_face_number_label_position(
+                label_x,
+                label_y,
+                badge_width,
+                badge_height,
+                occupied_boxes,
+                center_x,
+                center_y,
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+                font_size,
+                callout_start,
+                callout_end,
+            )
+
+        final_box = self._label_box(label_x, label_y, badge_width, badge_height)
+        occupied_boxes.append(final_box)
+
+        group = dwg.g(class_="face-number")
+        group.attribs["data-face-number"] = label
+        if callout_start and callout_end:
+            group.add(dwg.line(start=callout_start, end=callout_end, class_="face-number-callout"))
+        group.add(dwg.rect(
+            insert=(label_x - badge_width / 2, label_y - badge_height / 2),
+            size=(badge_width, badge_height),
+            rx=radius,
+            ry=radius,
+            class_="face-number-badge"
+        ))
+        group.add(dwg.text(
+            label,
+            insert=(label_x, label_y + font_size * 0.03),
+            class_="face-number-text",
+            style=f"font-size: {font_size}px;",
+            dominant_baseline="middle"
+        ))
+        dwg.add(group)
+
+    def _get_face_number_label_boxes(self, dwg):
+        if not hasattr(dwg, "_face_number_label_boxes"):
+            setattr(dwg, "_face_number_label_boxes", [])
+        return getattr(dwg, "_face_number_label_boxes")
+
+    def _label_box(self, center_x: float, center_y: float, width: float, height: float):
+        return {
+            "min_x": center_x - width / 2,
+            "max_x": center_x + width / 2,
+            "min_y": center_y - height / 2,
+            "max_y": center_y + height / 2,
+        }
+
+    def _label_boxes_overlap(self, a, b, padding: float = 2.0) -> bool:
+        return not (
+            a["max_x"] + padding <= b["min_x"]
+            or b["max_x"] + padding <= a["min_x"]
+            or a["max_y"] + padding <= b["min_y"]
+            or b["max_y"] + padding <= a["min_y"]
+        )
+
+    def _label_collides(self, box, occupied_boxes) -> bool:
+        return any(self._label_boxes_overlap(box, occupied) for occupied in occupied_boxes)
+
+    def _resolve_face_number_label_position(
+        self,
+        label_x: float,
+        label_y: float,
+        badge_width: float,
+        badge_height: float,
+        occupied_boxes,
+        center_x: float,
+        center_y: float,
+        min_x: float,
+        max_x: float,
+        min_y: float,
+        max_y: float,
+        font_size: float,
+        callout_start,
+        callout_end,
+    ):
+        if not self._label_collides(self._label_box(label_x, label_y, badge_width, badge_height), occupied_boxes):
+            return label_x, label_y, callout_start, callout_end
+
+        offset = max(8, font_size * 1.8)
+        vertical_slots = [
+            center_y,
+            min_y + badge_height / 2,
+            max_y - badge_height / 2,
+            center_y - badge_height - offset,
+            center_y + badge_height + offset,
+        ]
+        candidates = []
+        for slot_y in vertical_slots:
+            y = min(max(slot_y, min_y + badge_height / 2), max_y - badge_height / 2)
+            candidates.extend(
+                [
+                    (max_x + offset + badge_width / 2, y, (center_x, center_y), (max_x + offset, y)),
+                    (min_x - offset - badge_width / 2, y, (center_x, center_y), (min_x - offset, y)),
+                ]
+            )
+
+        candidates.extend(
+            [
+                (center_x, min_y - offset - badge_height / 2, (center_x, center_y), (center_x, min_y - offset)),
+                (center_x, max_y + offset + badge_height / 2, (center_x, center_y), (center_x, max_y + offset)),
+            ]
+        )
+
+        for candidate_x, candidate_y, candidate_start, candidate_end in candidates:
+            if not self._label_collides(
+                self._label_box(candidate_x, candidate_y, badge_width, badge_height),
+                occupied_boxes,
+            ):
+                return candidate_x, candidate_y, candidate_start, candidate_end
+
+        fallback_shift = (len(occupied_boxes) % 6 + 1) * (badge_height + 3)
+        return (
+            max_x + offset + badge_width / 2,
+            center_y + fallback_shift,
+            (center_x, center_y),
+            (max_x + offset, center_y + fallback_shift),
+        )
     
     def _add_technical_notes(self, dwg, svg_width: float, svg_height: float):
         """動的サイズ用技術注記・凡例追加"""
@@ -539,6 +703,24 @@ class SVGExporter:
         
         for i, note in enumerate(notes):
             dwg.add(dwg.text(note, insert=(notes_x, notes_y + i * 18), class_="note-text"))
+
+    def _draw_line_segments(
+        self,
+        dwg,
+        line_segments: List[List],
+        transform_point,
+        class_name: str,
+        visible: bool,
+    ):
+        if not visible:
+            return
+
+        for line in line_segments:
+            if len(line) < 2:
+                continue
+            start = transform_point(line[0][0], line[0][1])
+            end = transform_point(line[1][0], line[1][1])
+            dwg.add(dwg.line(start=start, end=end, class_=class_name))
     
     def _calculate_overall_bbox(self, placed_groups: List[Dict]) -> Dict:
         """
@@ -641,7 +823,10 @@ class SVGExporter:
             .page-separator { stroke: #666666; stroke-width: 1; stroke-dasharray: 20,10; }
             .cut-mark { stroke: #000000; stroke-width: 0.5; }
             .page-number { font-family: Arial, sans-serif; font-size: 14px; fill: #333333; font-weight: bold; }
-            .face-number { font-family: Arial, sans-serif; font-weight: bold; fill: #ff0000; text-anchor: middle; }
+            .face-number { pointer-events: none; }
+            .face-number-badge { fill: rgba(255,255,255,0.96); stroke: #2563eb; stroke-width: 1; }
+            .face-number-text { font-family: Arial, sans-serif; font-weight: 700; fill: #1e3a8a; text-anchor: middle; }
+            .face-number-callout { stroke: #2563eb; stroke-width: 0.8; fill: none; }
             .page-label { font-family: Arial, sans-serif; font-size: 12px; fill: #666666; }
         """))
 
@@ -776,12 +961,9 @@ class SVGExporter:
                         center_y = sum(p[1] for p in first_polygon_points) / len(first_polygon_points)
                         font_size = self._calculate_face_number_size(first_polygon_points)
 
-                        dwg.add(dwg.text(
-                            str(face_number),
-                            insert=(center_x, center_y),
-                            style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                            dominant_baseline="middle"
-                        ))
+                        self._add_face_number_badge(
+                            dwg, face_number, center_x, center_y, font_size, first_polygon_points
+                        )
 
                 else:
                     # 単一ポリゴンの場合
@@ -819,14 +1001,21 @@ class SVGExporter:
                                 center_y = sum(p[1] for p in points) / len(points)
                                 font_size = self._calculate_face_number_size(points)
 
-                                dwg.add(dwg.text(
-                                    str(face_number),
-                                    insert=(center_x, center_y),
-                                    style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                                    dominant_baseline="middle"
-                                ))
+                                self._add_face_number_badge(
+                                    dwg, face_number, center_x, center_y, font_size, points
+                                )
                 
-                # タブ描画
+                # 折り線・タブ描画
+                self._draw_line_segments(
+                    dwg,
+                    group.get("fold_lines", []),
+                    lambda x, y: (
+                        x * self.mm_to_px + margin_px,
+                        y * self.mm_to_px + margin_px + page_y_offset,
+                    ),
+                    "fold-line",
+                    self.show_fold_lines,
+                )
                 for tab in group.get("tabs", []):
                     if len(tab) >= 3:
                         points = [
@@ -846,7 +1035,7 @@ class SVGExporter:
             
             # タイトル（各ページの上部）
             dwg.add(dwg.text(
-                f"Paper-CAD (mitou-jr)",
+                f"Paper-CAD",
                 insert=(self.page_width_px / 2, page_y_offset + 25),
                 text_anchor="middle",
                 style="font-family: Arial, sans-serif; font-size: 16px; fill: #000000; font-weight: bold;"
@@ -906,7 +1095,10 @@ class SVGExporter:
                 .page-border { fill: none; stroke: #cccccc; stroke-width: 1; stroke-dasharray: 10,5; }
                 .cut-mark { stroke: #000000; stroke-width: 0.5; }
                 .page-number { font-family: Arial, sans-serif; font-size: 12px; fill: #666666; }
-                .face-number { font-family: Arial, sans-serif; font-weight: bold; fill: #ff0000; text-anchor: middle; }
+                .face-number { pointer-events: none; }
+                .face-number-badge { fill: rgba(255,255,255,0.96); stroke: #2563eb; stroke-width: 1; }
+                .face-number-text { font-family: Arial, sans-serif; font-weight: 700; fill: #1e3a8a; text-anchor: middle; }
+                .face-number-callout { stroke: #2563eb; stroke-width: 0.8; fill: none; }
             """))
 
             # テクスチャパターンの定義を生成
@@ -1033,12 +1225,9 @@ class SVGExporter:
                         center_y = sum(p[1] for p in first_polygon_points) / len(first_polygon_points)
                         font_size = self._calculate_face_number_size(first_polygon_points)
 
-                        dwg.add(dwg.text(
-                            str(face_number),
-                            insert=(center_x, center_y),
-                            style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                            dominant_baseline="middle"
-                        ))
+                        self._add_face_number_badge(
+                            dwg, face_number, center_x, center_y, font_size, first_polygon_points
+                        )
 
                 else:
                     # 単一ポリゴンの場合
@@ -1084,14 +1273,25 @@ class SVGExporter:
                                 center_y = sum(p[1] for p in points) / len(points)
                                 font_size = self._calculate_face_number_size(points)
 
-                                dwg.add(dwg.text(
-                                    str(face_number),
-                                    insert=(center_x, center_y),
-                                    style=f"font-family: Arial, sans-serif; font-size: {font_size}px; font-weight: bold; fill: #ff0000; text-anchor: middle;",
-                                    dominant_baseline="middle"
-                                ))
+                                self._add_face_number_badge(
+                                    dwg, face_number, center_x, center_y, font_size, points
+                                )
                 
-                # タブ描画
+                # 折り線・タブ描画
+                self._draw_line_segments(
+                    dwg,
+                    group.get("fold_lines", []),
+                    lambda x, y: (
+                        self.printable_width_mm * actual_scale
+                        - x * actual_scale
+                        + margin_px
+                        if self.mirror_horizontal
+                        else x * actual_scale + margin_px,
+                        y * actual_scale + margin_px,
+                    ),
+                    "fold-line",
+                    self.show_fold_lines,
+                )
                 for tab in group.get("tabs", []):
                     if len(tab) >= 3:
                         if self.mirror_horizontal:
@@ -1119,7 +1319,7 @@ class SVGExporter:
             
             # タイトルとプロジェクト情報
             dwg.add(dwg.text(
-                f"Paper-CAD (mitou-jr) - {self.page_format} {self.page_orientation.capitalize()}",
+                f"Paper-CAD - {self.page_format} {self.page_orientation.capitalize()}",
                 insert=(self.page_width_px / 2, 20),
                 text_anchor="middle",
                 style="font-family: Arial, sans-serif; font-size: 14px; fill: #000000;"

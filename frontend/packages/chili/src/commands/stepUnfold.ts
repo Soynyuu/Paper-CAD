@@ -154,6 +154,7 @@ export class StepUnfold extends CancelableCommand {
             layoutMode: "paged",
             pageFormat: "A4",
             pageOrientation: "portrait",
+            mergeMode: "improved",
         };
 
         try {

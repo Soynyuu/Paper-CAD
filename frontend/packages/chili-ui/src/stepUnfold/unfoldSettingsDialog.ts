@@ -6,6 +6,7 @@ import { UnfoldOptions } from "chili-core";
 import style from "./unfoldSettingsDialog.module.css";
 
 type SourceUnits = NonNullable<UnfoldOptions["units"]>;
+type MergeMode = NonNullable<UnfoldOptions["mergeMode"]>;
 
 export interface StepUnfoldSettingsDialogContext {
     selectedCount?: number;
@@ -52,6 +53,13 @@ export class StepUnfoldSettingsDialog {
             );
             layoutModeSelect.value = defaults.layoutMode ?? "paged";
 
+            const mergeModeSelect = select(
+                { className: style.select },
+                option({ value: "improved", textContent: "改善版（推奨）" }),
+                option({ value: "legacy", textContent: "旧方式" }),
+            );
+            mergeModeSelect.value = defaults.mergeMode ?? "improved";
+
             const scaleSelect = select(
                 { className: style.select },
                 option({ value: "fitPage", textContent: "この紙で最大" }),
@@ -75,11 +83,21 @@ export class StepUnfoldSettingsDialog {
             const hasPreset = Array.from(scaleSelect.options).some((item) => item.value === knownScale);
             scaleSelect.value = hasPreset ? knownScale : "custom";
 
+            const customScaleField = this.field("分母", customScaleInput);
+            const pageSettings = div(
+                { className: style.inlineFields },
+                this.field("用紙", pageFormatSelect),
+                this.field("向き", pageOrientationSelect),
+            );
+
             const updateControlState = () => {
                 const isCanvas = layoutModeSelect.value === "canvas";
+                const isCustomScale = scaleSelect.value === "custom";
                 pageFormatSelect.disabled = isCanvas;
                 pageOrientationSelect.disabled = isCanvas;
-                customScaleInput.disabled = scaleSelect.value !== "custom";
+                customScaleInput.disabled = !isCustomScale;
+                customScaleField.hidden = !isCustomScale;
+                pageSettings.hidden = isCanvas;
             };
 
             const close = (result?: UnfoldOptions) => {
@@ -115,6 +133,7 @@ export class StepUnfoldSettingsDialog {
                         layoutMode: layoutModeSelect.value as "canvas" | "paged",
                         pageFormat: pageFormatSelect.value as "A4" | "A3" | "Letter",
                         pageOrientation: pageOrientationSelect.value as "portrait" | "landscape",
+                        mergeMode: mergeModeSelect.value as MergeMode,
                     });
                 },
             });
@@ -134,19 +153,26 @@ export class StepUnfoldSettingsDialog {
                             { className: style.titleBlock },
                             h2({ className: style.title, textContent: "展開図設定" }),
                             span({
-                                className: style.selectionCount,
-                                textContent: `${context.selectedCount ?? 0}個選択中`,
+                                className: style.subtitle,
+                                textContent: `${context.selectedCount ?? 0}個のモデル`,
                             }),
                         ),
                     ),
                     div(
-                        { className: style.grid },
-                        this.field("入力単位", unitsSelect),
+                        { className: style.form },
                         this.field("縮尺", scaleSelect),
-                        this.field("縮尺分母", customScaleInput),
-                        this.field("出力", layoutModeSelect),
-                        this.field("ページサイズ", pageFormatSelect),
-                        this.field("向き", pageOrientationSelect),
+                        customScaleField,
+                        pageSettings,
+                        div(
+                            { className: style.advanced },
+                            div({ className: style.sectionLabel, textContent: "詳細" }),
+                            div(
+                                { className: style.inlineFields },
+                                this.field("単位", unitsSelect),
+                                this.field("結合", mergeModeSelect),
+                            ),
+                            this.field("出力", layoutModeSelect),
+                        ),
                     ),
                     div({ className: style.actions }, cancelButton, confirmButton),
                 ),

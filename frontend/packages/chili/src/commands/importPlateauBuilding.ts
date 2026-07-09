@@ -15,7 +15,7 @@ import type { PlateauCesiumPickerResult } from "chili-ui/src/plateauCesiumPicker
 
 @command({
     key: "file.importPlateauBuilding",
-    icon: "icon-3d-map",
+    icon: "icon-position",
     isApplicationCommand: true,
 })
 export class ImportPlateauBuilding implements ICommand {
@@ -84,6 +84,7 @@ export class ImportPlateauBuilding implements ICommand {
                                 {
                                     debug: false,
                                     mergeBuildingParts: false,
+                                    scaleMode: unfoldOptions.scaleMode,
                                     scaleFactor: unfoldOptions.scale,
                                     layoutMode: unfoldOptions.layoutMode,
                                     pageFormat: unfoldOptions.pageFormat,
@@ -231,6 +232,7 @@ export class ImportPlateauBuilding implements ICommand {
     }
 
     private async getCurrentUnfoldOptions(): Promise<{
+        scaleMode: "fixed" | "fitPage";
         scale: number;
         layoutMode: "canvas" | "paged";
         pageFormat: "A4" | "A3" | "Letter";
@@ -238,6 +240,7 @@ export class ImportPlateauBuilding implements ICommand {
         mirrorHorizontal: boolean;
     }> {
         const defaults = {
+            scaleMode: "fixed" as const,
             scale: 10,
             layoutMode: "paged" as const,
             pageFormat: "A4" as const,
@@ -253,6 +256,7 @@ export class ImportPlateauBuilding implements ICommand {
             }
             const options = panel.getCurrentOptions();
             return {
+                scaleMode: options.scaleMode ?? defaults.scaleMode,
                 scale: options.scale ?? defaults.scale,
                 layoutMode: options.layoutMode ?? defaults.layoutMode,
                 pageFormat: options.pageFormat ?? defaults.pageFormat,

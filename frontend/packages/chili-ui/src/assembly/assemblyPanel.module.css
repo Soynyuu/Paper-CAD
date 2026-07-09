@@ -69,6 +69,65 @@
     white-space: nowrap;
 }
 
+.selectedFacesPanel {
+    display: none;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-height: 34px;
+    padding: var(--spacing-xs) var(--spacing-lg);
+    background-color: var(--panel-background-color);
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+
+.selectedFacesPanelVisible {
+    display: flex;
+}
+
+.faceInfoGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    flex: 0 0 auto;
+}
+
+.selectedFacesLabel {
+    flex: 0 0 auto;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--neutral-600);
+}
+
+.selectedFaceChip {
+    flex: 0 0 auto;
+    min-width: 30px;
+    min-height: 24px;
+    padding: 0 var(--spacing-sm);
+    border: 1px solid rgba(245, 158, 11, 0.65);
+    border-radius: var(--radius-sm);
+    background-color: rgba(255, 248, 220, 0.94);
+    color: #92400e;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+}
+
+.selectedFaceChip:hover {
+    border-color: #f59e0b;
+    background-color: rgba(254, 243, 199, 1);
+}
+
+.overlappingFaceChip {
+    border-color: rgba(37, 99, 235, 0.55);
+    background-color: rgba(239, 246, 255, 0.96);
+    color: #1e3a8a;
+}
+
+.overlappingFaceChip:hover {
+    border-color: #2563eb;
+    background-color: rgba(219, 234, 254, 1);
+}
+
 .controlGroup {
     display: inline-flex;
     align-items: center;
@@ -378,6 +437,11 @@
 
     .toolbar {
         padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .selectedFacesPanel {
+        padding-right: var(--spacing-md);
+        padding-left: var(--spacing-md);
     }
 
     .statusBar {

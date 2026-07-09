@@ -9,10 +9,10 @@
     --dialog-primary-hover: #ea580c;
     --dialog-ring: rgb(249 115 22 / 28%);
 
-    width: min(520px, calc(100vw - 32px));
+    width: min(460px, calc(100vw - 32px));
     padding: 0;
     border: 1px solid var(--dialog-border);
-    border-radius: 8px;
+    border-radius: 6px;
     color: var(--dialog-foreground);
     background: var(--dialog-background);
     box-shadow:
@@ -28,8 +28,8 @@
 .root {
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    padding: 22px;
+    gap: 16px;
+    padding: 20px;
 }
 
 .header {
@@ -43,59 +43,75 @@
 .titleBlock {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
 }
 
 .title {
     margin: 0;
     color: var(--dialog-foreground);
-    font-size: 18px;
-    font-weight: 650;
+    font-size: 20px;
+    font-weight: 600;
     line-height: 1.25;
     letter-spacing: 0;
 }
 
-.selectionCount {
-    display: inline-flex;
-    width: fit-content;
-    align-items: center;
-    min-height: 24px;
-    padding: 0 9px;
-    border: 1px solid #fed7aa;
-    border-radius: 999px;
-    color: #9a3412;
-    background: var(--dialog-accent);
+.subtitle {
+    color: var(--dialog-muted);
     font-size: 12px;
-    font-weight: 500;
-    line-height: 1;
-    white-space: nowrap;
+    line-height: 1.35;
 }
 
-.grid {
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.inlineFields {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 10px;
 }
 
 .field {
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 6px;
     min-width: 0;
 }
 
+.field[hidden],
+.inlineFields[hidden] {
+    display: none;
+}
+
 .label {
-    color: #3f3f46;
-    font-size: 13px;
+    color: #52525b;
+    font-size: 12px;
     font-weight: 500;
     line-height: 1.2;
+}
+
+.advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--dialog-border);
+}
+
+.sectionLabel {
+    color: var(--dialog-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
 }
 
 .select,
 .numberInput {
     width: 100%;
-    min-height: 38px;
+    min-height: 40px;
     padding: 0 11px;
     border: 1px solid var(--dialog-border);
     border-radius: 6px;
@@ -137,7 +153,7 @@
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    padding-top: 2px;
+    padding-top: 4px;
 }
 
 .button {
@@ -145,7 +161,7 @@
     align-items: center;
     justify-content: center;
     min-width: 96px;
-    min-height: 38px;
+    min-height: 36px;
     padding: 0 14px;
     border: 1px solid var(--dialog-border);
     border-radius: 6px;
@@ -191,7 +207,7 @@
         padding: 18px;
     }
 
-    .grid {
+    .inlineFields {
         grid-template-columns: 1fr;
     }
 

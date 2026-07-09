@@ -74,6 +74,9 @@ const config = defineConfig({
         main: "./packages/chili-web/src/index.ts",
     },
     mode: process.env.NODE_ENV === "development" ? "development" : "production",
+    output: {
+        clean: true,
+    },
     bail: false, // Continue building despite errors
     devServer: {
         hot: true,
@@ -219,6 +222,11 @@ const config = defineConfig({
                     process.env.CESIUM_PREFER_NO_TEXTURE,
                     DEFAULT_PREFER_NO_TEXTURE,
                 ),
+                cesiumOfflineMode: parseBoolean(process.env.CESIUM_OFFLINE_MODE, false),
+                cesiumGsiStandardUrl: process.env.CESIUM_GSI_STANDARD_URL || "",
+                cesiumGsiPaleUrl: process.env.CESIUM_GSI_PALE_URL || "",
+                cesiumGsiPhotoUrl: process.env.CESIUM_GSI_PHOTO_URL || "",
+                cesiumPlateauOrthoUrl: process.env.CESIUM_PLATEAU_ORTHO_URL || "",
                 useReactCesiumPicker: process.env.USE_REACT_CESIUM_PICKER === "true",
             }),
         }),

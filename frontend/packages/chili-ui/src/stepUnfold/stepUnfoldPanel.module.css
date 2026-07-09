@@ -122,52 +122,6 @@
     flex-shrink: 0;
 }
 
-/* Compact page settings for top bar */
-.compactPageSettings {
-    display: flex;
-    gap: var(--spacing-sm);
-    align-items: center;
-    flex-shrink: 0;
-}
-
-.compactPageSettings select {
-    padding: 2px 6px;
-    background-color: var(--neutral-0);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-    height: 28px;
-}
-
-/* Compact scale controls for top bar */
-.compactScaleControls {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 150px;
-    flex-shrink: 0;
-}
-
-.compactScaleLabel {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    color: var(--neutral-700);
-    white-space: nowrap;
-}
-
-.compactScaleControls .scaleSelect {
-    width: 132px;
-    height: 28px;
-    padding: 2px 6px;
-    background-color: var(--neutral-0);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-}
-
 /* Secondary controls area */
 .secondaryControls {
     display: flex;
@@ -176,6 +130,110 @@
     padding: var(--spacing-sm) var(--spacing-md);
     background-color: var(--neutral-50);
     border-bottom: 1px solid var(--border-color);
+}
+
+.faceHighlightContainer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.faceSearchRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+}
+
+.faceSearchLabel {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--neutral-700);
+    white-space: nowrap;
+}
+
+.faceNumberInput {
+    width: 100%;
+    max-width: 132px;
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    background-color: var(--neutral-0);
+    color: var(--neutral-800);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: var(--font-size-sm);
+}
+
+.faceNumberInput:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.16);
+}
+
+.highlightButton,
+.clearButton {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.highlightButton {
+    grid-column: 1 / 2;
+}
+
+.clearButton {
+    grid-column: 2 / 3;
+    justify-self: start;
+}
+
+.highlightButton {
+    color: var(--neutral-0);
+    background-color: var(--primary-color);
+    border-color: var(--primary-color-dark);
+}
+
+.highlightButton:hover {
+    background-color: var(--primary-color-dark);
+}
+
+.clearButton {
+    color: var(--neutral-700);
+    background-color: var(--neutral-0);
+}
+
+.clearButton:hover {
+    color: var(--neutral-900);
+    background-color: var(--neutral-50);
+    border-color: var(--neutral-400);
+}
+
+.highlightedFacesList,
+.faceSearchStatus {
+    font-size: var(--font-size-xs);
+    line-height: 1.35;
+}
+
+.highlightedFacesList {
+    color: var(--neutral-800);
+    font-weight: var(--font-weight-medium);
+}
+
+.faceSearchStatus {
+    color: var(--neutral-600);
 }
 
 /* Info section for model size and experimental badge */
@@ -196,35 +254,38 @@
 
 /* Face number button */
 .faceNumberButton {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background-color: var(--button-background);
-    color: var(--button-text-color);
-    border: 1px solid var(--button-border-color);
-    border-radius: var(--radius-sm);
+    min-width: 104px;
+    padding: 0 var(--spacing-sm);
+    background-color: var(--neutral-0);
+    color: var(--neutral-800);
+    border: 1px solid var(--neutral-300);
+    border-radius: 6px;
     font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-semibold);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        box-shadow var(--transition-fast);
     white-space: nowrap;
     height: 28px;
 }
 
 .faceNumberButton:hover {
-    background-color: var(--button-hover-background);
+    background-color: var(--neutral-50);
     border-color: var(--primary-color);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
 }
 
 .faceNumberButton:active {
-    transform: translateY(0);
-    box-shadow: none;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 .faceNumberButton.active {
     background-color: var(--primary-color);
     color: var(--neutral-0);
     border-color: var(--primary-color-dark);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.16);
 }
 
 .faceNumberButton.active:hover {

@@ -1425,6 +1425,8 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
             page_format=request.page_format or "A4",
             page_orientation=request.page_orientation or "portrait",
             scale_factor=request.scale_factor or 10.0,
+            scale_mode=request.scale_mode or "fixed",
+            units="m",
             mirror_horizontal=request.mirror_horizontal or False,
             max_faces=request.max_faces or 20,
         )

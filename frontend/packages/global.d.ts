@@ -47,6 +47,12 @@ interface AppConfig {
     cesiumResolutionScale?: number;
     /** Prefer no-texture tilesets when available */
     cesiumPreferNoTexture?: boolean;
+    /** Disable remote Cesium fallbacks for local/offline demos */
+    cesiumOfflineMode?: boolean;
+    cesiumGsiStandardUrl?: string;
+    cesiumGsiPaleUrl?: string;
+    cesiumGsiPhotoUrl?: string;
+    cesiumPlateauOrthoUrl?: string;
     useReactCesiumPicker: boolean;
 }
 

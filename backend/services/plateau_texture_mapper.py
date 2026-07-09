@@ -12,6 +12,7 @@ import base64
 import hashlib
 import math
 import mimetypes
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -30,6 +31,10 @@ try:
     from services.coordinate_utils import is_geographic_crs, recommend_projected_crs
 except ImportError:
     from coordinate_utils import is_geographic_crs, recommend_projected_crs
+
+
+def _is_local_demo() -> bool:
+    return os.getenv("ENV", os.getenv("PYTHON_ENV", "development")) == "local_demo"
 
 
 @dataclass
@@ -463,15 +468,20 @@ def _resolve_image_data_uri(
     if cleaned.startswith("data:image"):
         return cleaned, "inline-data-uri"
 
+    local_demo = _is_local_demo()
     parsed = urlparse(cleaned)
     candidates: List[str] = []
-    if parsed.scheme in ("http", "https"):
+    if parsed.scheme in ("http", "https") and not local_demo:
         candidates.append(cleaned)
 
     for source_url in source_urls:
         source_parsed = urlparse(source_url)
-        if source_parsed.scheme in ("http", "https"):
+        if source_parsed.scheme in ("http", "https") and not local_demo:
             candidates.append(urljoin(source_url, cleaned))
+        elif source_parsed.scheme not in ("http", "https"):
+            source_path = Path(source_url)
+            source_dir = source_path.parent if source_path.is_file() else source_path
+            candidates.append(str(source_dir / cleaned))
 
     # Local filesystem fallback (cache / local data runs)
     local_path = Path(cleaned)
@@ -493,6 +503,8 @@ def _resolve_image_data_uri(
 
         try:
             if parsed_candidate.scheme in ("http", "https"):
+                if local_demo:
+                    continue
                 response = requests.get(candidate, timeout=timeout)
                 if response.status_code != 200:
                     continue

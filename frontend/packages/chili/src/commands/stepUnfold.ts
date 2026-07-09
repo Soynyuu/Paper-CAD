@@ -17,7 +17,7 @@ import { SelectNodeWithListStep } from "../step";
 
 @command({
     key: "file.stepUnfold",
-    icon: "icon-export",
+    icon: "icon-export-unfold",
 })
 export class StepUnfold extends CancelableCommand {
     @Property.define("file.format")

@@ -15,7 +15,7 @@ import type { PlateauCesiumPickerResult } from "chili-ui/src/plateauCesiumPicker
 
 @command({
     key: "file.importPlateauBuilding",
-    icon: "icon-position",
+    icon: "icon-import-plateau",
     isApplicationCommand: true,
 })
 export class ImportPlateauBuilding implements ICommand {

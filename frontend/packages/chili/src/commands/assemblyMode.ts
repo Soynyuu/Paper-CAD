@@ -6,7 +6,7 @@ import { SelectNodeWithListStep } from "../step";
 
 @command({
     key: "file.assemblyMode",
-    icon: "icon-layer-group",
+    icon: "icon-assembly-colored",
 })
 export class AssemblyMode extends CancelableCommand {
     protected async executeAsync() {

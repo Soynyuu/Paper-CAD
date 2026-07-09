@@ -1084,6 +1084,35 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         open={showResults}
                         openOnInputClick
                     >
+                                  <Tabs.Root
+                            className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}
+                            value={searchMode}
+                            onValueChange={handleSearchModeChange}
+                        >
+                            <Tabs.List className={styles.searchModeList} aria-label="検索種別">
+                                {Object.entries(SEARCH_MODE_LABELS).map(([value, label]) => (
+                                    <Tabs.Tab
+                                        key={value}
+                                        value={value}
+                                        render={<button className={styles.searchModeChip} type="button" />}
+                                    >
+                                        {label}
+                                    </Tabs.Tab>
+                                ))}
+                            </Tabs.List>
+                            <Tabs.Panel value="buildingId" className={styles.meshCodeSection}>
+                                {showDetails && (
+                                    <Input
+                                        type="text"
+                                        className={styles.meshCodeInput}
+                                        placeholder="メッシュコード（例: 53394511）"
+                                        value={meshCode}
+                                        onChange={(e) => setMeshCode(e.target.value)}
+                                        disabled={isSearching}
+                                    />
+                                )}
+                            </Tabs.Panel>
+                        </Tabs.Root>
                         <div className={styles.searchInputWrapper}>
                             <span className={styles.searchIcon}>
                                 <Search aria-hidden="true" />
@@ -1131,35 +1160,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             </Button>
                         </div>
 
-                        <Tabs.Root
-                            className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}
-                            value={searchMode}
-                            onValueChange={handleSearchModeChange}
-                        >
-                            <Tabs.List className={styles.searchModeList} aria-label="検索種別">
-                                {Object.entries(SEARCH_MODE_LABELS).map(([value, label]) => (
-                                    <Tabs.Tab
-                                        key={value}
-                                        value={value}
-                                        render={<button className={styles.searchModeChip} type="button" />}
-                                    >
-                                        {label}
-                                    </Tabs.Tab>
-                                ))}
-                            </Tabs.List>
-                            <Tabs.Panel value="buildingId" className={styles.meshCodeSection}>
-                                {showDetails && (
-                                    <Input
-                                        type="text"
-                                        className={styles.meshCodeInput}
-                                        placeholder="メッシュコード（例: 53394511）"
-                                        value={meshCode}
-                                        onChange={(e) => setMeshCode(e.target.value)}
-                                        disabled={isSearching}
-                                    />
-                                )}
-                            </Tabs.Panel>
-                        </Tabs.Root>
+
 
                         {showResults && <div className={styles.searchDivider} />}
 

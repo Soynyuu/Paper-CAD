@@ -119,6 +119,7 @@ export interface PlateauTexturedUnfoldOptions extends PlateauBuildingIdWithMeshS
     layoutMode?: "canvas" | "paged";
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
+    scaleMode?: "fixed" | "fitPage";
     scaleFactor?: number;
     mirrorHorizontal?: boolean;
     maxFaces?: number;
@@ -592,6 +593,7 @@ export class CityGMLService implements ICityGMLService {
                 layout_mode: options?.layoutMode ?? "paged",
                 page_format: options?.pageFormat ?? "A4",
                 page_orientation: options?.pageOrientation ?? "portrait",
+                scale_mode: options?.scaleMode === "fitPage" ? "fit_page" : "fixed",
                 scale_factor: options?.scaleFactor ?? 10,
                 mirror_horizontal: options?.mirrorHorizontal ?? false,
                 max_faces: options?.maxFaces ?? 20,

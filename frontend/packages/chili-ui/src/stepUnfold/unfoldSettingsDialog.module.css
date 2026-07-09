@@ -1,0 +1,221 @@
+.dialog {
+    --dialog-background: #ffffff;
+    --dialog-foreground: #18181b;
+    --dialog-muted: #71717a;
+    --dialog-border: #e4e4e7;
+    --dialog-input: #ffffff;
+    --dialog-accent: #fff7ed;
+    --dialog-primary: #f97316;
+    --dialog-primary-hover: #ea580c;
+    --dialog-ring: rgb(249 115 22 / 28%);
+
+    width: min(460px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--dialog-border);
+    border-radius: 6px;
+    color: var(--dialog-foreground);
+    background: var(--dialog-background);
+    box-shadow:
+        0 18px 48px rgb(15 23 42 / 18%),
+        0 2px 8px rgb(15 23 42 / 8%);
+}
+
+.dialog::backdrop {
+    background: rgb(15 23 42 / 42%);
+    backdrop-filter: blur(2px);
+}
+
+.root {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 2px;
+}
+
+.titleBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.title {
+    margin: 0;
+    color: var(--dialog-foreground);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0;
+}
+
+.subtitle {
+    color: var(--dialog-muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.inlineFields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.field[hidden],
+.inlineFields[hidden] {
+    display: none;
+}
+
+.label {
+    color: #52525b;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--dialog-border);
+}
+
+.sectionLabel {
+    color: var(--dialog-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.select,
+.numberInput {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 11px;
+    border: 1px solid var(--dialog-border);
+    border-radius: 6px;
+    color: var(--dialog-foreground);
+    background: var(--dialog-input);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    outline: none;
+    transition:
+        border-color 120ms ease,
+        box-shadow 120ms ease,
+        background-color 120ms ease;
+}
+
+.select {
+    cursor: pointer;
+}
+
+.select:hover,
+.numberInput:hover {
+    border-color: #fdba74;
+}
+
+.select:focus-visible,
+.numberInput:focus-visible {
+    border-color: var(--dialog-primary);
+    box-shadow: 0 0 0 3px var(--dialog-ring);
+}
+
+.select:disabled,
+.numberInput:disabled {
+    cursor: not-allowed;
+    color: #a1a1aa;
+    background: #f4f4f5;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 4px;
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--dialog-border);
+    border-radius: 6px;
+    color: var(--dialog-foreground);
+    background: #ffffff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    outline: none;
+    transition:
+        border-color 120ms ease,
+        background-color 120ms ease,
+        color 120ms ease,
+        box-shadow 120ms ease;
+}
+
+.button:hover {
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+.button:focus-visible {
+    border-color: var(--dialog-primary);
+    box-shadow: 0 0 0 3px var(--dialog-ring);
+}
+
+.primaryButton {
+    border-color: var(--dialog-primary);
+    color: #ffffff;
+    background: var(--dialog-primary);
+}
+
+.primaryButton:hover {
+    border-color: var(--dialog-primary-hover);
+    color: #ffffff;
+    background: var(--dialog-primary-hover);
+}
+
+@media (max-width: 520px) {
+    .root {
+        padding: 18px;
+    }
+
+    .inlineFields {
+        grid-template-columns: 1fr;
+    }
+
+    .actions {
+        flex-direction: column-reverse;
+    }
+
+    .button {
+        width: 100%;
+    }
+}

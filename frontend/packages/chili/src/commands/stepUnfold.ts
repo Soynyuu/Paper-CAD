@@ -55,6 +55,11 @@ export class StepUnfold extends CancelableCommand {
             return;
         }
 
+        const unfoldOptions = await this.resolveUnfoldOptions(nodes);
+        if (!unfoldOptions) {
+            return;
+        }
+
         PubSub.default.pub(
             "showPermanent",
             async () => {
@@ -84,26 +89,6 @@ export class StepUnfold extends CancelableCommand {
 
                     // STEPデータをunfoldサービスに送信（オプションを含む）
                     const stepBlob = Array.isArray(stepData) ? stepData[0] : stepData;
-
-                    // StepUnfoldPanelから現在の設定を取得
-                    let unfoldOptions: UnfoldOptions = {
-                        scale: 1,
-                        layoutMode: "paged",
-                        pageFormat: "A4",
-                        pageOrientation: "portrait",
-                    };
-
-                    // StepUnfoldPanelのインスタンスから設定を取得
-                    try {
-                        const { StepUnfoldPanel } = await import("chili-ui");
-                        const panel = StepUnfoldPanel.getInstance();
-                        if (panel) {
-                            unfoldOptions = panel.getCurrentOptions();
-                            console.log("取得したオプション:", unfoldOptions);
-                        }
-                    } catch (e) {
-                        console.log("デフォルトオプションを使用:", unfoldOptions);
-                    }
 
                     // FaceTextureServiceからテクスチャマッピングを取得
                     try {
@@ -158,6 +143,63 @@ export class StepUnfold extends CancelableCommand {
             "toast.excuting{0}",
             I18n.translate("command.file.stepUnfold"),
         );
+    }
+
+    private async resolveUnfoldOptions(nodes: INode[]): Promise<UnfoldOptions | undefined> {
+        const inferredUnits = this.inferSourceUnits(nodes);
+        let options: UnfoldOptions = {
+            scaleMode: "fixed",
+            scale: 150,
+            units: inferredUnits,
+            layoutMode: "paged",
+            pageFormat: "A4",
+            pageOrientation: "portrait",
+            mergeMode: "improved",
+        };
+
+        try {
+            const { StepUnfoldPanel } = await import("chili-ui");
+            const panel = StepUnfoldPanel.getInstance();
+            if (panel) {
+                const panelOptions = panel.getCurrentOptions();
+                options = {
+                    ...options,
+                    ...panelOptions,
+                    units: panelOptions.units ?? inferredUnits,
+                };
+            }
+        } catch (error) {
+            console.log("デフォルトオプションを使用:", options, error);
+        }
+
+        try {
+            const { StepUnfoldSettingsDialog } = await import("chili-ui");
+            return await StepUnfoldSettingsDialog.show(options, {
+                selectedCount: nodes.length,
+            });
+        } catch (error) {
+            console.warn("展開図設定ダイアログを表示できませんでした。デフォルト設定で続行します。", error);
+            return options;
+        }
+    }
+
+    private inferSourceUnits(nodes: INode[]): NonNullable<UnfoldOptions["units"]> {
+        const activeDocumentName = this.application.activeView?.document?.name ?? "";
+        const sourceText = nodes
+            .map(
+                (node) =>
+                    `${node.name ?? ""} ${(node as any).id ?? ""} ${(node as any).tag ?? ""} ${
+                        (node as any).document?.name ?? ""
+                    }`,
+            )
+            .concat(activeDocumentName)
+            .join(" ")
+            .toLowerCase();
+
+        if (/plateau|citygml|\.gml|bldg|lod[0-4]/.test(sourceText)) {
+            return "m";
+        }
+        return "mm";
     }
 
     private async selectNodesAsync() {

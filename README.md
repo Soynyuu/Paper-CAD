@@ -75,6 +75,25 @@ NODE_ENV=demo npm run dev
 - **フロントエンド**: Rspack が production モードでビルド（最適化・minify あり）
 - `.env.demo` から環境変数を読み込み（バックエンド・フロントエンド共通）
 
+### ローカルデモモード（オフライン PLATEAU デモ）
+```bash
+# backend
+cd backend
+ENV=local_demo python main.py
+
+# frontend (別ターミナル)
+cd frontend
+npm run local_demo
+```
+
+`backend/data/local_demo_cache` の同梱キャッシュを使い、ネットワークなしで以下の施設名検索・3D Tiles 表示・建物インポート・展開図生成をデモできます。
+
+- 芝浦工大附属
+- JPタワー
+- 渋谷フクラス
+
+詳細な手順、検証方法、展開図・テクスチャの注意点は `docs/LOCAL_DEMO.md` を参照してください。
+
 ### ランディングページビルド
 ```bash
 cd lp

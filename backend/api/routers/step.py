@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 
 from api.helpers import cleanup_temp_dir, save_upload_to_tmpdir
 from config import OCCT_AVAILABLE
+from core.pdf_exporter import PDFExporter
 from models.request_models import BrepPapercraftRequest
 from services.step_processor import StepUnfoldGenerator
 from utils.logger import get_logger
@@ -22,6 +23,7 @@ router = APIRouter()
 def _log_pdf_parameters(request: BrepPapercraftRequest) -> None:
     logger.info("[PDF] Parameters set:")
     logger.info(f"  scale_factor: {request.scale_factor}")
+    logger.info(f"  scale_mode: {request.scale_mode}")
     logger.info(f"  units: {request.units}")
     logger.info(f"  tab_width: {request.tab_width}")
     logger.info(f"  show_scale: {request.show_scale}")
@@ -59,6 +61,44 @@ def _create_pdf_response_from_pages(
             "X-Page-Orientation": page_orientation,
             "X-Page-Count": str(resolved_page_count),
             "X-Scale-Factor": str(scale_factor),
+        },
+    )
+    return response, result_path
+
+
+def _create_pdf_response_from_preview_svg(
+    generator: StepUnfoldGenerator,
+    request: BrepPapercraftRequest,
+    output_dir: str,
+    page_format: str,
+    page_orientation: str,
+    layout_mode: str,
+    scale_factor: float,
+) -> tuple[FileResponse, str]:
+    svg_path = os.path.join(output_dir, f"step_unfold_preview_{uuid.uuid4()}.svg")
+    pdf_path = os.path.join(output_dir, f"step_unfold_{uuid.uuid4()}.pdf")
+    generated_svg_path, stats = generator.generate_brep_papercraft(request, svg_path)
+
+    pdf_exporter = PDFExporter(page_format=page_format, page_orientation=page_orientation)
+    result_path = pdf_exporter.export_stacked_svg_to_pdf(generated_svg_path, pdf_path)
+    page_count = stats.get("page_count", 1)
+    applied_scale_factor = stats.get("applied_scale_factor", scale_factor)
+
+    logger.info(
+        f"[PDF] Generated PDF from preview SVG with {page_count} pages: {result_path}"
+    )
+
+    response = FileResponse(
+        path=result_path,
+        media_type="application/pdf",
+        filename=f"step_unfold_{page_format}_{page_orientation}_{uuid.uuid4()}.pdf",
+        headers={
+            "X-Layout-Mode": layout_mode,
+            "X-Page-Format": page_format,
+            "X-Page-Orientation": page_orientation,
+            "X-Page-Count": str(page_count),
+            "X-Scale-Factor": str(applied_scale_factor),
+            "X-PDF-Source": "preview-svg",
         },
     )
     return response, result_path
@@ -125,11 +165,20 @@ async def unfold_step_to_svg(
     scale_factor: float = Form(
         10.0, description="縮尺倍率 / Scale factor (例: 150=1/150)"
     ),
+    scale_mode: str = Form(
+        "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
+    ),
+    units: str = Form(
+        "mm", description="入力寸法単位 / Source units (mm/cm/m)"
+    ),
     texture_mappings: Optional[str] = Form(
         None, description="テクスチャマッピング情報（JSON） / Texture mappings (JSON)"
     ),
     mirror_horizontal: bool = Form(
         False, description="左右反転モード / Mirror horizontally"
+    ),
+    merge_mode: str = Form(
+        "improved", description="面結合モード / Face merge mode (improved/legacy)"
     ),
 ):
     """
@@ -157,8 +206,11 @@ async def unfold_step_to_svg(
         page_format: ページフォーマット / Page format (A4/A3/Letter, default: "A4")
         page_orientation: ページ向き / Orientation (portrait/landscape, default: "portrait")
         scale_factor: 縮尺倍率 / Scale factor (例: 150 = 1/150 scale, default: 10.0)
+        scale_mode: 縮尺モード / Scale mode (fixed/fit_page, default: fixed)
+        units: 入力寸法単位 / Source units (mm/cm/m, default: mm)
         texture_mappings: テクスチャマッピング情報（JSON） / Texture mappings (JSON array)
         mirror_horizontal: 左右反転モード / Mirror horizontally
+        merge_mode: 面結合モード / Face merge mode (improved/legacy)
 
     Returns:
         - output_format="svg": SVGファイル / SVG file
@@ -238,7 +290,10 @@ async def unfold_step_to_svg(
             page_format=page_format,
             page_orientation=page_orientation,
             scale_factor=scale_factor,
+            scale_mode=scale_mode,
+            units=units,
             mirror_horizontal=mirror_horizontal,
+            merge_mode=merge_mode,
         )
 
         # テクスチャマッピングを渡す
@@ -347,7 +402,7 @@ async def unfold_step_to_svg(
                 page_format,
                 page_orientation,
                 layout_mode,
-                scale_factor,
+                stats.get("applied_scale_factor", scale_factor),
                 page_count=stats.get("page_count"),
             ),
         )
@@ -410,12 +465,21 @@ async def unfold_step_to_pdf(
     scale_factor: float = Form(
         150.0, description="縮尺倍率 / Scale factor (e.g., 150 = 1:150 scale)"
     ),
+    scale_mode: str = Form(
+        "fixed", description="縮尺モード / Scale mode (fixed/fit_page)"
+    ),
+    units: str = Form(
+        "mm", description="入力寸法単位 / Source units (mm/cm/m)"
+    ),
     texture_mappings: Optional[str] = Form(
         None,
         description="テクスチャマッピング情報（JSON配列） / Texture mappings as JSON array",
     ),
     mirror_horizontal: bool = Form(
         False, description="左右反転モード / Mirror horizontally"
+    ),
+    merge_mode: str = Form(
+        "improved", description="面結合モード / Face merge mode (improved/legacy)"
     ),
 ):
     """
@@ -494,7 +558,10 @@ async def unfold_step_to_pdf(
             page_format=page_format,
             page_orientation=page_orientation,
             scale_factor=scale_factor,
+            scale_mode=scale_mode,
+            units=units,
             mirror_horizontal=mirror_horizontal,
+            merge_mode=merge_mode,
         )
 
         # テクスチャマッピングを設定
@@ -508,24 +575,18 @@ async def unfold_step_to_pdf(
             )
 
         _log_pdf_parameters(request)
-        # CPU-bound: ページ展開 + PDF生成をスレッドプールで実行
-        paged_groups, stats = await loop.run_in_executor(
-            None,
-            generator.generate_brep_papercraft_pages,
-            request,
-        )
+        # CPU-bound: SVGプレビューと同じ生成経路からPDFを作る
         pdf_response, result_path = await loop.run_in_executor(
             None,
             partial(
-                _create_pdf_response_from_pages,
+                _create_pdf_response_from_preview_svg,
                 generator,
-                paged_groups,
+                request,
                 tmpdir,
                 page_format,
                 page_orientation,
                 layout_mode,
                 scale_factor,
-                page_count=stats.get("page_count"),
             ),
         )
 

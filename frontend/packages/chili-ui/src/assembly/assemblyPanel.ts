@@ -29,6 +29,7 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import panzoom, { PanZoom } from "panzoom";
 import style from "./assemblyPanel.module.css";
+import { detectOverlappingFaceNumberGroups } from "./faceNumberOverlap";
 
 type FaceNumberData = Array<{ faceIndex: number; faceNumber: number }>;
 
@@ -45,6 +46,7 @@ export class AssemblyPanel extends HTMLElement {
     private readonly _faceNumberInput: HTMLInputElement;
     private readonly _view3DLoading: HTMLDivElement;
     private readonly _view2DLoading: HTMLDivElement;
+    private readonly _selectedFacesPanel: HTMLDivElement;
 
     private readonly _raycaster: Raycaster = new Raycaster();
     private readonly _mouse: Vector2 = new Vector2();
@@ -52,6 +54,8 @@ export class AssemblyPanel extends HTMLElement {
 
     private _nodes: ShapeNode[] = [];
     private _selectedFaceNumber: number | null = null;
+    private readonly _selectedFaceNumbers: Set<number> = new Set();
+    private _overlappingFaceNumberGroups: number[][] = [];
     private _faceNumberDisplay: FaceNumberDisplay | null = null;
     private _panzoomInstance: PanZoom | null = null;
 
@@ -97,8 +101,8 @@ export class AssemblyPanel extends HTMLElement {
         });
 
         this._faceNumberInput = input({
-            type: "number",
-            min: "1",
+            type: "text",
+            inputMode: "numeric",
             className: style.faceNumberInput,
             placeholder: I18n.translate("assembly.enterFaceNumber"),
             onkeydown: (event: KeyboardEvent) => {
@@ -108,6 +112,7 @@ export class AssemblyPanel extends HTMLElement {
                 }
             },
         }) as HTMLInputElement;
+        this._selectedFacesPanel = div({ className: style.selectedFacesPanel });
 
         this._render();
         this._setupEventListeners();
@@ -226,6 +231,7 @@ export class AssemblyPanel extends HTMLElement {
                         textContent: I18n.translate("assembly.shortcutHint"),
                     }),
                 ),
+                this._selectedFacesPanel,
                 div(
                     { className: style.content },
                     div(
@@ -281,7 +287,7 @@ export class AssemblyPanel extends HTMLElement {
         await this._setup3DView();
         const unfoldReady = await this._generateUnfold(data.stepData);
         if (unfoldReady) {
-            this._setStatus("assembly.ready");
+            this._highlightInitialFace();
         }
     }
 
@@ -294,6 +300,7 @@ export class AssemblyPanel extends HTMLElement {
 
         this._faceElementsByNumber.clear();
         this._faceNumberInput.value = "";
+        this._renderSelectedFacesPanel();
     }
 
     private async _setup3DView() {
@@ -341,6 +348,7 @@ export class AssemblyPanel extends HTMLElement {
 
                 if (meshData.faces) {
                     const faceMesh = ThreeGeometryFactory.createFaceGeometry(meshData.faces);
+                    faceMesh.userData["faceRanges"] = meshData.faces.range;
                     this._scene.add(faceMesh);
                     faceMesh.geometry.computeBoundingBox();
                     if (faceMesh.geometry.boundingBox) {
@@ -454,11 +462,14 @@ export class AssemblyPanel extends HTMLElement {
                 this._faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
             }
 
-            const faceCount = Math.max(
-                this._faceElementsByNumber.size,
-                this._faceNumberDisplay?.getAllFaceNumbers().length ?? 0,
+            const svgFaceCount = Array.from(this._faceElementsByNumber.values()).reduce(
+                (total, elements) => total + elements.length,
+                0,
             );
+            const faceCount = Math.max(svgFaceCount, this._faceNumberDisplay?.getFaceOccurrenceCount() ?? 0);
             this._updateFaceCount(faceCount);
+            this._updateOverlappingFaceNumberGroups();
+            this._renderSelectedFacesPanel();
             return true;
         } catch (error) {
             console.error("Error generating unfold:", error);
@@ -492,6 +503,10 @@ export class AssemblyPanel extends HTMLElement {
         this._svgContainer.appendChild(wrapper);
         this._initializePanZoom(svg);
         this._setupSVGInteraction();
+        requestAnimationFrame(() => {
+            this._updateOverlappingFaceNumberGroups();
+            this._renderSelectedFacesPanel();
+        });
     }
 
     private _initializePanZoom(svg: SVGElement) {
@@ -568,14 +583,21 @@ export class AssemblyPanel extends HTMLElement {
 
         this._raycaster.setFromCamera(this._mouse, this._camera);
         const intersects = this._raycaster.intersectObjects(this._scene.children, true);
-        const faceHit = intersects.find((intersect) => typeof intersect.faceIndex === "number");
+        const faceHit = intersects.find((intersect) => {
+            if (typeof intersect.faceIndex !== "number") {
+                return false;
+            }
+
+            const objectName = intersect.object.name ?? "";
+            return !objectName.startsWith("FaceNumber") && !objectName.startsWith("FaceNumberHighlight");
+        });
 
         if (!faceHit || faceHit.faceIndex === undefined) {
             return;
         }
 
-        const faceIndex = faceHit.faceIndex;
-        if (faceIndex === undefined || faceIndex === null) {
+        const faceIndex = this._resolveCadFaceIndex(faceHit.object, faceHit.faceIndex);
+        if (faceIndex === undefined) {
             return;
         }
 
@@ -592,13 +614,13 @@ export class AssemblyPanel extends HTMLElement {
     }
 
     private _highlightByFaceNumber() {
-        const faceNumber = Number.parseInt(this._faceNumberInput.value, 10);
-        if (Number.isNaN(faceNumber) || faceNumber < 1) {
+        const faceNumbers = this._parseFaceNumberInput(this._faceNumberInput.value);
+        if (faceNumbers.length === 0) {
             PubSub.default.pub("showToast", "toast.assemblyMode.invalidFaceNumber");
             return;
         }
 
-        this._highlightFace(faceNumber);
+        this._highlightFaces(faceNumbers);
     }
 
     private _highlightFace(faceNumber: number) {
@@ -615,12 +637,69 @@ export class AssemblyPanel extends HTMLElement {
 
         this._highlightSVGFace(faceNumber);
         this._selectedFaceNumber = faceNumber;
+        this._selectedFaceNumbers.clear();
+        this._selectedFaceNumbers.add(faceNumber);
         this._selectedFaceValue.textContent = faceNumber.toString();
         this._faceNumberInput.value = faceNumber.toString();
+        this._renderSelectedFacesPanel();
         this._setStatus("assembly.faceSelected:{0}", faceNumber.toString());
     }
 
-    private _highlightSVGFace(faceNumber: number) {
+    private _highlightInitialFace() {
+        const [firstFaceNumber] = this._getAvailableFaceNumbers();
+        if (firstFaceNumber === undefined) {
+            this._setStatus("assembly.ready");
+            return;
+        }
+
+        this._highlightFace(firstFaceNumber);
+    }
+
+    private _highlightFaces(faceNumbers: number[]) {
+        const uniqueFaceNumbers = Array.from(new Set(faceNumbers));
+        const availableFaceNumbers = uniqueFaceNumbers.filter((faceNumber) =>
+            this._isFaceAvailable(faceNumber),
+        );
+        const missingFaceNumber = uniqueFaceNumbers.find((faceNumber) => !this._isFaceAvailable(faceNumber));
+
+        if (availableFaceNumbers.length === 0) {
+            PubSub.default.pub(
+                "showToast",
+                "toast.assemblyMode.faceNotFound:{0}",
+                (missingFaceNumber ?? uniqueFaceNumbers[0]).toString(),
+            );
+            return;
+        }
+
+        if (missingFaceNumber !== undefined) {
+            PubSub.default.pub(
+                "showToast",
+                "toast.assemblyMode.faceNotFound:{0}",
+                missingFaceNumber.toString(),
+            );
+        }
+
+        this._clearHighlights(false);
+        this._selectedFaceNumbers.clear();
+
+        availableFaceNumbers.forEach((faceNumber, index) => {
+            this._faceNumberDisplay?.highlightFace(faceNumber);
+            this._highlightSVGFace(faceNumber, index === 0);
+            this._selectedFaceNumbers.add(faceNumber);
+        });
+
+        const selectedText = availableFaceNumbers.join(", ");
+        this._selectedFaceNumber = availableFaceNumbers[availableFaceNumbers.length - 1] ?? null;
+        this._selectedFaceValue.textContent = selectedText;
+        this._faceNumberInput.value = selectedText;
+        this._renderSelectedFacesPanel();
+        this._statusValue.textContent =
+            availableFaceNumbers.length === 1
+                ? I18n.translate("assembly.faceSelected:{0}", selectedText)
+                : `面 ${selectedText} を選択中`;
+    }
+
+    private _highlightSVGFace(faceNumber: number, scrollIntoView: boolean = true) {
         const elements = this._faceElementsByNumber.get(faceNumber);
         if (!elements || elements.length === 0) {
             return;
@@ -630,11 +709,115 @@ export class AssemblyPanel extends HTMLElement {
             element.classList.add(style.faceHighlighted);
         });
 
-        elements[0].scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-            inline: "center",
-        });
+        if (scrollIntoView) {
+            elements[0].scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "center",
+            });
+        }
+    }
+
+    private _parseFaceNumberInput(value: string): number[] {
+        return value
+            .split(/[\s,、]+/)
+            .map((token) => Number.parseInt(token, 10))
+            .filter((faceNumber) => !Number.isNaN(faceNumber) && faceNumber > 0);
+    }
+
+    private _resolveCadFaceIndex(
+        object: unknown,
+        triangleFaceIndex: number | null | undefined,
+    ): number | undefined {
+        if (triangleFaceIndex === undefined || triangleFaceIndex === null) {
+            return undefined;
+        }
+
+        const ranges = (object as Mesh).userData?.["faceRanges"] as
+            | Array<{ start: number; count: number }>
+            | undefined;
+        if (!ranges || ranges.length === 0) {
+            return triangleFaceIndex;
+        }
+
+        const triangleStart = triangleFaceIndex * 3;
+        const rangeIndex = ranges.findIndex(
+            (range) => triangleStart >= range.start && triangleStart < range.start + range.count,
+        );
+        return rangeIndex >= 0 ? rangeIndex : triangleFaceIndex;
+    }
+
+    private _renderSelectedFacesPanel() {
+        this._selectedFacesPanel.replaceChildren();
+        this._selectedFacesPanel.classList.toggle(
+            style.selectedFacesPanelVisible,
+            this._selectedFaceNumbers.size > 0 || this._overlappingFaceNumberGroups.length > 0,
+        );
+
+        if (this._selectedFaceNumbers.size === 0 && this._overlappingFaceNumberGroups.length === 0) {
+            return;
+        }
+
+        if (this._selectedFaceNumbers.size > 0) {
+            this._selectedFacesPanel.append(
+                div(
+                    { className: style.faceInfoGroup },
+                    span({ className: style.selectedFacesLabel, textContent: "選択中の面" }),
+                    ...Array.from(this._selectedFaceNumbers)
+                        .sort((a, b) => a - b)
+                        .map((faceNumber) =>
+                            button({
+                                className: style.selectedFaceChip,
+                                textContent: this._formatFaceChipLabel(faceNumber),
+                                title: `面 ${faceNumber} にフォーカス`,
+                                onclick: () => this._highlightFace(faceNumber),
+                            }),
+                        ),
+                ),
+            );
+        }
+
+        if (this._overlappingFaceNumberGroups.length > 0) {
+            this._selectedFacesPanel.append(
+                div(
+                    { className: style.faceInfoGroup },
+                    span({ className: style.selectedFacesLabel, textContent: "重なっている面番号" }),
+                    ...this._overlappingFaceNumberGroups.map((faceNumbers) =>
+                        button({
+                            className: `${style.selectedFaceChip} ${style.overlappingFaceChip}`,
+                            textContent: faceNumbers.join(" / "),
+                            title: `重なっている面 ${faceNumbers.join(", ")} をハイライト`,
+                            onclick: () => this._highlightFaces(faceNumbers),
+                        }),
+                    ),
+                ),
+            );
+        }
+    }
+
+    private _formatFaceChipLabel(faceNumber: number): string {
+        const occurrences = this._getFaceNumberOccurrence(faceNumber);
+        return occurrences > 1 ? `${faceNumber} (${occurrences}面)` : faceNumber.toString();
+    }
+
+    private _getFaceNumberOccurrence(faceNumber: number): number {
+        const svgCount = this._faceElementsByNumber.get(faceNumber)?.length ?? 0;
+        const modelCount = this._faceNumberDisplay?.getFaceNumberOccurrences(faceNumber) ?? 0;
+        return Math.max(svgCount, modelCount, 1);
+    }
+
+    private _updateOverlappingFaceNumberGroups() {
+        const labels = Array.from(this._svgContainer.querySelectorAll<SVGGElement>(".face-number")).map(
+            (element) => {
+                const faceNumber = Number.parseInt(element.getAttribute("data-face-number") ?? "", 10);
+                return {
+                    faceNumber,
+                    rect: element.getBoundingClientRect(),
+                };
+            },
+        );
+
+        this._overlappingFaceNumberGroups = detectOverlappingFaceNumberGroups(labels);
     }
 
     private _isFaceAvailable(faceNumber: number): boolean {
@@ -647,6 +830,20 @@ export class AssemblyPanel extends HTMLElement {
         }
 
         return this._faceNumberDisplay.getAllFaceNumbers().includes(faceNumber);
+    }
+
+    private _getAvailableFaceNumbers(): number[] {
+        const faceNumbers = new Set<number>();
+
+        this._faceElementsByNumber.forEach((_, faceNumber) => {
+            faceNumbers.add(faceNumber);
+        });
+
+        this._faceNumberDisplay?.getAllFaceNumbers().forEach((faceNumber) => {
+            faceNumbers.add(faceNumber);
+        });
+
+        return Array.from(faceNumbers).sort((a, b) => a - b);
     }
 
     private _clearSelection() {
@@ -664,8 +861,10 @@ export class AssemblyPanel extends HTMLElement {
 
         if (resetSelection) {
             this._selectedFaceNumber = null;
+            this._selectedFaceNumbers.clear();
             this._selectedFaceValue.textContent = "-";
             this._faceNumberInput.value = "";
+            this._renderSelectedFacesPanel();
         }
     }
 

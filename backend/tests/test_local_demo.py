@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.local_demo import get_local_tilesets, get_manifest_target, load_manifest
-from services.plateau_fetcher import geocode_address
+import services.plateau_fetcher as plateau_fetcher
+from services.plateau_fetcher import BuildingInfo, geocode_address
 
 
 def test_local_demo_manifest_target_merges_static_and_generated_data(tmp_path, monkeypatch):
@@ -82,3 +83,75 @@ def test_local_demo_geocode_uses_static_target_without_network(tmp_path, monkeyp
     assert result is not None
     assert result.osm_type == "local_demo"
     assert result.latitude == 35.65806
+
+
+def test_local_demo_cache_config_defaults_to_bundled_cache(monkeypatch):
+    monkeypatch.setenv("ENV", "local_demo")
+    monkeypatch.delenv("CITYGML_CACHE_ENABLED", raising=False)
+    monkeypatch.delenv("CITYGML_CACHE_DIR", raising=False)
+
+    config = plateau_fetcher._get_cache_config()
+
+    assert config["enabled"] is True
+    assert config["cache_dir"].name == "citygml_cache"
+    assert config["cache_dir"].parent.name == "local_demo_cache"
+
+
+def test_local_demo_search_uses_manifest_building_and_mesh(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "targets": {
+                    "jp_tower": {
+                        "mesh_code": "53394611",
+                        "building_id": "bldg_manifest",
+                        "municipality_code": "13102",
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ENV", "local_demo")
+    monkeypatch.setenv("LOCAL_DEMO_MANIFEST_PATH", str(manifest_path))
+    load_manifest(force=True)
+
+    calls = []
+
+    def fake_search_building_by_id_and_mesh(building_id, mesh_code, **kwargs):
+        calls.append((building_id, mesh_code, kwargs))
+        return {
+            "success": True,
+            "building": BuildingInfo(
+                building_id=None,
+                gml_id="bldg_manifest",
+                latitude=35.67989,
+                longitude=139.76479,
+                distance_meters=12.3,
+            ),
+            "citygml_xml": "<CityModel />",
+        }
+
+    monkeypatch.setattr(
+        plateau_fetcher,
+        "search_building_by_id_and_mesh",
+        fake_search_building_by_id_and_mesh,
+    )
+
+    result = plateau_fetcher.search_buildings_by_address("JPタワー", limit=20)
+
+    assert result["success"] is True
+    assert calls == [
+        (
+            "bldg_manifest",
+            "53394611",
+            {"debug": False, "include_building_info": True},
+        )
+    ]
+    building = result["buildings"][0]
+    assert building.gml_id == "bldg_manifest"
+    assert building.name == "JPタワー"
+    assert building.municipality_code == "13102"
+    assert building.match_reason == "local_demo"

@@ -5,7 +5,7 @@ import { I18n, IApplication, ICommand, PubSub, Serialized, command, readFileAsyn
 
 @command({
     key: "doc.open",
-    icon: "icon-open",
+    icon: "icon-folder-open",
     isApplicationCommand: true,
 })
 export class OpenDocument implements ICommand {

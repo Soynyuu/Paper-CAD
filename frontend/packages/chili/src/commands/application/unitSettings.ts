@@ -6,7 +6,7 @@ import { UnitSettings } from "chili-ui/src/property/unitSettings";
 
 @command({
     key: "settings.units",
-    icon: "icon-settings",
+    icon: "icon-measureLength",
 })
 export class UnitSettingsCommand implements ICommand {
     async execute(application: IApplication): Promise<void> {

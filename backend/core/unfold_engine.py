@@ -9,6 +9,16 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+try:
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    SHAPELY_AVAILABLE = True
+except ImportError:
+    Polygon = None
+    unary_union = None
+    SHAPELY_AVAILABLE = False
+
 if OCCT_AVAILABLE:
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
     from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone
@@ -19,7 +29,7 @@ class UnfoldEngine:
     展開処理エンジン - 面の展開と配置を担当する独立したクラス
     """
 
-    def __init__(self, scale_factor: float = 10.0, tab_width: float = 5.0):
+    def __init__(self, scale_factor: float = 10.0, tab_width: float = 0.0):
         """
         初期化
 
@@ -29,6 +39,7 @@ class UnfoldEngine:
         """
         self.scale_factor = scale_factor
         self.tab_width = tab_width
+        self.merge_mode = "improved"
 
         # 展開対象データへの参照
         self.faces_data = None
@@ -134,7 +145,7 @@ class UnfoldEngine:
                     if candidate_idx not in unfoldable_set:
                         continue
 
-                    # 同一平面かチェック（法線の類似度）
+                    # 同じ向きの隣接面かチェック（法線の類似度）
                     if not self._are_coplanar(
                         current_face_idx, candidate_idx, normal_threshold
                     ):
@@ -145,7 +156,7 @@ class UnfoldEngine:
                     processed.add(candidate_idx)
                     queue.append(candidate_idx)
                     logger.info(
-                        f"    面{candidate_idx}を面{current_face_idx}のグループに追加（同一平面）"
+                        f"    面{candidate_idx}を面{current_face_idx}のグループに追加（同方向）"
                     )
 
             groups.append(current_group)
@@ -191,10 +202,16 @@ class UnfoldEngine:
             try:
                 group_result = self._unfold_single_group(group_idx, face_indices)
                 if group_result:
-                    logger.info(
-                        f"  → 展開成功: {len(group_result.get('polygons', []))}個のポリゴン"
-                    )
-                    unfolded_groups.append(group_result)
+                    if isinstance(group_result, list):
+                        logger.info(
+                            f"  → 展開成功: {len(group_result)}個の分割グループ"
+                        )
+                        unfolded_groups.extend(group_result)
+                    else:
+                        logger.info(
+                            f"  → 展開成功: {len(group_result.get('polygons', []))}個のポリゴン"
+                        )
+                        unfolded_groups.append(group_result)
                 else:
                     logger.info(f"  → 展開失敗: 結果がNone")
             except Exception as e:
@@ -271,6 +288,9 @@ class UnfoldEngine:
             # 単一面の場合は従来通り個別に展開
             return self._unfold_single_face(group_idx, face_indices[0])
         else:
+            curved_strip = self._try_unfold_curved_wall_strip(group_idx, face_indices)
+            if curved_strip:
+                return curved_strip
             # 複数面の場合は展開ネットを生成
             return self._unfold_connected_faces(group_idx, face_indices)
 
@@ -316,6 +336,175 @@ class UnfoldEngine:
             "fold_lines": [],
             "cut_lines": [],
         }
+
+    def _try_unfold_curved_wall_strip(
+        self, group_idx: int, face_indices: List[int]
+    ) -> Optional[Dict]:
+        """
+        円弧状に連続する短冊壁を1枚の帯として展開する。
+        PLATEAU由来の円弧壁は円筒面ではなく平面列で来ることが多いため、
+        改善版マージ時のみ保守的に検出して折り線付き長方形へ変換する。
+        """
+        if self.merge_mode != "improved" or len(face_indices) < 3:
+            return None
+
+        ordered_faces = self._order_simple_adjacent_path(face_indices)
+        if not ordered_faces:
+            return None
+
+        features = []
+        for face_idx in ordered_faces:
+            feature = self._curved_wall_face_feature(face_idx)
+            if feature is None:
+                return None
+            features.append(feature)
+
+        heights = [feature["height"] for feature in features]
+        widths = [feature["width"] for feature in features]
+        median_height = float(np.median(heights))
+        median_width = float(np.median(widths))
+        if median_height <= 1e-6 or median_width <= 1e-6:
+            return None
+
+        if any(abs(height - median_height) / median_height > 0.35 for height in heights):
+            return None
+        if any(width / median_width > 4.0 or median_width / width > 4.0 for width in widths):
+            return None
+
+        signed_turns = [
+            self._signed_angle_2d(features[i]["normal_xy"], features[i + 1]["normal_xy"])
+            for i in range(len(features) - 1)
+        ]
+        meaningful_turns = [turn for turn in signed_turns if abs(turn) > math.radians(1.0)]
+        if len(meaningful_turns) < 2:
+            return None
+
+        total_turn = sum(abs(turn) for turn in meaningful_turns)
+        if total_turn < math.radians(12.0):
+            return None
+
+        positive = sum(1 for turn in meaningful_turns if turn > 0)
+        negative = sum(1 for turn in meaningful_turns if turn < 0)
+        if min(positive, negative) > 1:
+            return None
+
+        total_width = float(sum(widths))
+        fold_lines = []
+        cursor = 0.0
+        for width in widths[:-1]:
+            cursor += float(width)
+            fold_lines.append([(cursor, 0.0), (cursor, median_height)])
+
+        face_numbers = [
+            self.faces_data[face_idx].get("face_number", face_idx + 1)
+            for face_idx in ordered_faces
+        ]
+
+        logger.info(
+            "          円弧壁を帯展開: "
+            f"{len(ordered_faces)}面, 幅={total_width:.3f}, 高さ={median_height:.3f}, "
+            f"折り線={len(fold_lines)}本"
+        )
+
+        return {
+            "group_index": group_idx,
+            "surface_type": "plane",
+            "polygons": [
+                [
+                    (0.0, 0.0),
+                    (total_width, 0.0),
+                    (total_width, median_height),
+                    (0.0, median_height),
+                ]
+            ],
+            "face_indices": ordered_faces,
+            "face_numbers": face_numbers,
+            "tabs": [],
+            "fold_lines": fold_lines,
+            "cut_lines": [],
+            "unfold_method": "curved_wall_strip_unwrap",
+        }
+
+    def _order_simple_adjacent_path(
+        self, face_indices: List[int]
+    ) -> Optional[List[int]]:
+        face_set = set(face_indices)
+        adjacency = {
+            face_idx: sorted(self.adjacency_map.get(face_idx, set()) & face_set)
+            for face_idx in face_indices
+        }
+        degrees = [len(neighbors) for neighbors in adjacency.values()]
+        if any(degree > 2 for degree in degrees):
+            return None
+
+        endpoints = [face_idx for face_idx, neighbors in adjacency.items() if len(neighbors) == 1]
+        if len(endpoints) == 2:
+            start = min(endpoints)
+        elif all(degree == 2 for degree in degrees):
+            start = min(face_indices)
+        else:
+            return None
+
+        ordered = []
+        previous = None
+        current = start
+        while current is not None and current not in ordered:
+            ordered.append(current)
+            candidates = [item for item in adjacency[current] if item != previous]
+            previous, current = current, candidates[0] if candidates else None
+
+        if len(ordered) != len(face_indices):
+            return None
+        return ordered
+
+    def _curved_wall_face_feature(self, face_idx: int) -> Optional[Dict]:
+        face = self.faces_data[face_idx]
+        if face.get("surface_type") != "plane":
+            return None
+
+        normal = np.array(face.get("plane_normal", [0, 0, 1]), dtype=float)
+        normal_norm = np.linalg.norm(normal)
+        if normal_norm <= 1e-9:
+            return None
+        normal = normal / normal_norm
+
+        horizontal_normal = np.array([normal[0], normal[1]], dtype=float)
+        horizontal_norm = np.linalg.norm(horizontal_normal)
+        if horizontal_norm < 0.7:
+            return None
+        horizontal_normal = horizontal_normal / horizontal_norm
+
+        points = []
+        for boundary in face.get("boundary_curves", []):
+            points.extend(boundary)
+        if len(points) < 3:
+            return None
+
+        coords = np.array(points, dtype=float)
+        z_values = coords[:, 2]
+        height = float(z_values.max() - z_values.min())
+        if height <= 1e-6:
+            return None
+
+        xy = coords[:, :2]
+        max_width = 0.0
+        for i in range(len(xy)):
+            distances = np.linalg.norm(xy[i + 1 :] - xy[i], axis=1)
+            if len(distances):
+                max_width = max(max_width, float(distances.max()))
+        if max_width <= 1e-6:
+            return None
+
+        return {
+            "normal_xy": horizontal_normal,
+            "height": height,
+            "width": max_width,
+        }
+
+    def _signed_angle_2d(self, vector_a: np.ndarray, vector_b: np.ndarray) -> float:
+        cross = vector_a[0] * vector_b[1] - vector_a[1] * vector_b[0]
+        dot = float(np.dot(vector_a, vector_b))
+        return math.atan2(cross, dot)
 
     def _unfold_connected_faces(self, group_idx: int, face_indices: List[int]) -> Dict:
         """
@@ -375,6 +564,7 @@ class UnfoldEngine:
         logger.info(f"          同一平面の面を展開中...")
 
         polygons = []
+        polygon_sets = []
 
         # 最初の面の法線と原点を使用
         first_face = self.faces_data[face_indices[0]]
@@ -385,6 +575,7 @@ class UnfoldEngine:
         for face_idx in face_indices:
             face_polygons = self._extract_face_2d_shape(face_idx, normal, origin)
             if face_polygons:
+                polygon_sets.append(face_polygons)
                 polygons.extend(face_polygons)
                 logger.info(
                     f"            面{face_idx}: {len(face_polygons)}個のポリゴンを追加"
@@ -395,6 +586,19 @@ class UnfoldEngine:
         for face_idx in face_indices:
             face_data = self.faces_data[face_idx]
             face_numbers.append(face_data.get("face_number", face_idx + 1))
+
+        if self.merge_mode == "improved":
+            split_groups = self._merge_coplanar_polygon_sets_as_groups(
+                group_idx, polygon_sets, face_indices, face_numbers
+            )
+            if split_groups:
+                if len(split_groups) > 1:
+                    logger.info(
+                        f"          同方向ポリゴンを{len(split_groups)}個の連結成分に分割"
+                    )
+                    return split_groups
+                polygons = split_groups[0]["polygons"]
+                logger.info(f"          同方向ポリゴンをマージ: {len(polygons)}個のリング")
 
         logger.info(f"          展開完成: 合計{len(polygons)}個のポリゴン")
 
@@ -408,6 +612,192 @@ class UnfoldEngine:
             "fold_lines": [],
             "cut_lines": [],
         }
+
+    def _merge_coplanar_polygon_sets_as_groups(
+        self,
+        group_idx: int,
+        polygon_sets: List[List[List[Tuple[float, float]]]],
+        face_indices: List[int],
+        face_numbers: List[int],
+    ) -> List[Dict]:
+        if not SHAPELY_AVAILABLE or not polygon_sets:
+            return []
+
+        source_polygons = []
+        for face_idx, face_number, polygon_set in zip(
+            face_indices, face_numbers, polygon_sets
+        ):
+            polygon = self._create_shapely_polygon_from_rings(polygon_set)
+            if polygon is not None and not polygon.is_empty:
+                source_polygons.append(
+                    {
+                        "face_idx": face_idx,
+                        "face_number": face_number,
+                        "polygon": polygon,
+                    }
+                )
+
+        if not source_polygons:
+            return []
+
+        try:
+            merged = unary_union([item["polygon"] for item in source_polygons])
+            if merged.is_empty:
+                return []
+        except Exception as exc:
+            logger.info(f"同方向ポリゴンのマージに失敗: {exc}")
+            return []
+
+        components = self._shapely_geometry_to_polygon_components(merged)
+        if not components:
+            return []
+
+        groups = []
+        for component_index, component in enumerate(components):
+            polygons = self._shapely_polygon_to_rings(component)
+            if not polygons:
+                continue
+
+            component_faces = []
+            component_face_numbers = []
+            for source in source_polygons:
+                if component.intersects(source["polygon"]):
+                    component_faces.append(source["face_idx"])
+                    component_face_numbers.append(source["face_number"])
+
+            groups.append(
+                {
+                    "group_index": group_idx,
+                    "surface_type": "plane",
+                    "polygons": polygons,
+                    "face_indices": component_faces or face_indices,
+                    "face_numbers": component_face_numbers or face_numbers,
+                    "tabs": [],
+                    "fold_lines": [],
+                    "cut_lines": [],
+                    "component_index": component_index,
+                }
+            )
+
+        return groups
+
+    def _merge_coplanar_polygon_sets(
+        self, polygon_sets: List[List[List[Tuple[float, float]]]]
+    ) -> List[List[Tuple[float, float]]]:
+        """
+        同一平面上の隣接ポリゴンをunionし、内部の分割線を消した外形リングにする。
+        入力は面ごとのリング集合として扱い、1面内の穴は維持する。
+        Shapelyが利用できない、またはunionに失敗した場合は元のリングを返す。
+        """
+        fallback_polygons = [
+            polygon for polygon_set in polygon_sets for polygon in polygon_set
+        ]
+        if not SHAPELY_AVAILABLE or not polygon_sets:
+            return fallback_polygons
+
+        shapely_polygons = []
+        for polygon_set in polygon_sets:
+            candidate = self._create_shapely_polygon_from_rings(polygon_set)
+            if candidate is not None and not candidate.is_empty:
+                shapely_polygons.append(candidate)
+
+        if not shapely_polygons:
+            return fallback_polygons
+
+        try:
+            merged = unary_union(shapely_polygons)
+            if merged.is_empty:
+                return fallback_polygons
+            return self._shapely_geometry_to_rings(merged) or fallback_polygons
+        except Exception as exc:
+            logger.info(f"同一平面ポリゴンのマージに失敗: {exc}")
+            return fallback_polygons
+
+    def _merge_coplanar_polygons(
+        self, polygons: List[List[Tuple[float, float]]]
+    ) -> List[List[Tuple[float, float]]]:
+        return self._merge_coplanar_polygon_sets([[polygon] for polygon in polygons])
+
+    def _create_shapely_polygon_from_rings(
+        self, rings: List[List[Tuple[float, float]]]
+    ):
+        if not SHAPELY_AVAILABLE or not rings:
+            return None
+
+        cleaned_rings = [self._clean_ring_for_shapely(ring) for ring in rings]
+        cleaned_rings = [ring for ring in cleaned_rings if len(ring) >= 4]
+        if not cleaned_rings:
+            return None
+
+        cleaned_rings.sort(
+            key=lambda ring: abs(self._polygon_signed_area(ring)), reverse=True
+        )
+        shell = cleaned_rings[0]
+        holes = cleaned_rings[1:]
+
+        try:
+            polygon = Polygon(shell, holes)
+            if not polygon.is_valid:
+                polygon = polygon.buffer(0)
+            return polygon
+        except Exception:
+            return None
+
+    def _clean_ring_for_shapely(
+        self, ring: List[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
+        cleaned = self._remove_duplicate_points_2d(ring)
+        if len(cleaned) < 3:
+            return []
+        if cleaned[0] != cleaned[-1]:
+            cleaned = cleaned + [cleaned[0]]
+        return cleaned
+
+    def _polygon_signed_area(self, ring: List[Tuple[float, float]]) -> float:
+        if len(ring) < 3:
+            return 0.0
+        area = 0.0
+        for i, point in enumerate(ring):
+            next_point = ring[(i + 1) % len(ring)]
+            area += point[0] * next_point[1]
+            area -= next_point[0] * point[1]
+        return area / 2.0
+
+    def _shapely_geometry_to_rings(self, geometry) -> List[List[Tuple[float, float]]]:
+        if geometry.geom_type == "Polygon":
+            return self._shapely_polygon_to_rings(geometry)
+
+        if geometry.geom_type == "MultiPolygon":
+            rings = []
+            for polygon in sorted(
+                geometry.geoms, key=lambda item: item.area, reverse=True
+            ):
+                rings.extend(self._shapely_polygon_to_rings(polygon))
+            return rings
+
+        return []
+
+    def _shapely_geometry_to_polygon_components(self, geometry) -> List:
+        if geometry.geom_type == "Polygon":
+            return [geometry]
+
+        if geometry.geom_type == "MultiPolygon":
+            return sorted(geometry.geoms, key=lambda item: item.area, reverse=True)
+
+        return []
+
+    def _shapely_polygon_to_rings(self, polygon) -> List[List[Tuple[float, float]]]:
+        rings = [self._coords_to_ring(polygon.exterior.coords)]
+        rings.extend(
+            self._coords_to_ring(interior.coords) for interior in polygon.interiors
+        )
+        return [ring for ring in rings if len(ring) >= 3]
+
+    def _coords_to_ring(self, coords) -> List[Tuple[float, float]]:
+        ring = [(float(x), float(y)) for x, y in coords]
+        if len(ring) > 1 and ring[0] == ring[-1]:
+            ring = ring[:-1]
+        return self._simplify_boundary_polygon(ring)
 
     def _unfold_spanning_tree(self, group_idx: int, face_indices: List[int]) -> Dict:
         """
@@ -1835,6 +2225,9 @@ class UnfoldEngine:
         Returns:
             List[List[Tuple[float, float]]]: タブのリスト
         """
+        if self.tab_width <= 0:
+            return []
+
         tabs = []
 
         # 簡易実装: 各面の境界に矩形タブを配置
@@ -1908,7 +2301,7 @@ class UnfoldEngine:
         self, face_idx1: int, face_idx2: int, normal_threshold: float = 0.95
     ) -> bool:
         """
-        2つの面が同一平面（または非常に近い角度）かどうかを判定。
+        2つの面が同じ向き（または非常に近い角度）かどうかを判定。
 
         Args:
             face_idx1: 面1のインデックス
@@ -1916,7 +2309,7 @@ class UnfoldEngine:
             normal_threshold: 法線の類似度閾値（cos値、0.95 ≈ 18度）
 
         Returns:
-            bool: 同一平面の場合True
+            bool: 同方向の場合True
         """
         face1 = self.faces_data[face_idx1]
         face2 = self.faces_data[face_idx2]
@@ -1938,9 +2331,24 @@ class UnfoldEngine:
 
         # cos値が閾値以上なら同一平面（角度が小さい）
         # 反対向きの平面も考慮（abs）
-        is_coplanar = abs(dot_product) >= normal_threshold
+        return abs(dot_product) >= normal_threshold
 
-        return is_coplanar
+    def _coplanar_distance_tolerance(self) -> float:
+        """
+        入力モデルのスケールに応じた同一平面距離許容値。
+        PLATEAU(m)でもCAD(mm)でも、浮動小数誤差だけを吸収する小さい値に抑える。
+        """
+        points = []
+        for face in self.faces_data or []:
+            for boundary in face.get("boundary_curves", []):
+                points.extend(boundary)
+
+        if not points:
+            return 1e-4
+
+        coords = np.array(points, dtype=float)
+        diagonal = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0)))
+        return max(diagonal * 1e-6, 1e-4)
 
     def _are_faces_adjacent(
         self, face_idx1: int, face_idx2: int, tolerance: float = 0.01

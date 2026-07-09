@@ -122,45 +122,36 @@
     flex-shrink: 0;
 }
 
-/* Compact page settings for top bar */
-.compactPageSettings {
-    display: flex;
-    gap: var(--spacing-sm);
-    align-items: center;
-    flex-shrink: 0;
+.faceNumberPopover {
+    position: relative;
 }
 
-.compactPageSettings select {
-    padding: 2px 6px;
-    background-color: var(--neutral-0);
+.faceNumberPopoverContent {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-popover);
+    display: none;
+    width: min(360px, calc(100vw - 32px));
+    padding: var(--spacing-md);
+    color: var(--foreground-color);
+    background-color: var(--panel-background-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-    height: 28px;
+    border-radius: var(--radius-md);
+    box-shadow:
+        0 12px 32px rgb(15 23 42 / 14%),
+        0 2px 8px rgb(15 23 42 / 8%);
 }
 
-/* Compact scale controls for top bar */
-.compactScaleControls {
+.faceNumberPopover.open .faceNumberPopoverContent {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: var(--spacing-sm);
-    min-width: 150px;
-    flex-shrink: 0;
 }
 
-.compactScaleLabel {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    color: var(--neutral-700);
-    white-space: nowrap;
-}
-
-.compactScaleControls .scaleSlider {
-    width: 100px;
-    height: 4px;
+.faceNumberPopoverContent .faceHighlightContainer {
+    padding: 0;
+    border: 0;
 }
 
 /* Secondary controls area */
@@ -171,6 +162,65 @@
     padding: var(--spacing-sm) var(--spacing-md);
     background-color: var(--neutral-50);
     border-bottom: 1px solid var(--border-color);
+}
+
+.faceHighlightContainer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+    background-color: var(--neutral-0);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.faceSearchRow {
+    display: grid;
+    grid-template-columns: auto minmax(120px, 1fr) auto auto;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.faceSearchRow > * {
+    min-width: 0;
+}
+
+.faceNumberInput {
+    box-sizing: border-box;
+    appearance: textfield;
+    border-radius: var(--radius-sm);
+}
+
+.faceControlButton {
+    border-radius: var(--radius-sm);
+}
+
+.faceNumberInput::-webkit-inner-spin-button,
+.faceNumberInput::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+}
+
+.faceSearchLabel {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--neutral-700);
+    white-space: nowrap;
+}
+
+.highlightedFacesList,
+.faceSearchStatus {
+    font-size: var(--font-size-xs);
+    line-height: 1.35;
+}
+
+.highlightedFacesList {
+    color: var(--neutral-800);
+    font-weight: var(--font-weight-medium);
+}
+
+.faceSearchStatus {
+    color: var(--neutral-600);
 }
 
 /* Info section for model size and experimental badge */
@@ -191,35 +241,38 @@
 
 /* Face number button */
 .faceNumberButton {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background-color: var(--button-background);
-    color: var(--button-text-color);
-    border: 1px solid var(--button-border-color);
+    min-width: 88px;
+    padding: 0 var(--spacing-sm);
+    background-color: var(--neutral-0);
+    color: var(--neutral-800);
+    border: 1px solid var(--neutral-300);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-semibold);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        box-shadow var(--transition-fast);
     white-space: nowrap;
     height: 28px;
 }
 
 .faceNumberButton:hover {
-    background-color: var(--button-hover-background);
+    background-color: var(--neutral-50);
     border-color: var(--primary-color);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
 }
 
 .faceNumberButton:active {
-    transform: translateY(0);
-    box-shadow: none;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 .faceNumberButton.active {
     background-color: var(--primary-color);
     color: var(--neutral-0);
     border-color: var(--primary-color-dark);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.16);
 }
 
 .faceNumberButton.active:hover {

@@ -1,7 +1,7 @@
 import os
 import uvicorn
 from config import create_app, OCCT_AVAILABLE
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.staticfiles import StaticFiles
 from api.endpoints import router
 from utils.logger import get_logger
@@ -47,6 +47,19 @@ async def read_index():
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+LOCAL_DEMO_IMAGERY_FALLBACK_PNG = (
+    "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAACAElEQVR42u3TQQkAAAgEwetfVRAj+"
+    "DaDA5NgYVM98FYkwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwA"
+    "BgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAABlABA4ABwABg"
+    "ADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwA"
+    "BgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAA"
+    "MAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAG"
+    "AAMAAYAAwABsAAKmAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAA"
+    "MAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAOAAcAAYAAwA"
+    "BgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYA"
+    "AwABgADAAGAAOAAcAAYAAwABgADAAGgGsBEc8pyAvhBkIAAAAASUVORK5CYII="
+)
+
 try:
     from services.local_demo import (
         LOCAL_DEMO_ROUTE_PREFIX,
@@ -56,6 +69,19 @@ try:
 
     local_demo_dir = get_local_demo_static_dir()
     if is_local_demo() and local_demo_dir.exists():
+
+        @app.get(f"{LOCAL_DEMO_ROUTE_PREFIX}/imagery/{{tile_path:path}}")
+        async def local_demo_imagery_fallback(tile_path: str):
+            """Return a neutral local tile when optional imagery cache is absent."""
+            import base64
+
+            image = base64.b64decode(LOCAL_DEMO_IMAGERY_FALLBACK_PNG)
+            return Response(
+                content=image,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+
         app.mount(
             LOCAL_DEMO_ROUTE_PREFIX,
             StaticFiles(directory=str(local_demo_dir)),

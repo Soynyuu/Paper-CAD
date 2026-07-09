@@ -31,6 +31,16 @@ const createPlateauCredit = () => new Cesium.Credit(PLATEAU_CREDIT_HTML, true);
 const JAPAN_RECTANGLE = Cesium.Rectangle.fromDegrees(122.93457, 20.425, 153.986, 45.557);
 const DEFAULT_PLATEAU_TERRAIN_URL = "https://tile.plateauview.mlit.go.jp/terrain";
 const DEFAULT_PLATEAU_TERRAIN_GEOID = "gsigeo2011";
+const DEFAULT_GSI_STANDARD_URL = "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png";
+const DEFAULT_GSI_PALE_URL = "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png";
+const DEFAULT_GSI_PHOTO_URL = "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg";
+const DEFAULT_PLATEAU_ORTHO_URL =
+    "https://tile.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png";
+
+function getConfiguredImageryUrl(configKey: keyof AppConfig, fallback: string): string {
+    const configured = getRuntimeAppConfig()?.[configKey];
+    return typeof configured === "string" && configured.trim() ? configured.trim() : fallback;
+}
 
 /**
  * Basemap registry with GSI (Geospatial Information Authority of Japan) layers
@@ -48,7 +58,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         name: "GSI Standard Map",
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
-                url: "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+                url: getConfiguredImageryUrl("cesiumGsiStandardUrl", DEFAULT_GSI_STANDARD_URL),
                 maximumLevel: 17,
                 rectangle: JAPAN_RECTANGLE,
                 credit: createGsiCredit(),
@@ -59,7 +69,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         name: "GSI Pale Map",
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
-                url: "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
+                url: getConfiguredImageryUrl("cesiumGsiPaleUrl", DEFAULT_GSI_PALE_URL),
                 maximumLevel: 17,
                 rectangle: JAPAN_RECTANGLE,
                 credit: createGsiCredit(),
@@ -70,7 +80,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         name: "GSI Photo",
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
-                url: "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
+                url: getConfiguredImageryUrl("cesiumGsiPhotoUrl", DEFAULT_GSI_PHOTO_URL),
                 minimumLevel: 2,
                 maximumLevel: 16,
                 rectangle: JAPAN_RECTANGLE,
@@ -82,7 +92,7 @@ const BASEMAPS: Record<BasemapType, BasemapConfig> = {
         name: "PLATEAU Ortho 2023",
         provider: async () => {
             return new Cesium.UrlTemplateImageryProvider({
-                url: "https://tile.plateauview.mlit.go.jp/tiles/plateau-ortho-2023/{z}/{x}/{y}.png",
+                url: getConfiguredImageryUrl("cesiumPlateauOrthoUrl", DEFAULT_PLATEAU_ORTHO_URL),
                 minimumLevel: 10,
                 maximumLevel: 19,
                 rectangle: JAPAN_RECTANGLE,
@@ -314,9 +324,14 @@ export class CesiumView {
             return;
         } catch (error) {
             console.warn(
-                `[CesiumView] Failed to load PLATEAU terrain from ${terrainUrl}. Falling back to configured terrain.`,
+                `[CesiumView] Failed to load PLATEAU terrain from ${terrainUrl}.`,
                 error,
             );
+        }
+
+        if (appConfig?.cesiumOfflineMode) {
+            console.warn("[CesiumView] Offline mode is enabled; skipping remote terrain fallback.");
+            return;
         }
 
         const assetId = Number(appConfig?.cesiumTerrainAssetId);

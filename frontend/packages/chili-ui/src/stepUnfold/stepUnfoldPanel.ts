@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { button, div, input, span, label, select, option } from "chili-controls";
+import { button, div, input, span, label } from "chili-controls";
 import {
     IApplication,
     IDocument,
@@ -19,8 +19,9 @@ import Editor from "svgedit";
 import "svgedit/dist/editor/svgedit.css";
 import "./svgedit-override.css"; // Apply our design system overrides
 import style from "./stepUnfoldPanel.module.css";
-import { SimplePDFExporter, SimplePDFExportOptions } from "./pdfExporterSimple";
 import { Dialog } from "../dialog";
+import { buttonVariants } from "../react/components/ui/button";
+import { cn } from "../react/lib/utils";
 
 export class StepUnfoldPanel extends HTMLElement {
     private static _instance: StepUnfoldPanel | null = null;
@@ -28,35 +29,30 @@ export class StepUnfoldPanel extends HTMLElement {
     private readonly _svgContainer: HTMLDivElement;
     private readonly _svgWrapper: HTMLDivElement;
     private readonly _showFaceNumbersButton: HTMLButtonElement;
+    private readonly _toggleFaceNumbersButton: HTMLButtonElement;
+    private readonly _faceNumberPopover: HTMLDivElement;
     private _faceNumbersVisible: boolean = false;
-    private readonly _layoutModeButton: HTMLButtonElement;
     // 面ハイライト用のUI要素
     private readonly _faceHighlightContainer: HTMLDivElement;
     private readonly _faceNumberInput: HTMLInputElement;
     private readonly _highlightFaceButton: HTMLButtonElement;
     private readonly _clearHighlightsButton: HTMLButtonElement;
     private readonly _highlightedFacesList: HTMLDivElement;
-    private readonly _pageSettingsContainer: HTMLDivElement;
-    private readonly _pageFormatSelect: HTMLSelectElement;
-    private readonly _pageOrientationSelect: HTMLSelectElement;
-    private _layoutMode: "canvas" | "paged" = "paged";
+    private readonly _faceSearchStatus: HTMLDivElement;
     private readonly _pdfExportButton: HTMLButtonElement;
     private readonly _pdfSplitPagesCheckbox: HTMLInputElement;
     private readonly _pdfScaleInput: HTMLInputElement;
-    private readonly _pdfMirrorCheckbox: HTMLInputElement;
     private readonly _pdfSettingsContainer: HTMLDivElement;
     private _secondaryControlsContainer: HTMLDivElement = null as any; // Will be initialized in _render()
     private _svgEditor: Editor | null = null;
     private _svgEditContainer: HTMLDivElement | null = null;
     private readonly _app: IApplication;
-    private _scaleSlider: HTMLInputElement;
-    private _scaleValueDisplay: HTMLSpanElement;
     private _modelSizeDisplay: HTMLDivElement;
-    private _currentScale: number = 1; // Default to 1:1 scale
     private _modelBoundingSize: number = 0; // Model's bounding box max dimension in mm
     private _textureService: FaceTextureService | null = null;
     private _lastStepData: BlobPart | null = null; // Cache last STEP data for PDF export
     private _lastUnfoldOptions: UnfoldOptions | null = null; // Cache last unfold options
+    private _lastSvgContent: string | null = null; // Original backend SVG for PDF export fallback
 
     constructor(app: IApplication) {
         super();
@@ -75,108 +71,94 @@ export class StepUnfoldPanel extends HTMLElement {
         });
 
         this._showFaceNumbersButton = button({
-            textContent: "🔢 Numbers",
-            className: style.faceNumberButton,
+            textContent: "面番号",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceNumberButton,
+            ),
+            title: "面番号の表示と検索",
         });
+        this._showFaceNumbersButton.setAttribute("aria-haspopup", "dialog");
+        this._showFaceNumbersButton.setAttribute("aria-expanded", "false");
         this._faceNumbersVisible = false;
+
+        this._toggleFaceNumbersButton = button({
+            textContent: "面番号を表示",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            ),
+        });
 
         // Create face highlight UI components
         this._faceNumberInput = input({
             type: "number",
             min: "1",
-            placeholder: "面番号",
-            className: style.faceNumberInput,
-            style: { width: "80px", marginRight: "8px" },
+            placeholder: "面番号を検索",
+            className: cn(
+                "pc-shadcn box-border flex h-8 min-w-0 w-full rounded-md border border-input bg-background px-2.5 font-sans text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                style.faceNumberInput,
+            ),
         });
 
         this._highlightFaceButton = button({
-            textContent: "🎯 ハイライト",
-            className: style.highlightButton,
-            style: { marginRight: "8px" },
+            textContent: "検索",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ size: "sm" }),
+                style.faceControlButton,
+            ),
         });
 
         this._clearHighlightsButton = button({
-            textContent: "🗑 クリア",
-            className: style.clearButton,
+            textContent: "解除",
+            className: cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            ),
         });
 
         this._highlightedFacesList = div({
             className: style.highlightedFacesList,
-            style: { marginTop: "8px", fontSize: "12px" },
+            textContent: "検索中の面: なし",
+        });
+
+        this._faceSearchStatus = div({
+            className: style.faceSearchStatus,
+            textContent: "大量面では代表番号だけを自動表示します",
         });
 
         this._faceHighlightContainer = div(
             {
                 className: style.faceHighlightContainer,
-                style: {
-                    padding: "8px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    display: "none", // Hidden by default
-                },
             },
             div(
-                { style: { display: "flex", alignItems: "center" } },
-                label({ textContent: "面選択: ", style: { marginRight: "8px" } }),
+                { className: style.faceSearchRow },
+                label({ textContent: "面番号", className: style.faceSearchLabel }),
                 this._faceNumberInput,
                 this._highlightFaceButton,
                 this._clearHighlightsButton,
             ),
             this._highlightedFacesList,
+            this._faceSearchStatus,
         );
 
-        // Create layout mode button (initial state: paged mode)
-        this._layoutModeButton = button({
-            textContent: "📄 " + I18n.translate("stepUnfold.layoutMode.paged"),
-            className: `${style.layoutModeButton} ${style.active}`,
-        });
-
-        // Create page settings controls
-        this._pageFormatSelect = select(
+        this._faceNumberPopover = div(
             {
-                className: style.pageFormatSelect,
+                className: style.faceNumberPopover,
+                role: "dialog",
+                ariaLabel: "面番号の表示と検索",
             },
-            option({ value: "A4", textContent: I18n.translate("stepUnfold.pageFormat.A4") }),
-            option({ value: "A3", textContent: I18n.translate("stepUnfold.pageFormat.A3") }),
-            option({ value: "Letter", textContent: I18n.translate("stepUnfold.pageFormat.Letter") }),
+            this._showFaceNumbersButton,
+            div(
+                { className: style.faceNumberPopoverContent },
+                this._toggleFaceNumbersButton,
+                this._faceHighlightContainer,
+            ),
         );
-
-        this._pageOrientationSelect = select(
-            {
-                className: style.pageOrientationSelect,
-            },
-            option({
-                value: "portrait",
-                textContent: I18n.translate("stepUnfold.pageOrientation.portrait"),
-            }),
-            option({
-                value: "landscape",
-                textContent: I18n.translate("stepUnfold.pageOrientation.landscape"),
-            }),
-        );
-
-        this._pageSettingsContainer = div(
-            {
-                className: style.compactPageSettings,
-                style: { display: "flex" }, // Visible by default (paged mode)
-            },
-            this._pageFormatSelect,
-            this._pageOrientationSelect,
-        );
-
-        // Create scale slider
-        this._scaleSlider = input({
-            type: "range",
-            min: "0",
-            max: "11",
-            value: "3",
-            className: style.scaleSlider,
-        });
-
-        this._scaleValueDisplay = span({
-            className: style.scaleValue,
-            textContent: "1:1",
-        });
 
         this._modelSizeDisplay = div({
             className: style.modelSizeInfo,
@@ -205,12 +187,6 @@ export class StepUnfoldPanel extends HTMLElement {
             style: { width: "60px", marginLeft: "8px" },
         });
 
-        this._pdfMirrorCheckbox = input({
-            type: "checkbox",
-            id: "pdfMirror",
-            checked: false,
-        });
-
         this._pdfSettingsContainer = div(
             {
                 className: style.pdfSettingsContainer,
@@ -234,19 +210,12 @@ export class StepUnfoldPanel extends HTMLElement {
                 span({
                     textContent:
                         "📄 PDFエクスポートは展開図を選択したページサイズ（A4/A3）に自動的にフィットさせます。\n" +
-                        "📌 Pagedモード: バックエンドで複数ページPDFを高精度生成（正しいレイアウト保証）\n" +
-                        "📌 Canvasモード: クライアントサイドで表示中のSVGをPDF化",
+                        "📌 Pagedモード: SVGプレビューと同じ生成経路から複数ページPDFを生成します。\n" +
+                        "📌 Canvasモード: 表示中のSVGをPDF化します。",
                     style: { fontSize: "12px", color: "#333", whiteSpace: "pre-line" },
                 }),
             ),
-            label(
-                {
-                    style: { display: "flex", alignItems: "center", marginBottom: "8px" },
-                },
-                this._pdfMirrorCheckbox,
-                span({ textContent: " 左右反転 (Mirror Horizontally)", style: { marginLeft: "8px" } }),
-            ),
-            // Temporarily hide complex settings until multi-page export is re-implemented
+            // Keep legacy controls hidden while PDF export follows the displayed SVG exactly.
             /*
             label(
                 {
@@ -277,11 +246,9 @@ export class StepUnfoldPanel extends HTMLElement {
         // PubSubイベントリスナーを追加
         (PubSub.default as any).sub("stepUnfold.showResult", this._handleUnfoldResult);
 
-        // Add click handler for face numbers button
-        this._showFaceNumbersButton.onclick = () => this._toggleFaceNumbers();
-
-        // Add click handler for layout mode button
-        this._layoutModeButton.onclick = () => this._toggleLayoutMode();
+        // Add click handler for face number controls
+        this._showFaceNumbersButton.onclick = () => this._toggleFaceNumberPopover();
+        this._toggleFaceNumbersButton.onclick = () => this._toggleFaceNumbers();
 
         // Add PDF export button handler
         this._pdfExportButton.onclick = () => this._handlePDFExport();
@@ -295,17 +262,25 @@ export class StepUnfoldPanel extends HTMLElement {
             }
         };
 
-        // Add scale slider change handler
-        this._scaleSlider.oninput = () => this._updateScaleDisplay();
-
-        // Initialize scale display and calculate initial model size
-        this._updateScaleDisplay();
+        // Initialize model size display
+        this._updateModelSizeDisplay();
         this._updateModelSizeFromCurrentDocument();
+        this._updateFaceSearchStatus();
 
         // FaceTextureServiceのインスタンスを取得または作成
         this._initializeTextureService();
 
         console.log("StepUnfoldPanel fully initialized, element:", this);
+    }
+
+    connectedCallback() {
+        document.addEventListener("pointerdown", this._handleFaceNumberPopoverOutsideClick);
+        document.addEventListener("keydown", this._handleFaceNumberPopoverKeydown);
+    }
+
+    disconnectedCallback() {
+        document.removeEventListener("pointerdown", this._handleFaceNumberPopoverOutsideClick);
+        document.removeEventListener("keydown", this._handleFaceNumberPopoverKeydown);
     }
 
     private _initializeTextureService() {
@@ -337,7 +312,6 @@ export class StepUnfoldPanel extends HTMLElement {
                 className: style.secondaryControls,
                 style: { display: "flex" }, // Visible by default (paged mode)
             },
-            this._faceHighlightContainer,
             this._pdfSettingsContainer,
             // Model size info and experimental badge (moved to secondary area)
             div(
@@ -363,22 +337,8 @@ export class StepUnfoldPanel extends HTMLElement {
                     // Left section: Buttons
                     div(
                         { className: style.buttonGroup },
-                        this._showFaceNumbersButton,
-                        this._layoutModeButton,
+                        this._faceNumberPopover,
                         this._pdfExportButton,
-                    ),
-                    // Spacer to push right controls to the end
-                    div({ style: { flex: "1" } }),
-                    // Right section: Page settings and scale controls
-                    this._pageSettingsContainer,
-                    div(
-                        { className: style.compactScaleControls },
-                        label(
-                            { className: style.compactScaleLabel },
-                            span({ textContent: I18n.translate("stepUnfold.scale") + ": " }),
-                            this._scaleValueDisplay,
-                        ),
-                        this._scaleSlider,
                     ),
                 ),
                 // Secondary controls (face highlight and PDF settings)
@@ -392,82 +352,63 @@ export class StepUnfoldPanel extends HTMLElement {
         const faceNumber = parseInt(this._faceNumberInput.value, 10);
         if (isNaN(faceNumber) || faceNumber < 1) {
             console.warn("Invalid face number:", this._faceNumberInput.value);
+            this._updateFaceSearchStatus("検索する面番号を入力してください");
             return;
         }
 
         console.log(`Highlighting face number: ${faceNumber}`);
-
-        // Get active document and visual
-        const activeDocument = this._getActiveDocument();
-        if (!activeDocument || !activeDocument.visual) {
-            console.warn("No active document or visual");
-            return;
+        if (!this._faceNumbersVisible) {
+            this._setFaceNumbersVisible(true);
         }
 
-        const visual = activeDocument.visual;
-        const context = visual.context as any;
-        if (!context?._NodeVisualMap) {
-            console.warn("No _NodeVisualMap found");
-            return;
-        }
-
-        // Find geometries with face number display
-        context._NodeVisualMap.forEach((visualObject: any) => {
-            if (visualObject && "faceNumberDisplay" in visualObject) {
-                const faceNumberDisplay = visualObject.faceNumberDisplay;
-                if (faceNumberDisplay) {
-                    // Toggle highlight on the selected face
-                    faceNumberDisplay.toggleHighlight(faceNumber);
-
-                    // Update the highlighted faces list
-                    this._updateHighlightedFacesList(faceNumberDisplay);
-                }
+        let foundIn3D = false;
+        let lastFaceNumberDisplay: any = null;
+        this._getFaceNumberDisplays().forEach((faceNumberDisplay) => {
+            lastFaceNumberDisplay = faceNumberDisplay;
+            if (typeof faceNumberDisplay.focusFace === "function") {
+                foundIn3D = faceNumberDisplay.focusFace(faceNumber) || foundIn3D;
+            } else if (typeof faceNumberDisplay.toggleHighlight === "function") {
+                faceNumberDisplay.toggleHighlight(faceNumber);
+                foundIn3D = true;
             }
         });
 
-        // Clear input after highlighting
-        this._faceNumberInput.value = "";
+        const foundInSvg = this._highlightSvgFaceNumber(faceNumber);
+        if (foundIn3D || foundInSvg) {
+            this._updateHighlightedFacesList(lastFaceNumberDisplay, `検索中の面: ${faceNumber}`);
+        } else {
+            this._updateFaceSearchStatus(`面番号 ${faceNumber} は現在のモデルに見つかりません`);
+        }
     }
 
     private _clearAllHighlights() {
         console.log("Clearing all face highlights");
 
-        const activeDocument = this._getActiveDocument();
-        if (!activeDocument || !activeDocument.visual) {
-            return;
-        }
-
-        const visual = activeDocument.visual;
-        const context = visual.context as any;
-        if (!context?._NodeVisualMap) {
-            return;
-        }
-
         // Clear highlights on all geometries
-        context._NodeVisualMap.forEach((visualObject: any) => {
-            if (visualObject && "faceNumberDisplay" in visualObject) {
-                const faceNumberDisplay = visualObject.faceNumberDisplay;
-                if (faceNumberDisplay) {
-                    faceNumberDisplay.clearHighlights();
-                }
-            }
+        this._getFaceNumberDisplays().forEach((faceNumberDisplay) => {
+            faceNumberDisplay.clearHighlights();
         });
 
-        // Clear the highlighted faces list display
-        this._highlightedFacesList.innerHTML = "";
+        this._clearSvgFaceNumberSearch();
+        this._faceNumberInput.value = "";
+        this._updateFaceSearchStatus();
     }
 
-    private _updateHighlightedFacesList(faceNumberDisplay: any) {
-        if (!faceNumberDisplay) return;
+    private _updateHighlightedFacesList(faceNumberDisplay: any, fallbackText?: string) {
+        if (!faceNumberDisplay) {
+            this._highlightedFacesList.textContent = fallbackText ?? "検索中の面: なし";
+            return;
+        }
 
         const highlightedFaces = faceNumberDisplay.getHighlightedFaces();
 
         if (highlightedFaces.length === 0) {
-            this._highlightedFacesList.innerHTML = "ハイライトされた面: なし";
+            this._highlightedFacesList.textContent = fallbackText ?? "検索中の面: なし";
         } else {
             const facesList = highlightedFaces.sort((a: number, b: number) => a - b).join(", ");
-            this._highlightedFacesList.innerHTML = `ハイライトされた面: ${facesList}`;
+            this._highlightedFacesList.textContent = `検索中の面: ${facesList}`;
         }
+        this._updateFaceSearchStatus(undefined, faceNumberDisplay);
     }
 
     private async _checkBackendHealth() {
@@ -527,10 +468,7 @@ export class StepUnfoldPanel extends HTMLElement {
 
             // Send STEP data to backend for unfolding with options
             const options: UnfoldOptions = {
-                scale: this._currentScale,
-                layoutMode: this._layoutMode,
-                pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
-                pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+                ...this.getCurrentOptions(),
                 textureMappings: textureMappings.length > 0 ? textureMappings : undefined,
             };
 
@@ -837,6 +775,8 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     private async _displaySVG(svgContent: string) {
+        this._lastSvgContent = svgContent;
+
         // Destroy existing editor if present
         if (this._svgEditContainer) {
             try {
@@ -1254,16 +1194,56 @@ export class StepUnfoldPanel extends HTMLElement {
     // === END DIAGNOSTIC METHODS ===
 
     private _toggleFaceNumbers() {
-        this._faceNumbersVisible = !this._faceNumbersVisible;
+        this._setFaceNumbersVisible(!this._faceNumbersVisible);
+    }
+
+    private _toggleFaceNumberPopover() {
+        const isOpen = this._faceNumberPopover.classList.toggle(style.open);
+        this._showFaceNumbersButton.setAttribute("aria-expanded", String(isOpen));
+        if (isOpen) {
+            this._faceNumberInput.focus();
+        }
+    }
+
+    private _closeFaceNumberPopover() {
+        this._faceNumberPopover.classList.remove(style.open);
+        this._showFaceNumbersButton.setAttribute("aria-expanded", "false");
+    }
+
+    private readonly _handleFaceNumberPopoverOutsideClick = (event: PointerEvent) => {
+        if (!this._faceNumberPopover.contains(event.target as Node)) {
+            this._closeFaceNumberPopover();
+        }
+    };
+
+    private readonly _handleFaceNumberPopoverKeydown = (event: KeyboardEvent) => {
+        if (event.key === "Escape" && this._faceNumberPopover.classList.contains(style.open)) {
+            this._closeFaceNumberPopover();
+            this._showFaceNumbersButton.focus();
+        }
+    };
+
+    private _setFaceNumbersVisible(visible: boolean) {
+        this._faceNumbersVisible = visible;
         console.log(`Toggling face numbers: ${this._faceNumbersVisible}`);
 
         // Update button appearance
         if (this._faceNumbersVisible) {
             this._showFaceNumbersButton.classList.add(style.active);
-            this._showFaceNumbersButton.textContent = "🔢 3D面番号の非表示✓";
+            this._toggleFaceNumbersButton.className = cn(
+                "pc-shadcn",
+                buttonVariants({ size: "sm" }),
+                style.faceControlButton,
+            );
+            this._toggleFaceNumbersButton.textContent = "面番号を隠す";
         } else {
             this._showFaceNumbersButton.classList.remove(style.active);
-            this._showFaceNumbersButton.textContent = "🔢 3D面番号の表示";
+            this._toggleFaceNumbersButton.className = cn(
+                "pc-shadcn",
+                buttonVariants({ variant: "outline", size: "sm" }),
+                style.faceControlButton,
+            );
+            this._toggleFaceNumbersButton.textContent = "面番号を表示";
         }
 
         // Toggle 3D view face numbers
@@ -1296,6 +1276,7 @@ export class StepUnfoldPanel extends HTMLElement {
 
         // Toggle SVG face numbers
         this._toggleSvgFaceNumbers();
+        this._updateFaceSearchStatus();
     }
 
     private _toggleSvgFaceNumbers() {
@@ -1326,6 +1307,100 @@ export class StepUnfoldPanel extends HTMLElement {
             console.log(`Toggled ${faceNumbers.length} SVG face numbers`);
         } catch (error) {
             console.warn("Error toggling SVG face numbers:", error);
+        }
+    }
+
+    private _getFaceNumberDisplays(): any[] {
+        const activeDocument = this._getActiveDocument();
+        if (!activeDocument || !activeDocument.visual) {
+            return [];
+        }
+
+        const visual = activeDocument.visual;
+        const context = visual.context as any;
+        if (!context?._NodeVisualMap) {
+            return [];
+        }
+
+        const displays: any[] = [];
+        context._NodeVisualMap.forEach((visualObject: any) => {
+            if (visualObject && "faceNumberDisplay" in visualObject && visualObject.faceNumberDisplay) {
+                displays.push(visualObject.faceNumberDisplay);
+            }
+        });
+        return displays;
+    }
+
+    private _getSvgRoot(): SVGElement | null {
+        if (!this._svgEditor) return null;
+
+        const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
+        if (!canvas) return null;
+
+        return canvas.getRootElem
+            ? canvas.getRootElem()
+            : canvas.getContentElem
+              ? canvas.getContentElem()
+              : null;
+    }
+
+    private _highlightSvgFaceNumber(faceNumber: number): boolean {
+        const svgRoot = this._getSvgRoot();
+        if (!svgRoot) return false;
+
+        this._clearSvgFaceNumberSearch();
+        const selector = `.face-number[data-face-number="${faceNumber}"]`;
+        const target = svgRoot.querySelector(selector) as SVGGElement | null;
+        if (!target) return false;
+
+        target.style.display = "block";
+        target.setAttribute("data-search-match", "true");
+        const badge = target.querySelector(".face-number-badge") as SVGElement | null;
+        const text = target.querySelector(".face-number-text") as SVGElement | null;
+        badge?.setAttribute("style", "fill: rgba(255,248,220,0.96); stroke: #f59e0b; stroke-width: 2;");
+        text?.setAttribute("style", `${text.getAttribute("style") ?? ""} fill: #92400e;`);
+        return true;
+    }
+
+    private _clearSvgFaceNumberSearch() {
+        const svgRoot = this._getSvgRoot();
+        if (!svgRoot) return;
+
+        svgRoot.querySelectorAll('.face-number[data-search-match="true"]').forEach((element) => {
+            element.removeAttribute("data-search-match");
+            element.querySelector(".face-number-badge")?.removeAttribute("style");
+            const text = element.querySelector(".face-number-text");
+            if (text) {
+                const fontSize = (text as SVGElement).style.fontSize;
+                text.removeAttribute("style");
+                if (fontSize) {
+                    (text as SVGElement).style.fontSize = fontSize;
+                }
+            }
+        });
+    }
+
+    private _updateFaceSearchStatus(message?: string, faceNumberDisplay?: any) {
+        if (message) {
+            this._faceSearchStatus.textContent = message;
+            return;
+        }
+
+        const display = faceNumberDisplay ?? this._getFaceNumberDisplays()[0];
+        if (!display || typeof display.getDisplayStats !== "function") {
+            this._faceSearchStatus.textContent = this._faceNumbersVisible
+                ? "面番号データを準備中です"
+                : "検索すると面番号表示も自動でオンになります";
+            return;
+        }
+
+        const stats = display.getDisplayStats();
+        if (!this._faceNumbersVisible) {
+            this._faceSearchStatus.textContent = `非表示中。検索すると ${stats.total} 件から探します`;
+        } else if (stats.limited) {
+            this._faceSearchStatus.textContent = `表示中 ${stats.visible}/${stats.total} 件。大量面は代表番号だけ自動表示`;
+        } else {
+            this._faceSearchStatus.textContent = `表示中 ${stats.visible}/${stats.total} 件`;
         }
     }
 
@@ -1364,31 +1439,20 @@ export class StepUnfoldPanel extends HTMLElement {
         }
     }
 
-    private _updateScaleDisplay() {
-        const scaleMap = [0.1, 0.2, 0.5, 1, 2, 10, 50, 100, 150, 200, 300, 500];
-        const scaleIndex = parseInt(this._scaleSlider.value);
-        this._currentScale = scaleMap[scaleIndex];
-
-        if (this._currentScale === 1) {
-            this._scaleValueDisplay.textContent = "1:1";
-        } else if (this._currentScale < 1) {
-            // Enlarge mode: display as "X:1" (e.g., 0.5 → "2:1" = 2× enlargement)
-            const enlargeFactor = (1 / this._currentScale).toFixed(1);
-            this._scaleValueDisplay.textContent = `${enlargeFactor}:1`;
-        } else {
-            // Reduce mode: display as "1:X" (e.g., 100 → "1:100" = 100× reduction)
-            this._scaleValueDisplay.textContent = `1:${this._currentScale}`;
-        }
-
-        // Update model size display - use a default size if not calculated yet
+    private _updateModelSizeDisplay() {
         const estimatedSize = this._modelBoundingSize > 0 ? this._modelBoundingSize : 200; // Default 200mm
-        const scaledSize = estimatedSize / this._currentScale;
-        const formattedSize =
-            scaledSize > 1000 ? `${(scaledSize / 1000).toFixed(2)}m` : `${scaledSize.toFixed(1)}mm`;
-        this._modelSizeDisplay.textContent = I18n.translate("stepUnfold.modelSize").replace(
-            "{0}",
-            formattedSize,
-        );
+        const options = this.getCurrentOptions();
+        if (options.scaleMode === "fitPage") {
+            this._modelSizeDisplay.textContent = "用紙に収まる最大縮尺を生成時に計算";
+        } else {
+            const scale = options.scale && options.scale > 0 ? options.scale : 150;
+            const scaledSize = estimatedSize / scale;
+            const formattedSize = scaledSize.toFixed(1);
+            this._modelSizeDisplay.textContent = I18n.translate("stepUnfold.modelSize").replace(
+                "{0}",
+                formattedSize,
+            );
+        }
     }
 
     /**
@@ -1396,10 +1460,13 @@ export class StepUnfoldPanel extends HTMLElement {
      */
     public getCurrentOptions(): UnfoldOptions {
         return {
-            scale: this._currentScale,
-            layoutMode: this._layoutMode,
-            pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
-            pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
+            scaleMode: this._lastUnfoldOptions?.scaleMode ?? "fixed",
+            scale: this._lastUnfoldOptions?.scale ?? 150,
+            units: this._lastUnfoldOptions?.units,
+            layoutMode: this._lastUnfoldOptions?.layoutMode ?? "paged",
+            pageFormat: this._lastUnfoldOptions?.pageFormat ?? "A4",
+            pageOrientation: this._lastUnfoldOptions?.pageOrientation ?? "portrait",
+            mergeMode: this._lastUnfoldOptions?.mergeMode ?? "improved",
         };
     }
 
@@ -1408,29 +1475,6 @@ export class StepUnfoldPanel extends HTMLElement {
      */
     public static getInstance(): StepUnfoldPanel | null {
         return StepUnfoldPanel._instance;
-    }
-
-    private _toggleLayoutMode() {
-        this._layoutMode = this._layoutMode === "canvas" ? "paged" : "canvas";
-
-        // Update button text and appearance
-        if (this._layoutMode === "paged") {
-            this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.paged");
-            this._layoutModeButton.classList.add(style.active);
-            this._pageSettingsContainer.style.display = "flex";
-            // Show secondary controls to display info when in paged mode
-            this._secondaryControlsContainer.style.display = "flex";
-        } else {
-            this._layoutModeButton.textContent = "📄 " + I18n.translate("stepUnfold.layoutMode.canvas");
-            this._layoutModeButton.classList.remove(style.active);
-            this._pageSettingsContainer.style.display = "none";
-            // Hide secondary controls if nothing else is showing
-            if (this._pdfSettingsContainer.style.display === "none") {
-                this._secondaryControlsContainer.style.display = "none";
-            }
-        }
-
-        console.log(`Layout mode changed to: ${this._layoutMode}`);
     }
 
     private _calculateModelBoundingSize(nodes: VisualNode[]) {
@@ -1533,7 +1577,7 @@ export class StepUnfoldPanel extends HTMLElement {
             console.log("Using default size: 200mm");
         }
 
-        this._updateScaleDisplay();
+        this._updateModelSizeDisplay();
     }
 
     /**
@@ -1618,7 +1662,7 @@ export class StepUnfoldPanel extends HTMLElement {
         } else {
             this._pdfSettingsContainer.style.display = "none";
             // Hide secondary controls if nothing else is showing
-            if (this._layoutMode === "canvas") {
+            if (this.getCurrentOptions().layoutMode === "canvas") {
                 this._secondaryControlsContainer.style.display = "none";
             }
         }
@@ -1628,6 +1672,11 @@ export class StepUnfoldPanel extends HTMLElement {
      * Check if SVG content exists
      */
     private _checkSvgContent(): boolean {
+        if (this._lastSvgContent) {
+            console.log("Found cached SVG content");
+            return true;
+        }
+
         // Check if SVG Editor is initialized
         if (!this._svgEditor) {
             console.log("SVG Editor not initialized");
@@ -1660,18 +1709,18 @@ export class StepUnfoldPanel extends HTMLElement {
      * Perform the actual PDF export
      */
     private async _performPDFExport() {
-        // Check layout mode and route to appropriate export method
-        if (this._layoutMode === "paged") {
-            // Use backend PDF generation for multi-page layouts with correct scaling
+        if (this.getCurrentOptions().layoutMode === "paged") {
             await this._performBackendPDFExport();
         } else {
-            // Use client-side PDF generation for single-page canvas mode
             await this._performClientPDFExport();
         }
     }
 
     /**
      * Perform backend PDF export (for paged mode)
+     *
+     * Kept for compatibility with the existing backend endpoint. The panel's normal PDF export path
+     * uses the displayed SVG so PDF output matches the SVG preview exactly.
      */
     private async _performBackendPDFExport() {
         // Check if we have cached STEP data from previous unfold operation
@@ -1691,18 +1740,7 @@ export class StepUnfoldPanel extends HTMLElement {
         try {
             console.log("[BackendPDF] Using cached STEP data for PDF generation...");
 
-            // Use cached unfold options or current settings
-            const options: UnfoldOptions = this._lastUnfoldOptions || {
-                scale: this._currentScale,
-                layoutMode: this._layoutMode,
-                pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
-                pageOrientation: this._pageOrientationSelect.value as "portrait" | "landscape",
-            };
-
-            // Update with current page settings (user may have changed them)
-            options.pageFormat = this._pageFormatSelect.value as "A4" | "A3" | "Letter";
-            options.pageOrientation = this._pageOrientationSelect.value as "portrait" | "landscape";
-            options.mirrorHorizontal = this._pdfMirrorCheckbox.checked;
+            const options: UnfoldOptions = this.getCurrentOptions();
 
             console.log("[BackendPDF] Sending to backend with options:", options);
 
@@ -1751,19 +1789,15 @@ export class StepUnfoldPanel extends HTMLElement {
     }
 
     /**
-     * Perform client-side PDF export (for canvas mode)
+     * Get the currently displayed SVG, falling back to the original backend SVG when SVG-Edit
+     * has stripped page markers needed for paged PDF export.
      */
-    private async _performClientPDFExport() {
-        if (!this._svgEditor) {
-            console.error("SVG Editor not initialized");
-            return;
-        }
+    private _getSvgForPDFExport(): SVGElement | null {
+        // Try multiple methods to get the SVG element
+        let svgElement: SVGElement | null = null;
 
-        try {
-            // Try multiple methods to get the SVG element
-            let svgElement: SVGElement | null = null;
-
-            // Method 1: Try through SVG canvas
+        // Method 1: Try through SVG canvas
+        if (this._svgEditor) {
             const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
             if (canvas) {
                 console.log("Canvas object found:", canvas);
@@ -1798,31 +1832,34 @@ export class StepUnfoldPanel extends HTMLElement {
                     }
                 }
             }
+        }
 
-            // Method 2: Try direct DOM query in the SVG-Edit container
-            if (!svgElement && this._svgEditContainer) {
-                console.log("Searching for SVG in edit container");
+        // Method 2: Try direct DOM query in the SVG-Edit container
+        if (!svgElement && this._svgEditContainer) {
+            console.log("Searching for SVG in edit container");
 
-                // Look for SVG in the container or its iframe
-                svgElement = this._svgEditContainer.querySelector("svg") as SVGElement;
+            // Look for SVG in the container or its iframe
+            svgElement = this._svgEditContainer.querySelector("svg") as SVGElement;
 
-                if (!svgElement) {
-                    // Check if there's an iframe (SVG-Edit might render in iframe)
-                    const iframe = this._svgEditContainer.querySelector("iframe") as HTMLIFrameElement;
-                    if (iframe && iframe.contentDocument) {
-                        svgElement = iframe.contentDocument.querySelector("svg") as SVGElement;
-                        console.log("Found SVG in iframe:", !!svgElement);
-                    }
-                }
-
-                // Also check in the svgContainer
-                if (!svgElement) {
-                    svgElement = this._svgContainer.querySelector("svg") as SVGElement;
-                    console.log("Found SVG in svgContainer:", !!svgElement);
+            if (!svgElement) {
+                // Check if there's an iframe (SVG-Edit might render in iframe)
+                const iframe = this._svgEditContainer.querySelector("iframe") as HTMLIFrameElement;
+                if (iframe && iframe.contentDocument) {
+                    svgElement = iframe.contentDocument.querySelector("svg") as SVGElement;
+                    console.log("Found SVG in iframe:", !!svgElement);
                 }
             }
 
-            // Method 3: Get SVG string and create element
+            // Also check in the svgContainer
+            if (!svgElement) {
+                svgElement = this._svgContainer.querySelector("svg") as SVGElement;
+                console.log("Found SVG in svgContainer:", !!svgElement);
+            }
+        }
+
+        // Method 3: Get SVG string and create element
+        if (this._svgEditor) {
+            const canvas = this._svgEditor.svgCanvas || (this._svgEditor as any).canvas;
             if (!svgElement && canvas && canvas.getSvgString) {
                 const svgString = canvas.getSvgString();
                 console.log("Got SVG string, length:", svgString?.length);
@@ -1833,6 +1870,86 @@ export class StepUnfoldPanel extends HTMLElement {
                     console.log("Parsed SVG from string:", !!svgElement);
                 }
             }
+        }
+
+        const displayedPageCount = svgElement?.querySelectorAll(".page-border").length ?? 0;
+
+        if (this._lastSvgContent) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(this._lastSvgContent, "image/svg+xml");
+            const parseError = doc.querySelector("parsererror");
+            const originalSvgElement = parseError ? null : (doc.documentElement as unknown as SVGElement);
+            const originalPageCount = originalSvgElement?.querySelectorAll(".page-border").length ?? 0;
+
+            console.log("[PDFExport] Page markers:", {
+                displayedPageCount,
+                originalPageCount,
+            });
+
+            if (!svgElement || originalPageCount > displayedPageCount) {
+                console.log("[PDFExport] Using cached original SVG for PDF export");
+                svgElement = originalSvgElement;
+            }
+        } else {
+            console.log("[PDFExport] Page markers:", { displayedPageCount, originalPageCount: 0 });
+        }
+
+        return svgElement;
+    }
+
+    private _serializeSvgForPDF(svgElement: SVGElement): string {
+        const clone = svgElement.cloneNode(true) as SVGElement;
+        if (!clone.getAttribute("xmlns")) {
+            clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        }
+        if (!clone.getAttribute("xmlns:xlink")) {
+            clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+        }
+        return new XMLSerializer().serializeToString(clone);
+    }
+
+    private _buildSvgPagesForPDFExport(svgElement: SVGElement): string[] {
+        const pageBorders = Array.from(svgElement.querySelectorAll(".page-border")) as SVGRectElement[];
+
+        if (pageBorders.length <= 1) {
+            console.log("[PDFExport] Exporting SVG as a single PDF page");
+            return [this._serializeSvgForPDF(svgElement)];
+        }
+
+        console.log(`[PDFExport] Splitting displayed SVG into ${pageBorders.length} PDF pages`);
+
+        return pageBorders.map((border, index) => {
+            const x = parseFloat(border.getAttribute("x") || "0");
+            const y = parseFloat(border.getAttribute("y") || "0");
+            const width = parseFloat(border.getAttribute("width") || svgElement.getAttribute("width") || "0");
+            const height = parseFloat(border.getAttribute("height") || "0");
+
+            if (!width || !height) {
+                throw new Error(`Invalid page boundary for page ${index + 1}`);
+            }
+
+            const pageSvg = svgElement.cloneNode(true) as SVGElement;
+            pageSvg.setAttribute("width", `${width}px`);
+            pageSvg.setAttribute("height", `${height}px`);
+            pageSvg.setAttribute("viewBox", `${x} ${y} ${width} ${height}`);
+            pageSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            if (!pageSvg.getAttribute("xmlns")) {
+                pageSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+            }
+            if (!pageSvg.getAttribute("xmlns:xlink")) {
+                pageSvg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+            }
+
+            return new XMLSerializer().serializeToString(pageSvg);
+        });
+    }
+
+    /**
+     * Perform client-side PDF export from the displayed SVG.
+     */
+    private async _performClientPDFExport() {
+        try {
+            const svgElement = this._getSvgForPDFExport();
 
             if (!svgElement) {
                 console.error("SVG element not found after trying all methods");
@@ -1840,14 +1957,16 @@ export class StepUnfoldPanel extends HTMLElement {
                 return;
             }
 
-            // Get export options from UI
-            const options: SimplePDFExportOptions = {
-                pageFormat: this._pageFormatSelect.value as "A4" | "A3" | "Letter",
-                orientation: this._pageOrientationSelect.value as "portrait" | "landscape",
-                margin: 10, // 10mm margin
+            const options = {
+                pageFormat: this.getCurrentOptions().pageFormat ?? "A4",
+                pageOrientation: this.getCurrentOptions().pageOrientation ?? "portrait",
             };
+            const svgPages = this._buildSvgPagesForPDFExport(svgElement);
 
-            console.log("Exporting PDF with SimplePDFExporter, options:", options);
+            console.log("Exporting displayed SVG to PDF via backend SVG converter", {
+                ...options,
+                pageCount: svgPages.length,
+            });
 
             // Show loading indicator
             const originalText = this._pdfExportButton.textContent;
@@ -1855,7 +1974,11 @@ export class StepUnfoldPanel extends HTMLElement {
             this._pdfExportButton.disabled = true;
 
             try {
-                const pdfBlob = await SimplePDFExporter.exportToPDF(svgElement, options);
+                const result = await this._service.convertSvgPagesToPDF(svgPages, options);
+                if (!result.isOk) {
+                    throw new Error(result.error);
+                }
+                const pdfBlob = result.value;
                 console.log("PDF exported successfully");
 
                 // Open PDF for printing

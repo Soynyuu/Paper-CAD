@@ -24,7 +24,10 @@ from services.citygml.core.constants import NS, RECENTERING_DISTANCE_THRESHOLD
 from services.citygml.parsers.coordinates import extract_polygon_xyz
 from services.citygml.transforms.crs_detection import detect_source_crs
 from services.citygml.transforms.transformers import make_xyz_transformer
-from services.citygml.utils.xlink_resolver import build_id_index, extract_polygon_with_xlink
+from services.citygml.utils.xlink_resolver import (
+    build_id_index,
+    extract_polygon_with_xlink,
+)
 
 try:
     from services.coordinate_utils import is_geographic_crs, recommend_projected_crs
@@ -62,7 +65,9 @@ class StepFaceFeature:
     area: float
 
 
-def _as_float_tuple3(values: Sequence[Any], fallback: Tuple[float, float, float]) -> Tuple[float, float, float]:
+def _as_float_tuple3(
+    values: Sequence[Any], fallback: Tuple[float, float, float]
+) -> Tuple[float, float, float]:
     if not isinstance(values, (list, tuple)) or len(values) < 3:
         return fallback
     try:
@@ -71,11 +76,15 @@ def _as_float_tuple3(values: Sequence[Any], fallback: Tuple[float, float, float]
         return fallback
 
 
-def _vec_sub(a: Tuple[float, float, float], b: Tuple[float, float, float]) -> Tuple[float, float, float]:
+def _vec_sub(
+    a: Tuple[float, float, float], b: Tuple[float, float, float]
+) -> Tuple[float, float, float]:
     return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
 
-def _vec_cross(a: Tuple[float, float, float], b: Tuple[float, float, float]) -> Tuple[float, float, float]:
+def _vec_cross(
+    a: Tuple[float, float, float], b: Tuple[float, float, float]
+) -> Tuple[float, float, float]:
     return (
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -91,7 +100,9 @@ def _vec_norm(a: Tuple[float, float, float]) -> float:
     return math.sqrt(max(0.0, _vec_dot(a, a)))
 
 
-def _normalize(v: Optional[Tuple[float, float, float]]) -> Optional[Tuple[float, float, float]]:
+def _normalize(
+    v: Optional[Tuple[float, float, float]],
+) -> Optional[Tuple[float, float, float]]:
     if v is None:
         return None
     n = _vec_norm(v)
@@ -104,13 +115,17 @@ def _distance(a: Tuple[float, float, float], b: Tuple[float, float, float]) -> f
     return _vec_norm(_vec_sub(a, b))
 
 
-def _remove_duplicate_closing(points: List[Tuple[float, float, float]]) -> List[Tuple[float, float, float]]:
+def _remove_duplicate_closing(
+    points: List[Tuple[float, float, float]],
+) -> List[Tuple[float, float, float]]:
     if len(points) >= 2 and _distance(points[0], points[-1]) < 1e-9:
         return points[:-1]
     return points
 
 
-def _newell_normal(points: Sequence[Tuple[float, float, float]]) -> Optional[Tuple[float, float, float]]:
+def _newell_normal(
+    points: Sequence[Tuple[float, float, float]],
+) -> Optional[Tuple[float, float, float]]:
     if len(points) < 3:
         return None
     nx = 0.0
@@ -403,7 +418,7 @@ def _extract_parameterized_textures(
     textures: List[TextureEntry] = []
     for idx, tex in enumerate(root.findall(".//app:ParameterizedTexture", NS), 1):
         texture_id = _get_gml_id(tex) or f"texture_{idx}"
-        image_uri = ((tex.findtext("./app:imageURI", "", NS) or "").strip())
+        image_uri = (tex.findtext("./app:imageURI", "", NS) or "").strip()
         if not image_uri:
             continue
         mime_type = ((tex.findtext("./app:mimeType", "", NS) or "").strip()) or None
@@ -424,7 +439,10 @@ def _extract_parameterized_textures(
         if not per_polygon:
             continue
 
-        targets = [TextureTarget(polygon_id=pid, uv_coords=uv) for pid, uv in per_polygon.items()]
+        targets = [
+            TextureTarget(polygon_id=pid, uv_coords=uv)
+            for pid, uv in per_polygon.items()
+        ]
         textures.append(
             TextureEntry(
                 texture_id=texture_id,
@@ -472,6 +490,16 @@ def _resolve_image_data_uri(
         source_parsed = urlparse(source_url)
         if source_parsed.scheme in ("http", "https"):
             candidates.append(urljoin(source_url, cleaned))
+        else:
+            # ローカルファイルパスの場合: ソースファイルのディレクトリ基準で相対パスを解決
+            source_path = Path(source_url)
+            if source_path.exists():
+                source_dir = (
+                    source_path.parent if source_path.is_file() else source_path
+                )
+                resolved = source_dir / cleaned
+                if resolved.exists():
+                    candidates.append(str(resolved))
 
     # Local filesystem fallback (cache / local data runs)
     local_path = Path(cleaned)
@@ -507,7 +535,9 @@ def _resolve_image_data_uri(
                 if len(raw_data) > max_bytes:
                     continue
                 if not resolved_mime:
-                    header_mime = response.headers.get("content-type", "").split(";")[0].strip()
+                    header_mime = (
+                        response.headers.get("content-type", "").split(";")[0].strip()
+                    )
                     if header_mime:
                         resolved_mime = header_mime
             else:
@@ -532,11 +562,15 @@ def _resolve_image_data_uri(
     return None, None
 
 
-def _to_step_features(step_faces_data: Sequence[Dict[str, Any]]) -> List[StepFaceFeature]:
+def _to_step_features(
+    step_faces_data: Sequence[Dict[str, Any]],
+) -> List[StepFaceFeature]:
     features: List[StepFaceFeature] = []
     for i, face in enumerate(step_faces_data):
         face_number = int(face.get("face_number", i + 1))
-        centroid = _as_float_tuple3(face.get("centroid", [0.0, 0.0, 0.0]), (0.0, 0.0, 0.0))
+        centroid = _as_float_tuple3(
+            face.get("centroid", [0.0, 0.0, 0.0]), (0.0, 0.0, 0.0)
+        )
         normal_values = face.get("normal_vector")
         normal = None
         if isinstance(normal_values, (list, tuple)) and len(normal_values) >= 3:
@@ -575,7 +609,9 @@ def _match_face(
     used_faces: Set[int],
     distance_scale: float,
 ) -> Tuple[Optional[StepFaceFeature], float]:
-    def _score_face_polygon(face: StepFaceFeature, polygon_feature: PolygonFeature) -> float:
+    def _score_face_polygon(
+        face: StepFaceFeature, polygon_feature: PolygonFeature
+    ) -> float:
         normal_score = 0.35
         if polygon_feature.normal and face.normal:
             normal_score = abs(_vec_dot(polygon_feature.normal, face.normal))
@@ -588,7 +624,9 @@ def _match_face(
 
         area_score = 0.5
         if polygon_feature.area > 1e-6 and face.area > 1e-6:
-            area_score = min(polygon_feature.area, face.area) / max(polygon_feature.area, face.area)
+            area_score = min(polygon_feature.area, face.area) / max(
+                polygon_feature.area, face.area
+            )
 
         return (0.55 * normal_score) + (0.40 * distance_score) + (0.05 * area_score)
 
@@ -737,7 +775,9 @@ def build_plateau_texture_mappings(
         )
         return {"texture_mappings": [], "warnings": warnings, "stats": stats}
 
-    distance_scale = max(_point_cloud_diagonal([f.centroid for f in step_features]) * 0.5, 10.0)
+    distance_scale = max(
+        _point_cloud_diagonal([f.centroid for f in step_features]) * 0.5, 10.0
+    )
     used_faces: Set[int] = set()
     texture_mappings_by_face: Dict[int, Dict[str, Any]] = {}
     image_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
@@ -831,7 +871,9 @@ def build_plateau_texture_mappings(
 
     primary_count = len(texture_mappings_by_face)
 
-    def _score_face_to_target(face: StepFaceFeature, target_item: Dict[str, Any]) -> float:
+    def _score_face_to_target(
+        face: StepFaceFeature, target_item: Dict[str, Any]
+    ) -> float:
         polygon = target_item["polygon"]
 
         normal_score = 0.35
@@ -878,7 +920,8 @@ def build_plateau_texture_mappings(
         fallback_count += 1
 
     texture_mappings: List[Dict[str, Any]] = [
-        item["mapping"] for _, item in sorted(texture_mappings_by_face.items(), key=lambda x: x[0])
+        item["mapping"]
+        for _, item in sorted(texture_mappings_by_face.items(), key=lambda x: x[0])
     ]
 
     stats["mapped_faces"] = len(texture_mappings)

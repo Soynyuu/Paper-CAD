@@ -3,6 +3,7 @@ import numpy as np
 from collections import deque, defaultdict
 from typing import List, Dict, Optional, Tuple, Set
 from scipy.spatial import ConvexHull
+from scipy.optimize import least_squares
 
 from config import OCCT_AVAILABLE
 from utils.logger import get_logger
@@ -40,6 +41,9 @@ class UnfoldEngine:
         self.scale_factor = scale_factor
         self.tab_width = tab_width
         self.merge_mode = "improved"
+        self.curve_mode = "smooth"
+        self.curve_tolerance = 0.5
+        self.curve_stats = {"reconstructed_cylinders": 0, "reconstructed_cones": 0, "rejected": 0}
 
         # 展開対象データへの参照
         self.faces_data = None
@@ -341,9 +345,7 @@ class UnfoldEngine:
         self, group_idx: int, face_indices: List[int]
     ) -> Optional[Dict]:
         """
-        円弧状に連続する短冊壁を1枚の帯として展開する。
-        PLATEAU由来の円弧壁は円筒面ではなく平面列で来ることが多いため、
-        改善版マージ時のみ保守的に検出して折り線付き長方形へ変換する。
+        平面列へ分割された可展面を円筒または円錐として復元する。
         """
         if self.merge_mode != "improved" or len(face_indices) < 3:
             return None
@@ -359,41 +361,14 @@ class UnfoldEngine:
                 return None
             features.append(feature)
 
-        heights = [feature["height"] for feature in features]
-        widths = [feature["width"] for feature in features]
-        median_height = float(np.median(heights))
-        median_width = float(np.median(widths))
-        if median_height <= 1e-6 or median_width <= 1e-6:
+        fitted = self._fit_reconstructed_developable(features)
+        if fitted is None:
+            self.curve_stats["rejected"] += 1
             return None
 
-        if any(abs(height - median_height) / median_height > 0.35 for height in heights):
-            return None
-        if any(width / median_width > 4.0 or median_width / width > 4.0 for width in widths):
-            return None
-
-        signed_turns = [
-            self._signed_angle_2d(features[i]["normal_xy"], features[i + 1]["normal_xy"])
-            for i in range(len(features) - 1)
-        ]
-        meaningful_turns = [turn for turn in signed_turns if abs(turn) > math.radians(1.0)]
-        if len(meaningful_turns) < 2:
-            return None
-
-        total_turn = sum(abs(turn) for turn in meaningful_turns)
-        if total_turn < math.radians(12.0):
-            return None
-
-        positive = sum(1 for turn in meaningful_turns if turn > 0)
-        negative = sum(1 for turn in meaningful_turns if turn < 0)
-        if min(positive, negative) > 1:
-            return None
-
-        total_width = float(sum(widths))
-        fold_lines = []
-        cursor = 0.0
-        for width in widths[:-1]:
-            cursor += float(width)
-            fold_lines.append([(cursor, 0.0), (cursor, median_height)])
+        kind = fitted["kind"]
+        polygons = fitted["polygons"]
+        fold_lines = self._curve_fold_lines(fitted) if self.curve_mode == "faceted" else []
 
         face_numbers = [
             self.faces_data[face_idx].get("face_number", face_idx + 1)
@@ -401,29 +376,157 @@ class UnfoldEngine:
         ]
 
         logger.info(
-            "          円弧壁を帯展開: "
-            f"{len(ordered_faces)}面, 幅={total_width:.3f}, 高さ={median_height:.3f}, "
+            "          分割曲面を復元: "
+            f"{len(ordered_faces)}面, 種別={kind}, "
             f"折り線={len(fold_lines)}本"
         )
 
+        stat_key = "reconstructed_cylinders" if kind == "cylinder" else "reconstructed_cones"
+        self.curve_stats[stat_key] += 1
+
         return {
             "group_index": group_idx,
-            "surface_type": "plane",
-            "polygons": [
-                [
-                    (0.0, 0.0),
-                    (total_width, 0.0),
-                    (total_width, median_height),
-                    (0.0, median_height),
-                ]
-            ],
+            "surface_type": kind,
+            "polygons": polygons,
             "face_indices": ordered_faces,
             "face_numbers": face_numbers,
             "tabs": [],
             "fold_lines": fold_lines,
             "cut_lines": [],
-            "unfold_method": "curved_wall_strip_unwrap",
+            "unfold_method": f"reconstructed_{kind}_unwrap",
         }
+
+    def _fit_reconstructed_developable(self, features: List[Dict]) -> Optional[Dict]:
+        """Fit a common-axis cylinder/cone and return its exact developed outline."""
+        normals = np.array([feature["normal"] for feature in features], dtype=float)
+        for index in range(1, len(normals)):
+            if np.dot(normals[index - 1], normals[index]) < 0:
+                normals[index] *= -1
+        normal_turn = sum(
+            math.acos(float(np.clip(np.dot(normals[index - 1], normals[index]), -1.0, 1.0)))
+            for index in range(1, len(normals))
+        )
+        if normal_turn < math.radians(12.0):
+            return None
+        centered_normals = normals - normals.mean(axis=0)
+        _, eigenvectors = np.linalg.eigh(centered_normals.T @ centered_normals)
+        axis = eigenvectors[:, 0]
+        axial_normal_components = normals @ axis
+        if float(np.ptp(axial_normal_components)) > 0.08:
+            return None
+        axis /= np.linalg.norm(axis)
+        ref = np.array([1.0, 0.0, 0.0]) if abs(axis[0]) < 0.8 else np.array([0.0, 1.0, 0.0])
+        basis_u = np.cross(axis, ref)
+        basis_u /= np.linalg.norm(basis_u)
+        basis_v = np.cross(axis, basis_u)
+
+        points = np.vstack([feature["points"] for feature in features])
+        axial_ranges = [
+            (float((feature["points"] @ axis).min()), float((feature["points"] @ axis).max()))
+            for feature in features
+        ]
+        median_low = float(np.median([item[0] for item in axial_ranges]))
+        median_high = float(np.median([item[1] for item in axial_ranges]))
+        median_height = median_high - median_low
+        if median_height <= 1e-6 or any(
+            abs(low - median_low) > median_height * 0.1
+            or abs(high - median_high) > median_height * 0.1
+            for low, high in axial_ranges
+        ):
+            return None
+        projected = np.column_stack((points @ basis_u, points @ basis_v))
+        axial = points @ axis
+        center0 = projected.mean(axis=0)
+        radius0 = float(np.median(np.linalg.norm(projected - center0, axis=1)))
+        if radius0 <= 1e-6:
+            return None
+
+        circle = least_squares(
+            lambda p: np.linalg.norm(projected - p[:2], axis=1) - p[2],
+            np.array([center0[0], center0[1], radius0]),
+        ).x
+        circle_residual = np.abs(np.linalg.norm(projected - circle[:2], axis=1) - circle[2])
+
+        cone = least_squares(
+            lambda p: np.linalg.norm(projected - p[:2], axis=1) - (p[2] * axial + p[3]),
+            np.array([circle[0], circle[1], 0.0, circle[2]]),
+        ).x
+        cone_radii = cone[2] * axial + cone[3]
+        cone_residual = np.abs(np.linalg.norm(projected - cone[:2], axis=1) - cone_radii)
+        scale = max(float(circle[2]), float(np.median(np.abs(cone_radii))), 1e-6)
+        circle_error = float(circle_residual.max()) / scale
+        cone_error = float(cone_residual.max()) / scale
+        if min(circle_error, cone_error) > 0.01 or np.any(cone_radii <= 0):
+            return None
+
+        use_cone = abs(float(cone[2])) > 0.01 and cone_error < circle_error * 0.8
+        center = cone[:2] if use_cone else circle[:2]
+        ordered_center_angles = []
+        for feature in features:
+            centroid = feature["points"].mean(axis=0)
+            q = np.array([centroid @ basis_u, centroid @ basis_v]) - center
+            ordered_center_angles.append(math.atan2(q[1], q[0]))
+        ordered_center_angles = np.unwrap(ordered_center_angles)
+        angles_by_face = []
+        for feature, target_angle in zip(features, ordered_center_angles):
+            feature_projected = np.column_stack(
+                (feature["points"] @ basis_u, feature["points"] @ basis_v)
+            )
+            raw = np.arctan2(
+                feature_projected[:, 1] - center[1],
+                feature_projected[:, 0] - center[0],
+            )
+            angles_by_face.append(
+                raw + 2.0 * math.pi * np.round((target_angle - raw) / (2.0 * math.pi))
+            )
+        angles = np.concatenate(angles_by_face)
+        angle_min, angle_max = float(angles.min()), float(angles.max())
+        span = angle_max - angle_min
+        if span < math.radians(12.0) or span > 2 * math.pi + 0.05:
+            return None
+
+        z_min, z_max = float(axial.min()), float(axial.max())
+        if not use_cone:
+            radius = float(circle[2])
+            width, height = radius * span, z_max - z_min
+            if height <= 1e-6:
+                return None
+            return {"kind": "cylinder", "polygons": [[(0, 0), (width, 0), (width, height), (0, height)]],
+                    "radius": radius, "span": span, "height": height}
+
+        slope, intercept = float(cone[2]), float(cone[3])
+        apex_z = -intercept / slope
+        sin_alpha = abs(slope) / math.sqrt(1.0 + slope * slope)
+        cos_alpha = 1.0 / math.sqrt(1.0 + slope * slope)
+        inner = abs(z_min - apex_z) / cos_alpha
+        outer = abs(z_max - apex_z) / cos_alpha
+        inner, outer = sorted((inner, outer))
+        fan_span = span * sin_alpha
+        if inner <= 1e-6 or outer - inner <= 1e-6 or fan_span <= 1e-6:
+            return None
+        steps = max(8, int(math.ceil(fan_span / math.radians(5))))
+        phis = np.linspace(0.0, fan_span, steps + 1)
+        polygon = [(outer * math.cos(phi), outer * math.sin(phi)) for phi in phis]
+        polygon += [(inner * math.cos(phi), inner * math.sin(phi)) for phi in reversed(phis)]
+        return {"kind": "cone", "polygons": [polygon], "inner": inner, "outer": outer,
+                "fan_span": fan_span, "surface_span": span, "sin_alpha": sin_alpha}
+
+    def _curve_fold_lines(self, fitted: Dict) -> List[List[Tuple[float, float]]]:
+        """Generate creases whose paper-space sagitta is at most curve_tolerance."""
+        tolerance = max(float(self.curve_tolerance), 1e-6)
+        if fitted["kind"] == "cylinder":
+            radius = fitted["radius"]
+            max_angle = 2.0 * math.acos(max(-1.0, min(1.0, 1.0 - tolerance / radius))) if tolerance < 2 * radius else fitted["span"]
+            count = max(1, int(math.ceil(fitted["span"] / max(max_angle, 1e-6))))
+            return [[(fitted["radius"] * fitted["span"] * i / count, 0.0),
+                     (fitted["radius"] * fitted["span"] * i / count, fitted["height"])]
+                    for i in range(1, count)]
+        radius = fitted["outer"] * fitted["sin_alpha"]
+        max_angle = 2.0 * math.acos(max(-1.0, min(1.0, 1.0 - tolerance / max(radius, 1e-6))))
+        count = max(1, int(math.ceil(fitted["surface_span"] / max(max_angle, 1e-6))))
+        return [[(fitted["inner"] * math.cos(fitted["fan_span"] * i / count), fitted["inner"] * math.sin(fitted["fan_span"] * i / count)),
+                 (fitted["outer"] * math.cos(fitted["fan_span"] * i / count), fitted["outer"] * math.sin(fitted["fan_span"] * i / count))]
+                for i in range(1, count)]
 
     def _order_simple_adjacent_path(
         self, face_indices: List[int]
@@ -468,12 +571,6 @@ class UnfoldEngine:
             return None
         normal = normal / normal_norm
 
-        horizontal_normal = np.array([normal[0], normal[1]], dtype=float)
-        horizontal_norm = np.linalg.norm(horizontal_normal)
-        if horizontal_norm < 0.7:
-            return None
-        horizontal_normal = horizontal_normal / horizontal_norm
-
         points = []
         for boundary in face.get("boundary_curves", []):
             points.extend(boundary)
@@ -481,24 +578,12 @@ class UnfoldEngine:
             return None
 
         coords = np.array(points, dtype=float)
-        z_values = coords[:, 2]
-        height = float(z_values.max() - z_values.min())
-        if height <= 1e-6:
-            return None
-
-        xy = coords[:, :2]
-        max_width = 0.0
-        for i in range(len(xy)):
-            distances = np.linalg.norm(xy[i + 1 :] - xy[i], axis=1)
-            if len(distances):
-                max_width = max(max_width, float(distances.max()))
-        if max_width <= 1e-6:
+        if np.linalg.norm(np.ptp(coords, axis=0)) <= 1e-6:
             return None
 
         return {
-            "normal_xy": horizontal_normal,
-            "height": height,
-            "width": max_width,
+            "normal": normal,
+            "points": coords,
         }
 
     def _signed_angle_2d(self, vector_a: np.ndarray, vector_b: np.ndarray) -> float:

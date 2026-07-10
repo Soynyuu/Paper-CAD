@@ -7,7 +7,7 @@ import time
 import hashlib
 import copy
 from collections import OrderedDict
-from typing import List, Optional, Dict, Any, Union, Tuple
+from typing import List, Optional, Dict, Any, Union, Tuple, Set
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
@@ -24,6 +24,124 @@ from models.request_models import BrepPapercraftRequest
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _point_triangle_distance(point: np.ndarray, triangle: np.ndarray) -> float:
+    """Return the shortest distance from a point to a 3D triangle."""
+    a, b, c = triangle
+    ab, ac, ap = b - a, c - a, point - a
+    d1, d2 = np.dot(ab, ap), np.dot(ac, ap)
+    if d1 <= 0.0 and d2 <= 0.0:
+        return float(np.linalg.norm(ap))
+    bp = point - b
+    d3, d4 = np.dot(ab, bp), np.dot(ac, bp)
+    if d3 >= 0.0 and d4 <= d3:
+        return float(np.linalg.norm(bp))
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        projection = a + (d1 / (d1 - d3)) * ab
+        return float(np.linalg.norm(point - projection))
+    cp = point - c
+    d5, d6 = np.dot(ab, cp), np.dot(ac, cp)
+    if d6 >= 0.0 and d5 <= d6:
+        return float(np.linalg.norm(cp))
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        projection = a + (d2 / (d2 - d6)) * ac
+        return float(np.linalg.norm(point - projection))
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        edge = c - b
+        projection = b + ((d4 - d3) / ((d4 - d3) + (d5 - d6))) * edge
+        return float(np.linalg.norm(point - projection))
+    denominator = 1.0 / (va + vb + vc)
+    projection = a + (vb * denominator) * ab + (vc * denominator) * ac
+    return float(np.linalg.norm(point - projection))
+
+
+def _source_triangles(source: Dict[str, Any]) -> np.ndarray:
+    positions = np.asarray(source.get("meshPositions", []), dtype=float)
+    if positions.size < 9 or positions.size % 3 != 0:
+        return np.empty((0, 3, 3), dtype=float)
+    vertices = positions.reshape((-1, 3))
+    indices = np.asarray(source.get("meshIndices", []), dtype=int)
+    if indices.size >= 3 and indices.size % 3 == 0 and int(indices.max()) < len(vertices):
+        return vertices[indices.reshape((-1, 3))]
+    triangle_vertex_count = (len(vertices) // 3) * 3
+    return vertices[:triangle_vertex_count].reshape((-1, 3, 3))
+
+
+def match_source_face_descriptors(
+    faces_data: List[Dict[str, Any]],
+    source_descriptors: List[Dict[str, Any]],
+) -> Tuple[List[Tuple[int, int]], List[int]]:
+    """Match every imported STEP face to a source face, allowing one-to-many splits."""
+    if not faces_data or not source_descriptors:
+        return [], list(range(len(faces_data)))
+
+    face_centers = np.asarray(
+        [face.get("match_centroid", face.get("centroid", [0.0, 0.0, 0.0])) for face in faces_data],
+        dtype=float,
+    )
+    source_centers = np.asarray([item["centroid"] for item in source_descriptors], dtype=float)
+    all_centers = np.vstack((face_centers, source_centers))
+    diagonal = float(np.linalg.norm(np.ptp(all_centers, axis=0)))
+    distance_scale = max(diagonal, 1.0)
+
+    source_triangles = [_source_triangles(source) for source in source_descriptors]
+    matches: List[Tuple[int, int]] = []
+    unmatched_faces: List[int] = []
+    for face_index, face in enumerate(faces_data):
+        face_area = float(face.get("area", 0.0) or 0.0)
+        face_normal = face.get("normal_vector")
+        best_source_index = None
+        best_cost = float("inf")
+        best_surface_distance = float("inf")
+        for source_index, source in enumerate(source_descriptors):
+            center_distance = float(
+                np.linalg.norm(face_centers[face_index] - source_centers[source_index])
+            )
+            source_area = float(source.get("area", 0.0) or 0.0)
+            area_excess = max(0.0, face_area / max(source_area, 1e-9) - 1.0)
+            normal_error = 0.5
+            source_normal = source.get("normal")
+            if face_normal and source_normal:
+                left = np.asarray(face_normal, dtype=float)
+                right = np.asarray(source_normal, dtype=float)
+                denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
+                if denominator > 1e-12:
+                    normal_error = 1.0 - abs(float(np.dot(left, right)) / denominator)
+            triangles = source_triangles[source_index]
+            surface_distance = (
+                min(_point_triangle_distance(face_centers[face_index], triangle) for triangle in triangles)
+                if len(triangles) > 0
+                else center_distance
+            )
+            bounds = source.get("bounds") or {}
+            minimum = np.asarray(bounds.get("min", source_centers[source_index]), dtype=float)
+            maximum = np.asarray(bounds.get("max", source_centers[source_index]), dtype=float)
+            outside = np.maximum(np.maximum(minimum - face_centers[face_index], 0.0), face_centers[face_index] - maximum)
+            bounds_distance = float(np.linalg.norm(outside))
+            source_order = int(source.get("faceNumber", source_index + 1)) - 1
+            cost = (
+                0.60 * surface_distance / distance_scale
+                + 0.20 * bounds_distance / distance_scale
+                + 0.15 * normal_error
+                + 0.05 * min(area_excess, 10.0)
+                + 1e-10 * abs(face_index - source_order)
+            )
+            if cost < best_cost:
+                best_cost = cost
+                best_source_index = source_index
+                best_surface_distance = surface_distance
+
+        tolerance = max(distance_scale * 0.002, 1e-4)
+        if best_source_index is not None and best_surface_distance <= tolerance:
+            matches.append((face_index, best_source_index))
+        else:
+            unmatched_faces.append(face_index)
+
+    return matches, unmatched_faces
 
 if OCCT_AVAILABLE:
     from OCC.Core.BRep import BRep_Builder, BRep_Tool
@@ -116,6 +234,9 @@ class StepUnfoldGenerator:
         self.scale_factor = (
             10.0  # スケール倍率：デジタル-物理変換比率（より大きな初期値）
         )
+        self._face_match_warnings: List[Dict[str, Any]] = []
+        self._source_face_descriptors: List[Dict[str, Any]] = []
+        self._exported_face_numbers: Optional[Set[int]] = None
 
         # レイアウトマネージャー
         self.layout_manager = LayoutManager(scale_factor=self.scale_factor)
@@ -156,15 +277,58 @@ class StepUnfoldGenerator:
             "unfoldable_faces": 0,  # 展開可能面数：最終的に展開された面の数
             "processing_time": 0.0,  # 処理時間：性能評価指標（秒単位）
         }
-
-        # ═══ テクスチャマッピング：面番号とテクスチャパターンの対応表 ═══
         self.texture_mappings: List[Dict[str, Any]] = []
-        # [{faceNumber: int, patternId: str, tileCount: int}, ...]
+        self.generate_unfolding_net = False
 
-        # ═══ 展開ネット生成モード：隣接する面を繋げて展開図を生成 ═══
-        # 注意: 現在の実装は簡易版のため、正確な展開ネットを生成できません
-        # 各面を個別に展開する方が正確です
-        self.generate_unfolding_net = False  # デフォルトで展開ネットモードを無効化
+    def apply_source_face_descriptors(self, source_descriptors: List[Dict[str, Any]]) -> None:
+        """Apply stable source face numbers to the imported STEP topology."""
+        self._source_face_descriptors = copy.deepcopy(source_descriptors)
+        if not self._analysis_ready:
+            return
+        self._match_source_face_descriptors()
+        self.unfold_engine.set_geometry_data(
+            self.faces_data,
+            self.edges_data,
+            self.geometry_analyzer.adjacency_map,
+        )
+
+    def _match_source_face_descriptors(self) -> None:
+        source_descriptors = self._source_face_descriptors
+        if not source_descriptors:
+            return
+        self._face_match_warnings.clear()
+        for face in self.faces_data:
+            face.pop("source_node_index", None)
+            face.pop("source_face_index", None)
+        matches, unmatched_faces = match_source_face_descriptors(
+            self.faces_data, source_descriptors
+        )
+        matched_faces = set()
+        for face_index, source_index in matches:
+            source = source_descriptors[source_index]
+            face = self.faces_data[face_index]
+            face["face_number"] = int(source["faceNumber"])
+            face["source_node_index"] = int(source["nodeIndex"])
+            face["source_face_index"] = int(source["faceIndex"])
+            matched_faces.add(face_index)
+
+        for face_index, face in enumerate(self.faces_data):
+            if face_index not in matched_faces:
+                face["face_number"] = None
+
+        if unmatched_faces:
+            self._face_match_warnings.append(
+                {
+                    "type": "face_correspondence_incomplete",
+                    "message": "一部のSTEP面を元の3D面へ安全に対応付けできなかったため、該当する展開面の番号を省略しました。",
+                    "details": {
+                        "matched_faces": len(matches),
+                        "source_faces": len(source_descriptors),
+                        "step_faces": len(self.faces_data),
+                        "unmatched_step_faces": unmatched_faces,
+                    },
+                }
+            )
 
     def set_texture_mappings(self, texture_mappings: List[Dict[str, Any]]):
         """
@@ -276,6 +440,12 @@ class StepUnfoldGenerator:
                 self.geometry_analyzer.adjacency_map,
             )
             self._analysis_ready = True
+            self._match_source_face_descriptors()
+            self.unfold_engine.set_geometry_data(
+                self.faces_data,
+                self.edges_data,
+                self.geometry_analyzer.adjacency_map,
+            )
             return
 
         # キャッシュミス: 通常の解析を実行
@@ -330,6 +500,12 @@ class StepUnfoldGenerator:
             )
 
         self._analysis_ready = True
+        self._match_source_face_descriptors()
+        self.unfold_engine.set_geometry_data(
+            self.faces_data,
+            self.edges_data,
+            self.geometry_analyzer.adjacency_map,
+        )
 
     def group_faces_for_unfolding(self, max_faces: int = 20) -> List[List[int]]:
         """
@@ -389,10 +565,20 @@ class StepUnfoldGenerator:
         self.page_orientation = request.page_orientation
         self.mirror_horizontal = request.mirror_horizontal
         self.merge_mode = request.merge_mode
+        self.curve_mode = request.curve_mode
 
         self.unfold_engine.scale_factor = self.scale_factor
         self.unfold_engine.tab_width = self.tab_width
         self.unfold_engine.merge_mode = self.merge_mode
+        self.unfold_engine.curve_mode = self.curve_mode
+        self.unfold_engine.curve_tolerance = (
+            0.5 * self.scale_factor / self._source_unit_to_mm_factor()
+        )
+        self.unfold_engine.curve_stats = {
+            "reconstructed_cylinders": 0,
+            "reconstructed_cones": 0,
+            "rejected": 0,
+        }
         self.layout_manager.update_scale_factor(self.scale_factor)
         self.layout_manager.update_page_settings(
             page_format=self.page_format, page_orientation=self.page_orientation
@@ -551,6 +737,10 @@ class StepUnfoldGenerator:
         self.stats["page_format"] = self.page_format
         self.stats["page_orientation"] = self.page_orientation
         self.stats["merge_mode"] = self.merge_mode
+        self.stats["curve_mode"] = self.curve_mode
+        self.stats["curve_reconstruction"] = copy.deepcopy(
+            self.unfold_engine.curve_stats
+        )
 
         if self.scale_mode == "fit_page":
             warnings.append(
@@ -725,11 +915,15 @@ class StepUnfoldGenerator:
             paper_groups, scale_warnings = self._prepare_groups_for_layout(
                 unfolded_groups
             )
+            warnings = self._face_match_warnings + scale_warnings
 
             paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
                 paper_groups
             )
-            warnings = scale_warnings + layout_warnings
+            self._remember_exported_face_numbers(
+                group for page in paged_groups for group in page
+            )
+            warnings += layout_warnings
 
             end_time = time.time()
             self.stats["processing_time"] = end_time - start_time
@@ -779,6 +973,7 @@ class StepUnfoldGenerator:
             paper_groups, scale_warnings = self._prepare_groups_for_layout(
                 unfolded_groups
             )
+            warnings = self._face_match_warnings + scale_warnings
 
             # 4. レイアウトモードに応じた配置
             if self.layout_mode == "paged":
@@ -789,7 +984,10 @@ class StepUnfoldGenerator:
                 paged_groups, layout_warnings = self.layout_manager.layout_for_pages(
                     paper_groups
                 )
-                warnings = scale_warnings + layout_warnings
+                self._remember_exported_face_numbers(
+                    group for page in paged_groups for group in page
+                )
+                warnings += layout_warnings
 
                 # 5. 単一SVGファイルに全ページを出力
                 svg_path = self.export_to_svg_paged_single_file(
@@ -805,6 +1003,7 @@ class StepUnfoldGenerator:
             else:
                 # キャンバスモード: 従来の単一SVG
                 placed_groups = self.layout_unfolded_groups(paper_groups)
+                self._remember_exported_face_numbers(placed_groups)
 
                 # 5. SVG出力
                 svg_path = self.export_to_svg(placed_groups, output_path)
@@ -820,6 +1019,8 @@ class StepUnfoldGenerator:
                 for group in (page if self.layout_mode == "paged" else placed_groups)
             )
             self.stats["layout_mode"] = self.layout_mode
+            if warnings:
+                self.stats["warnings"] = warnings
 
             return svg_path, self.stats
 
@@ -828,6 +1029,19 @@ class StepUnfoldGenerator:
 
             traceback.print_exc()
             raise ValueError(f"BREP展開図生成エラー: {str(e)}")
+
+    def _remember_exported_face_numbers(self, groups) -> None:
+        """Record exactly the numbers that the SVG exporter can label."""
+        exported: Set[int] = set()
+        for group in groups:
+            if not group.get("polygons"):
+                continue
+            face_numbers = group.get("face_numbers") or []
+            # SVGExporter emits one label per placed group using its first number.
+            face_number = face_numbers[0] if face_numbers else None
+            if face_number is not None:
+                exported.add(int(face_number))
+        self._exported_face_numbers = exported
 
     def get_face_numbers(self) -> List[Dict[str, int]]:
         """
@@ -842,9 +1056,20 @@ class StepUnfoldGenerator:
         if self.faces_data:
             for face_index, face_data in enumerate(self.faces_data):
                 face_number = face_data.get("face_number", face_index + 1)
-                face_numbers.append(
-                    {"faceIndex": face_index, "faceNumber": face_number}
-                )
+                if face_number is None:
+                    continue
+                if (
+                    self._exported_face_numbers is not None
+                    and face_number not in self._exported_face_numbers
+                ):
+                    continue
+                item = {
+                    "faceIndex": face_data.get("source_face_index", face_data.get("index", face_index)),
+                    "faceNumber": face_number,
+                }
+                if "source_node_index" in face_data:
+                    item["nodeIndex"] = face_data["source_node_index"]
+                face_numbers.append(item)
 
         logger.info(
             f"StepUnfoldGenerator.get_face_numbers(): {len(face_numbers)}個の面番号データを返します"

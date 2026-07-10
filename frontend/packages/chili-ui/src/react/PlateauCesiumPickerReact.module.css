@@ -23,8 +23,8 @@
 
 .stageLogo {
     position: absolute;
-    left: 44px;
-    top: 38px;
+    left: clamp(32px, 3.5vw, 56px);
+    top: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -33,14 +33,14 @@
     padding: 2px 8px;
     border-radius: 0;
     font-family: var(--font-family-sans);
-    font-size: 72px;
+    font-size: clamp(56px, 5vw, 72px);
     font-weight: 900;
     letter-spacing: -0.06em;
     line-height: 0.9;
     white-space: nowrap;
     user-select: none;
     pointer-events: none;
-    transform: rotate(-90deg) translateX(-100%);
+    transform: rotate(-90deg) translateX(-50%);
     transform-origin: top left;
 }
 
@@ -481,10 +481,13 @@
     }
 
     .stageLogo {
-        left: 18px;
-        top: 18px;
-        font-size: 36px;
+        left: 52px;
+        top: auto;
+        bottom: 18px;
+        font-size: 32px;
         padding: 2px 6px;
+        transform: rotate(-90deg);
+        transform-origin: bottom left;
     }
 
     .searchInputWrapper {

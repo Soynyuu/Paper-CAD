@@ -59,6 +59,12 @@ class BrepPapercraftRequest(BaseModel):
         pattern="^(improved|legacy)$",
         example="improved"
     )
+    curve_mode: str = Field(
+        default="smooth",
+        description="曲面表現 / Curved surface mode (smooth/faceted)",
+        pattern="^(smooth|faceted)$",
+        example="smooth"
+    )
     show_scale: bool = Field(
         default=True,
         description="縮尺バーを表示 / Show scale bar",
@@ -377,6 +383,12 @@ class PlateauTexturedUnfoldRequest(BaseModel):
         default=True,
         description="面番号データを返却 / Return face number mapping",
         example=True
+    )
+    curve_mode: Optional[str] = Field(
+        default="smooth",
+        description="曲面表現 / Curved surface mode (smooth/faceted)",
+        pattern="^(smooth|faceted)$",
+        example="smooth"
     )
 
 

@@ -90,6 +90,7 @@ export class ImportPlateauBuilding implements ICommand {
                                     pageFormat: unfoldOptions.pageFormat,
                                     pageOrientation: unfoldOptions.pageOrientation,
                                     mirrorHorizontal: unfoldOptions.mirrorHorizontal,
+                                    curveMode: unfoldOptions.curveMode,
                                 },
                             );
 
@@ -238,6 +239,7 @@ export class ImportPlateauBuilding implements ICommand {
         pageFormat: "A4" | "A3" | "Letter";
         pageOrientation: "portrait" | "landscape";
         mirrorHorizontal: boolean;
+        curveMode: "smooth" | "faceted";
     }> {
         const defaults = {
             scaleMode: "fixed" as const,
@@ -246,6 +248,7 @@ export class ImportPlateauBuilding implements ICommand {
             pageFormat: "A4" as const,
             pageOrientation: "portrait" as const,
             mirrorHorizontal: false,
+            curveMode: "smooth" as const,
         };
 
         try {
@@ -262,6 +265,7 @@ export class ImportPlateauBuilding implements ICommand {
                 pageFormat: options.pageFormat ?? defaults.pageFormat,
                 pageOrientation: options.pageOrientation ?? defaults.pageOrientation,
                 mirrorHorizontal: options.mirrorHorizontal ?? defaults.mirrorHorizontal,
+                curveMode: options.curveMode ?? defaults.curveMode,
             };
         } catch (error) {
             console.warn("[ImportPlateauBuilding] Failed to load unfold options; using defaults:", error);

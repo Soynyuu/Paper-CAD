@@ -13,6 +13,8 @@ import {
     I18n,
     UnfoldOptions,
     FaceTextureService,
+    buildSourceFaceDescriptors,
+    XYZ,
 } from "chili-core";
 import { config } from "chili-core/src/config/config";
 import Editor from "svgedit";
@@ -52,6 +54,7 @@ export class StepUnfoldPanel extends HTMLElement {
     private _textureService: FaceTextureService | null = null;
     private _lastStepData: BlobPart | null = null; // Cache last STEP data for PDF export
     private _lastUnfoldOptions: UnfoldOptions | null = null; // Cache last unfold options
+    private _lastUnfoldNodes: VisualNode[] = [];
     private _lastSvgContent: string | null = null; // Original backend SVG for PDF export fallback
 
     constructor(app: IApplication) {
@@ -355,10 +358,15 @@ export class StepUnfoldPanel extends HTMLElement {
 
         let foundIn3D = false;
         let lastFaceNumberDisplay: any = null;
+        let focusInfo: { center: { x: number; y: number; z: number }; radius: number } | undefined;
         this._getFaceNumberDisplays().forEach((faceNumberDisplay) => {
             lastFaceNumberDisplay = faceNumberDisplay;
             if (typeof faceNumberDisplay.focusFace === "function") {
-                foundIn3D = faceNumberDisplay.focusFace(faceNumber) || foundIn3D;
+                const found = faceNumberDisplay.focusFace(faceNumber);
+                foundIn3D = found || foundIn3D;
+                if (found && typeof faceNumberDisplay.getFaceFocusInfo === "function") {
+                    focusInfo = faceNumberDisplay.getFaceFocusInfo(faceNumber) ?? focusInfo;
+                }
             } else if (typeof faceNumberDisplay.toggleHighlight === "function") {
                 faceNumberDisplay.toggleHighlight(faceNumber);
                 foundIn3D = true;
@@ -367,10 +375,25 @@ export class StepUnfoldPanel extends HTMLElement {
 
         const foundInSvg = this._highlightSvgFaceNumber(faceNumber);
         if (foundIn3D || foundInSvg) {
+            if (focusInfo) this._focusCameraOnFace(focusInfo);
             this._updateHighlightedFacesList(lastFaceNumberDisplay, `検索中の面: ${faceNumber}`);
         } else {
             this._updateFaceSearchStatus(`面番号 ${faceNumber} は現在のモデルに見つかりません`);
         }
+    }
+
+    private _focusCameraOnFace(focusInfo: {
+        center: { x: number; y: number; z: number };
+        radius: number;
+    }): void {
+        const controller = this._app.activeView?.cameraController;
+        if (!controller) return;
+        const direction = controller.cameraPosition.sub(controller.cameraTarget).normalize();
+        if (!direction) return;
+        const currentDistance = controller.cameraPosition.distanceTo(controller.cameraTarget);
+        const distance = Math.min(currentDistance, Math.max(focusInfo.radius * 8, currentDistance * 0.08));
+        const target = new XYZ(focusInfo.center.x, focusInfo.center.y, focusInfo.center.z);
+        controller.lookAt(target.add(direction.multiply(distance)), target, controller.cameraUp);
     }
 
     private _clearAllHighlights() {
@@ -462,11 +485,13 @@ export class StepUnfoldPanel extends HTMLElement {
             const options: UnfoldOptions = {
                 ...this.getCurrentOptions(),
                 textureMappings: textureMappings.length > 0 ? textureMappings : undefined,
+                sourceFaceDescriptors: buildSourceFaceDescriptors(allNodes),
             };
 
             // Cache STEP data and options for later PDF export
             this._lastStepData = stepData[0];
             this._lastUnfoldOptions = options;
+            this._lastUnfoldNodes = allNodes.filter((node) => node instanceof ShapeNode);
 
             const result = await this._service.unfoldStepFromData(stepData[0], options);
 
@@ -484,7 +509,7 @@ export class StepUnfoldPanel extends HTMLElement {
                 // バックエンドから受信した面番号データを適用（複数のフィールド名に対応）
                 const faceNumbers = responseData.face_numbers || responseData.faceNumbers;
                 if (faceNumbers) {
-                    this._applyBackendFaceNumbers(faceNumbers);
+                    this._applyBackendFaceNumbers(faceNumbers, this._lastUnfoldNodes);
                 }
 
                 // 警告がある場合、ダイアログを表示
@@ -596,6 +621,9 @@ export class StepUnfoldPanel extends HTMLElement {
                 console.log("🚀 Caching unfold options from ribbon command");
                 this._lastUnfoldOptions = data.unfoldOptions;
             }
+            if (Array.isArray(data.nodes)) {
+                this._lastUnfoldNodes = data.nodes.filter((node: VisualNode) => node instanceof ShapeNode);
+            }
         }
 
         // SVGコンテンツを表示（後方互換性のため複数のフィールド名に対応）
@@ -619,7 +647,7 @@ export class StepUnfoldPanel extends HTMLElement {
             const faceNumbers = data.face_numbers || data.faceNumbers;
             console.log("🚀 Face numbers from response:", faceNumbers);
             if (faceNumbers) {
-                this._applyBackendFaceNumbers(faceNumbers);
+                this._applyBackendFaceNumbers(faceNumbers, this._lastUnfoldNodes);
             } else {
                 console.log("🚀 No face numbers found in response");
             }
@@ -675,7 +703,10 @@ export class StepUnfoldPanel extends HTMLElement {
     /**
      * バックエンドから受信した面番号データを3Dビューに適用
      */
-    private _applyBackendFaceNumbers(faceNumbers: Array<{ faceIndex: number; faceNumber: number }>): void {
+    private _applyBackendFaceNumbers(
+        faceNumbers: Array<{ faceIndex: number; faceNumber: number; nodeIndex?: number }>,
+        sourceNodes: VisualNode[] = [],
+    ): void {
         console.log("🔢 _applyBackendFaceNumbers called with:", faceNumbers);
 
         const activeDocument = this._getActiveDocument();
@@ -689,6 +720,8 @@ export class StepUnfoldPanel extends HTMLElement {
                 console.log("🔢 Found _NodeVisualMap, size:", visual.context._NodeVisualMap.size);
 
                 let processedCount = 0;
+                const hasNodeMapping = faceNumbers.some((item) => item.nodeIndex !== undefined);
+                const hasSourceMapping = !!this._lastUnfoldOptions?.sourceFaceDescriptors?.length;
                 visual.context._NodeVisualMap.forEach((visualObject: any, node: any) => {
                     console.log("🔢 Checking visualObject:", {
                         hasObject: !!visualObject,
@@ -699,6 +732,23 @@ export class StepUnfoldPanel extends HTMLElement {
 
                     // ThreeGeometryインスタンスかチェック
                     if (visualObject && "faceNumberDisplay" in visualObject) {
+                        const nodeIndex = sourceNodes.indexOf(node);
+                        if ((hasNodeMapping || hasSourceMapping) && nodeIndex < 0) return;
+                        const exportedNumbers = new Set(faceNumbers.map((item) => item.faceNumber));
+                        const verifiedNumbersForNode = hasNodeMapping
+                            ? faceNumbers
+                                  .filter((item) => item.nodeIndex === nodeIndex)
+                                  .map(({ faceIndex, faceNumber }) => ({ faceIndex, faceNumber }))
+                            : hasSourceMapping
+                              ? (this._lastUnfoldOptions?.sourceFaceDescriptors ?? [])
+                                    .filter(
+                                        (item) =>
+                                            item.nodeIndex === nodeIndex &&
+                                            exportedNumbers.has(item.faceNumber),
+                                    )
+                                    .map(({ faceIndex, faceNumber }) => ({ faceIndex, faceNumber }))
+                              : faceNumbers;
+                        const numbersForNode = verifiedNumbersForNode;
                         console.log("🔢 Processing geometry with ThreeGeometry interface");
                         processedCount++;
 
@@ -734,7 +784,7 @@ export class StepUnfoldPanel extends HTMLElement {
                             );
 
                             // バックエンドの面番号データを設定
-                            faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
+                            faceNumberDisplay.setBackendFaceNumbers(numbersForNode, hasSourceMapping);
 
                             // 面番号表示を再生成（既存のShape情報を使って）
                             if (visualObject.shape) {
@@ -1342,16 +1392,16 @@ export class StepUnfoldPanel extends HTMLElement {
 
         this._clearSvgFaceNumberSearch();
         const selector = `.face-number[data-face-number="${faceNumber}"]`;
-        const target = svgRoot.querySelector(selector) as SVGGElement | null;
-        if (!target) return false;
-
-        target.style.display = "block";
-        target.setAttribute("data-search-match", "true");
-        const badge = target.querySelector(".face-number-badge") as SVGElement | null;
-        const text = target.querySelector(".face-number-text") as SVGElement | null;
-        badge?.setAttribute("style", "fill: rgba(255,248,220,0.96); stroke: #f59e0b; stroke-width: 2;");
-        text?.setAttribute("style", `${text.getAttribute("style") ?? ""} fill: #92400e;`);
-        return true;
+        const targets = svgRoot.querySelectorAll<SVGGElement>(selector);
+        targets.forEach((target) => {
+            target.style.display = "block";
+            target.setAttribute("data-search-match", "true");
+            const badge = target.querySelector(".face-number-badge") as SVGElement | null;
+            const text = target.querySelector(".face-number-text") as SVGElement | null;
+            badge?.setAttribute("style", "fill: rgba(255,248,220,0.96); stroke: #f59e0b; stroke-width: 2;");
+            text?.setAttribute("style", `${text.getAttribute("style") ?? ""} fill: #92400e;`);
+        });
+        return targets.length > 0;
     }
 
     private _clearSvgFaceNumberSearch() {
@@ -1459,6 +1509,8 @@ export class StepUnfoldPanel extends HTMLElement {
             pageFormat: this._lastUnfoldOptions?.pageFormat ?? "A4",
             pageOrientation: this._lastUnfoldOptions?.pageOrientation ?? "portrait",
             mergeMode: this._lastUnfoldOptions?.mergeMode ?? "improved",
+            curveMode: this._lastUnfoldOptions?.curveMode ?? "smooth",
+            sourceFaceDescriptors: this._lastUnfoldOptions?.sourceFaceDescriptors,
         };
     }
 

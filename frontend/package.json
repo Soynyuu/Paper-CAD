@@ -24,7 +24,7 @@
         "preview": "npm run build && npx wrangler pages dev dist --port 3000"
     },
     "simple-git-hooks": {
-        "pre-commit": "npx lint-staged"
+        "pre-commit": "cd frontend && npx lint-staged"
     },
     "lint-staged": {
         "*.{ts,js,css,json,md}": [

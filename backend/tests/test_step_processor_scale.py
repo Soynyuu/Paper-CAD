@@ -1,5 +1,6 @@
 import pytest
 import math
+import numpy as np
 
 from models.request_models import BrepPapercraftRequest
 from core.unfold_engine import UnfoldEngine
@@ -39,11 +40,11 @@ def test_generator_reuses_analysis_within_same_loaded_model(monkeypatch):
     assert analyze_calls == 1
 
 
-def _plane_face(boundary, face_number=1, origin=None):
+def _plane_face(boundary, face_number=1, origin=None, normal=None):
     return {
         "unfoldable": True,
         "surface_type": "plane",
-        "plane_normal": [0.0, 0.0, 1.0],
+        "plane_normal": normal or [0.0, 0.0, 1.0],
         "plane_origin": origin or [0.0, 0.0, 0.0],
         "boundary_curves": [boundary],
         "face_number": face_number,
@@ -148,7 +149,7 @@ def test_legacy_merge_mode_keeps_split_coplanar_polygons():
     assert len(unfolded[0]["polygons"]) == 2
 
 
-def test_curved_wall_strip_unfolds_to_rectangle_with_fold_lines():
+def test_curved_wall_strip_unfolds_to_smooth_exact_rectangle():
     engine = UnfoldEngine()
     faces = [
         _arc_wall_face(20.0, angle, angle + 10.0, face_number=index + 1)
@@ -168,11 +169,76 @@ def test_curved_wall_strip_unfolds_to_rectangle_with_fold_lines():
 
     assert len(unfolded) == 1
     group = unfolded[0]
-    assert group["unfold_method"] == "curved_wall_strip_unwrap"
+    assert group["unfold_method"] == "reconstructed_cylinder_unwrap"
     assert len(group["polygons"]) == 1
-    assert len(group["fold_lines"]) == 4
+    assert group["fold_lines"] == []
     assert group["polygons"][0][0] == pytest.approx((0.0, 0.0))
     assert group["polygons"][0][2][1] == pytest.approx(12.0)
+    assert group["polygons"][0][1][0] == pytest.approx(20.0 * math.radians(50.0))
+
+
+def test_faceted_curved_wall_generates_tolerance_based_fold_lines():
+    engine = UnfoldEngine()
+    engine.curve_mode = "faceted"
+    engine.curve_tolerance = 0.5
+    faces = [
+        _arc_wall_face(20.0, angle, angle + 10.0, face_number=index + 1)
+        for index, angle in enumerate([0.0, 10.0, 20.0, 30.0, 40.0])
+    ]
+    engine.set_geometry_data(
+        faces, [], {0: {1}, 1: {0, 2}, 2: {1, 3}, 3: {2, 4}, 4: {3}}
+    )
+
+    result = engine._try_unfold_curved_wall_strip(0, [0, 1, 2, 3, 4])
+
+    assert result is not None
+    assert result["unfold_method"] == "reconstructed_cylinder_unwrap"
+    assert len(result["fold_lines"]) > 0
+
+
+def test_closed_cylinder_keeps_full_circumference_across_angle_seam():
+    engine = UnfoldEngine()
+    faces = [
+        _arc_wall_face(20.0, angle, angle + 10.0, face_number=index + 1)
+        for index, angle in enumerate(range(0, 360, 10))
+    ]
+    adjacency = {
+        index: {(index - 1) % len(faces), (index + 1) % len(faces)}
+        for index in range(len(faces))
+    }
+    engine.set_geometry_data(faces, [], adjacency)
+
+    result = engine._try_unfold_curved_wall_strip(0, list(range(len(faces))))
+
+    assert result is not None
+    assert result["polygons"][0][1][0] == pytest.approx(2.0 * math.pi * 20.0)
+
+
+def test_split_conical_wall_reconstructs_to_annular_sector():
+    engine = UnfoldEngine()
+    faces = []
+    for index, start_degrees in enumerate([0.0, 10.0, 20.0, 30.0, 40.0]):
+        start = math.radians(start_degrees)
+        end = math.radians(start_degrees + 10.0)
+        middle = (start + end) / 2.0
+        points = [
+            (20.0 * math.cos(start), 20.0 * math.sin(start), 0.0),
+            (20.0 * math.cos(end), 20.0 * math.sin(end), 0.0),
+            (30.0 * math.cos(end), 30.0 * math.sin(end), 10.0),
+            (30.0 * math.cos(start), 30.0 * math.sin(start), 10.0),
+        ]
+        normal = np.array([math.cos(middle), math.sin(middle), -1.0])
+        normal /= np.linalg.norm(normal)
+        faces.append(_plane_face(points, face_number=index + 1, normal=normal.tolist()))
+    engine.set_geometry_data(
+        faces, [], {0: {1}, 1: {0, 2}, 2: {1, 3}, 3: {2, 4}, 4: {3}}
+    )
+
+    result = engine._try_unfold_curved_wall_strip(0, [0, 1, 2, 3, 4])
+
+    assert result is not None
+    assert result["unfold_method"] == "reconstructed_cone_unwrap"
+    assert len(result["polygons"][0]) > 8
 
 
 def test_curved_wall_strip_is_disabled_in_legacy_mode():
@@ -191,7 +257,7 @@ def test_curved_wall_strip_is_disabled_in_legacy_mode():
     engine.group_faces_for_unfolding()
     unfolded = engine.unfold_face_groups()
 
-    assert unfolded[0].get("unfold_method") != "curved_wall_strip_unwrap"
+    assert not str(unfolded[0].get("unfold_method", "")).startswith("reconstructed_")
 
 
 def test_straight_wall_strip_does_not_use_curved_unwrap():

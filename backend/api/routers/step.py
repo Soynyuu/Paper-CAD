@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 import uuid
@@ -18,6 +19,18 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _parse_source_face_descriptors(value: Optional[str]) -> List[Dict]:
+    if not value:
+        return []
+    try:
+        descriptors = json.loads(value)
+        if not isinstance(descriptors, list):
+            raise ValueError("source_face_descriptors must be an array")
+        return descriptors
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=f"面記述子が不正です: {e}") from e
 
 
 def _log_pdf_parameters(request: BrepPapercraftRequest) -> None:
@@ -174,11 +187,17 @@ async def unfold_step_to_svg(
     texture_mappings: Optional[str] = Form(
         None, description="テクスチャマッピング情報（JSON） / Texture mappings (JSON)"
     ),
+    source_face_descriptors: Optional[str] = Form(
+        None, description="元CAD形状の面記述子（JSON） / Source CAD face descriptors (JSON)"
+    ),
     mirror_horizontal: bool = Form(
         False, description="左右反転モード / Mirror horizontally"
     ),
     merge_mode: str = Form(
         "improved", description="面結合モード / Face merge mode (improved/legacy)"
+    ),
+    curve_mode: str = Form(
+        "smooth", description="曲面表現 / Curved surface mode (smooth/faceted)"
     ),
 ):
     """
@@ -251,13 +270,15 @@ async def unfold_step_to_svg(
         parsed_texture_mappings = []
         if texture_mappings:
             try:
-                import json
-
                 parsed_texture_mappings = json.loads(texture_mappings)
                 logger.info(f"[TEXTURE] Received texture mappings: {parsed_texture_mappings}")
             except json.JSONDecodeError as e:
                 logger.error(f"[TEXTURE] Failed to parse texture mappings: {e}")
                 # エラーを無視してテクスチャなしで続行
+
+        parsed_source_face_descriptors = _parse_source_face_descriptors(
+            source_face_descriptors
+        )
 
         # StepUnfoldGeneratorインスタンスを作成
         step_unfold_generator = StepUnfoldGenerator()
@@ -271,6 +292,8 @@ async def unfold_step_to_svg(
             raise HTTPException(
                 status_code=400, detail="STEPファイルの読み込みに失敗しました。"
             )
+        if parsed_source_face_descriptors:
+            step_unfold_generator.apply_source_face_descriptors(parsed_source_face_descriptors)
         output_format_normalized = output_format.lower()
         supported_formats = {"svg", "json", "svg_pages", "pdf"}
         if output_format_normalized not in supported_formats:
@@ -294,6 +317,7 @@ async def unfold_step_to_svg(
             units=units,
             mirror_horizontal=mirror_horizontal,
             merge_mode=merge_mode,
+            curve_mode=curve_mode,
         )
 
         # テクスチャマッピングを渡す
@@ -475,11 +499,17 @@ async def unfold_step_to_pdf(
         None,
         description="テクスチャマッピング情報（JSON配列） / Texture mappings as JSON array",
     ),
+    source_face_descriptors: Optional[str] = Form(
+        None, description="元CAD形状の面記述子（JSON） / Source CAD face descriptors (JSON)"
+    ),
     mirror_horizontal: bool = Form(
         False, description="左右反転モード / Mirror horizontally"
     ),
     merge_mode: str = Form(
         "improved", description="面結合モード / Face merge mode (improved/legacy)"
+    ),
+    curve_mode: str = Form(
+        "smooth", description="曲面表現 / Curved surface mode (smooth/faceted)"
     ),
 ):
     """
@@ -533,14 +563,16 @@ async def unfold_step_to_pdf(
         parsed_texture_mappings = []
         if texture_mappings:
             try:
-                import json
-
                 parsed_texture_mappings = json.loads(texture_mappings)
                 logger.info(
                     f"[TEXTURE] Parsed {len(parsed_texture_mappings)} texture mappings"
                 )
             except json.JSONDecodeError as e:
                 logger.error(f"[TEXTURE] Warning: Failed to parse texture_mappings: {e}")
+
+        parsed_source_face_descriptors = _parse_source_face_descriptors(
+            source_face_descriptors
+        )
 
         generator = StepUnfoldGenerator()
         # CPU-bound: STEPファイル読み込みをスレッドプールで実行
@@ -550,6 +582,8 @@ async def unfold_step_to_pdf(
             raise HTTPException(
                 status_code=400, detail="STEPファイルの読み込みに失敗しました。"
             )
+        if parsed_source_face_descriptors:
+            generator.apply_source_face_descriptors(parsed_source_face_descriptors)
 
         # BrepPapercraftRequestを作成（SVGエンドポイントと同じパラメータを使用）
         # これによりmax_faces=20（デフォルト値）が使用され、SVGと同じレイアウトになる
@@ -562,6 +596,7 @@ async def unfold_step_to_pdf(
             units=units,
             mirror_horizontal=mirror_horizontal,
             merge_mode=merge_mode,
+            curve_mode=curve_mode,
         )
 
         # テクスチャマッピングを設定

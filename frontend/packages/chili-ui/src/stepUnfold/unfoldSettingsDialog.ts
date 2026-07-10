@@ -7,6 +7,7 @@ import style from "./unfoldSettingsDialog.module.css";
 
 type SourceUnits = NonNullable<UnfoldOptions["units"]>;
 type MergeMode = NonNullable<UnfoldOptions["mergeMode"]>;
+type CurveMode = NonNullable<UnfoldOptions["curveMode"]>;
 
 export interface StepUnfoldSettingsDialogContext {
     selectedCount?: number;
@@ -59,6 +60,13 @@ export class StepUnfoldSettingsDialog {
                 option({ value: "legacy", textContent: "旧方式" }),
             );
             mergeModeSelect.value = defaults.mergeMode ?? "improved";
+
+            const curveModeSelect = select(
+                { className: style.select },
+                option({ value: "smooth", textContent: "滑らかな帯" }),
+                option({ value: "faceted", textContent: "多角折り（自動）" }),
+            );
+            curveModeSelect.value = defaults.curveMode ?? "smooth";
 
             const scaleSelect = select(
                 { className: style.select },
@@ -134,6 +142,7 @@ export class StepUnfoldSettingsDialog {
                         pageFormat: pageFormatSelect.value as "A4" | "A3" | "Letter",
                         pageOrientation: pageOrientationSelect.value as "portrait" | "landscape",
                         mergeMode: mergeModeSelect.value as MergeMode,
+                        curveMode: curveModeSelect.value as CurveMode,
                     });
                 },
             });
@@ -171,6 +180,7 @@ export class StepUnfoldSettingsDialog {
                                 this.field("単位", unitsSelect),
                                 this.field("結合", mergeModeSelect),
                             ),
+                            this.field("曲面", curveModeSelect),
                             this.field("出力", layoutModeSelect),
                         ),
                     ),

@@ -10,6 +10,7 @@ import {
     StepUnfoldService,
     ShapeNode,
     UnfoldOptions,
+    buildSourceFaceDescriptors,
 } from "chili-core";
 import { config } from "chili-core/src/config/config";
 import { FaceNumberDisplay } from "chili-three/src/faceNumberDisplay";
@@ -31,7 +32,7 @@ import panzoom, { PanZoom } from "panzoom";
 import style from "./assemblyPanel.module.css";
 import { detectOverlappingFaceNumberGroups } from "./faceNumberOverlap";
 
-type FaceNumberData = Array<{ faceIndex: number; faceNumber: number }>;
+type FaceNumberData = Array<{ faceIndex: number; faceNumber: number; nodeIndex?: number }>;
 
 export class AssemblyPanel extends HTMLElement {
     private static _instance: AssemblyPanel | null = null;
@@ -431,6 +432,7 @@ export class AssemblyPanel extends HTMLElement {
                 pageFormat: "A4",
                 pageOrientation: "portrait",
                 returnFaceNumbers: true,
+                sourceFaceDescriptors: buildSourceFaceDescriptors(this._nodes),
             };
 
             const result = await this._service.unfoldStepFromData(stepData, options);
@@ -459,7 +461,19 @@ export class AssemblyPanel extends HTMLElement {
 
             const faceNumbers = responseData.face_numbers ?? responseData.faceNumbers;
             if (faceNumbers && this._faceNumberDisplay) {
-                this._faceNumberDisplay.setBackendFaceNumbers(faceNumbers);
+                const hasNodeMapping = faceNumbers.some((item) => item.nodeIndex !== undefined);
+                const firstNodeNumbers = hasNodeMapping
+                    ? faceNumbers
+                          .filter((item) => item.nodeIndex === 0)
+                          .map(({ faceIndex, faceNumber }) => ({ faceIndex, faceNumber }))
+                    : (options.sourceFaceDescriptors ?? [])
+                          .filter(
+                              (item) =>
+                                  item.nodeIndex === 0 &&
+                                  faceNumbers.some((mapping) => mapping.faceNumber === item.faceNumber),
+                          )
+                          .map(({ faceIndex, faceNumber }) => ({ faceIndex, faceNumber }));
+                this._faceNumberDisplay.setBackendFaceNumbers(firstNodeNumbers, true);
             }
 
             const svgFaceCount = Array.from(this._faceElementsByNumber.values()).reduce(

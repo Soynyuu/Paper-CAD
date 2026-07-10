@@ -12,6 +12,7 @@ import {
     PubSub,
     ShapeNode,
     UnfoldOptions,
+    buildSourceFaceDescriptors,
 } from "chili-core";
 import { SelectNodeWithListStep } from "../step";
 
@@ -89,6 +90,7 @@ export class StepUnfold extends CancelableCommand {
 
                     // STEPデータをunfoldサービスに送信（オプションを含む）
                     const stepBlob = Array.isArray(stepData) ? stepData[0] : stepData;
+                    unfoldOptions.sourceFaceDescriptors = buildSourceFaceDescriptors(nodes as ShapeNode[]);
 
                     // FaceTextureServiceからテクスチャマッピングを取得
                     try {
@@ -131,6 +133,7 @@ export class StepUnfold extends CancelableCommand {
                             ...result.value,
                             stepData: stepBlob, // STEPデータを追加
                             unfoldOptions: unfoldOptions, // オプションを追加
+                            nodes,
                         });
                         PubSub.default.pub("showToast", "toast.stepUnfold.success");
                     } else {
@@ -155,6 +158,7 @@ export class StepUnfold extends CancelableCommand {
             pageFormat: "A4",
             pageOrientation: "portrait",
             mergeMode: "improved",
+            curveMode: "smooth",
         };
 
         try {

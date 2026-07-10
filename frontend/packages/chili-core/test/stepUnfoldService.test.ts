@@ -21,6 +21,7 @@ test("unfoldStepFromData sends fixed scale options to backend", async () => {
         pageFormat: "A4",
         pageOrientation: "portrait",
         mergeMode: "legacy",
+        curveMode: "faceted",
     });
 
     expect(result.isOk).toBe(true);
@@ -31,6 +32,7 @@ test("unfoldStepFromData sends fixed scale options to backend", async () => {
     expect(body.get("page_format")).toBe("A4");
     expect(body.get("page_orientation")).toBe("portrait");
     expect(body.get("merge_mode")).toBe("legacy");
+    expect(body.get("curve_mode")).toBe("faceted");
 });
 
 test("unfoldStepFromData maps fitPage scale mode for backend", async () => {
@@ -51,4 +53,5 @@ test("unfoldStepFromData maps fitPage scale mode for backend", async () => {
     expect(body.get("page_format")).toBe("A3");
     expect(body.get("page_orientation")).toBe("landscape");
     expect(body.get("merge_mode")).toBe("improved");
+    expect(body.get("curve_mode")).toBe("smooth");
 });

@@ -5,6 +5,93 @@ import { IApplication } from "../application";
 import { config } from "../config/config";
 import { Result } from "../foundation";
 import { IService } from "../service";
+import { ShapeNode, VisualNode } from "../model";
+import { IFace, ShapeType } from "../shape";
+
+export interface SourceFaceDescriptor {
+    nodeIndex: number;
+    faceIndex: number;
+    faceNumber: number;
+    centroid: [number, number, number];
+    normal: [number, number, number] | null;
+    area: number;
+    bounds: { min: [number, number, number]; max: [number, number, number] };
+    meshPositions: number[];
+    meshIndices: number[];
+}
+
+export function buildSourceFaceDescriptors(nodes: VisualNode[]): SourceFaceDescriptor[] {
+    const descriptors: SourceFaceDescriptor[] = [];
+    let faceNumber = 1;
+
+    nodes
+        .filter((node): node is ShapeNode => node instanceof ShapeNode)
+        .forEach((node, nodeIndex) => {
+            if (!node.shape.isOk) return;
+            const transformedShape = node.shape.value.transformedMul(node.worldTransform());
+            try {
+                transformedShape.findSubShapes(ShapeType.Face).forEach((shape, faceIndex) => {
+                    const face = shape as IFace;
+                    const faceMesh = face.mesh?.faces;
+                    const positions = faceMesh?.position;
+                    const assignedFaceNumber = faceNumber++;
+
+                    let minX = 0;
+                    let minY = 0;
+                    let minZ = 0;
+                    let maxX = 0;
+                    let maxY = 0;
+                    let maxZ = 0;
+                    if (positions && positions.length >= 3) {
+                        minX = maxX = positions[0];
+                        minY = maxY = positions[1];
+                        minZ = maxZ = positions[2];
+                        for (let index = 3; index < positions.length; index += 3) {
+                            minX = Math.min(minX, positions[index]);
+                            minY = Math.min(minY, positions[index + 1]);
+                            minZ = Math.min(minZ, positions[index + 2]);
+                            maxX = Math.max(maxX, positions[index]);
+                            maxY = Math.max(maxY, positions[index + 1]);
+                            maxZ = Math.max(maxZ, positions[index + 2]);
+                        }
+                    }
+
+                    let normal: [number, number, number] | null = null;
+                    try {
+                        const [point, value] = face.normal(0.5, 0.5);
+                        if (!positions?.length) {
+                            minX = maxX = point.x;
+                            minY = maxY = point.y;
+                            minZ = maxZ = point.z;
+                        }
+                        const length = Math.hypot(value.x, value.y, value.z);
+                        if (length > 1e-12) normal = [value.x / length, value.y / length, value.z / length];
+                    } catch {
+                        // Area and centroid are sufficient for non-planar faces without a stable normal.
+                    }
+
+                    descriptors.push({
+                        nodeIndex,
+                        faceIndex,
+                        faceNumber: assignedFaceNumber,
+                        centroid: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+                        normal,
+                        area: face.area(),
+                        bounds: {
+                            min: [minX, minY, minZ],
+                            max: [maxX, maxY, maxZ],
+                        },
+                        meshPositions: positions ? Array.from(positions) : [],
+                        meshIndices: faceMesh?.index ? Array.from(faceMesh.index) : [],
+                    });
+                });
+            } finally {
+                transformedShape.dispose();
+            }
+        });
+
+    return descriptors;
+}
 
 export interface UnfoldOptions {
     scaleMode?: "fixed" | "fitPage";
@@ -14,8 +101,10 @@ export interface UnfoldOptions {
     pageFormat?: "A4" | "A3" | "Letter";
     pageOrientation?: "portrait" | "landscape";
     mergeMode?: "improved" | "legacy";
+    curveMode?: "smooth" | "faceted";
     returnFaceNumbers?: boolean;
     mirrorHorizontal?: boolean; // 左右反転モード
+    sourceFaceDescriptors?: SourceFaceDescriptor[];
     textureMappings?: Array<{
         faceNumber: number;
         patternId: string;
@@ -28,8 +117,8 @@ export interface UnfoldOptions {
 export interface UnfoldResponse {
     svg_content: string;
     svgContent?: string; // 後方互換性のため
-    face_numbers?: Array<{ faceIndex: number; faceNumber: number }>;
-    faceNumbers?: Array<{ faceIndex: number; faceNumber: number }>; // 後方互換性のため
+    face_numbers?: Array<{ faceIndex: number; faceNumber: number; nodeIndex?: number }>;
+    faceNumbers?: Array<{ faceIndex: number; faceNumber: number; nodeIndex?: number }>; // 後方互換性のため
     textureMappings?: Array<{
         faceNumber: number;
         patternId: string;
@@ -99,11 +188,15 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
             formData.append("merge_mode", options.mergeMode || "improved");
+            formData.append("curve_mode", options.curveMode || "smooth");
 
             // テクスチャマッピングを追加
             if (options.textureMappings && options.textureMappings.length > 0) {
                 formData.append("texture_mappings", JSON.stringify(options.textureMappings));
                 console.log("[StepUnfoldService] Sending texture mappings:", options.textureMappings);
+            }
+            if (options.sourceFaceDescriptors?.length) {
+                formData.append("source_face_descriptors", JSON.stringify(options.sourceFaceDescriptors));
             }
 
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
@@ -148,11 +241,15 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
             formData.append("merge_mode", options.mergeMode || "improved");
+            formData.append("curve_mode", options.curveMode || "smooth");
 
             // テクスチャマッピングを追加
             if (options.textureMappings && options.textureMappings.length > 0) {
                 formData.append("texture_mappings", JSON.stringify(options.textureMappings));
                 console.log("[StepUnfoldService] Sending texture mappings:", options.textureMappings);
+            }
+            if (options.sourceFaceDescriptors?.length) {
+                formData.append("source_face_descriptors", JSON.stringify(options.sourceFaceDescriptors));
             }
 
             const response = await fetch(`${this.baseUrl}/step/unfold`, {
@@ -213,6 +310,7 @@ export class StepUnfoldService implements IStepUnfoldService {
             formData.append("page_format", options.pageFormat || "A4");
             formData.append("page_orientation", options.pageOrientation || "portrait");
             formData.append("merge_mode", options.mergeMode || "improved");
+            formData.append("curve_mode", options.curveMode || "smooth");
             formData.append("mirror_horizontal", (options.mirrorHorizontal || false).toString());
 
             // テクスチャマッピングを追加
@@ -222,6 +320,9 @@ export class StepUnfoldService implements IStepUnfoldService {
                     "[StepUnfoldService] Sending texture mappings to PDF endpoint:",
                     options.textureMappings,
                 );
+            }
+            if (options.sourceFaceDescriptors?.length) {
+                formData.append("source_face_descriptors", JSON.stringify(options.sourceFaceDescriptors));
             }
 
             const response = await fetch(`${this.baseUrl}/step/unfold-pdf`, {

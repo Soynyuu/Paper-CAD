@@ -37,6 +37,10 @@ if OCCT_AVAILABLE:
     )
     from OCC.Core.TopExp import topexp
     from OCC.Core.TopoDS import topods
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+    from OCC.Core.BRepGProp import brepgprop
+    from OCC.Core.GProp import GProp_GProps
 
 
 class GeometryAnalyzer:
@@ -212,21 +216,15 @@ class GeometryAnalyzer:
             surface_adaptor = BRepAdaptor_Surface(face)
             surface_type_enum = surface_adaptor.GetType()
 
-            # 面積計算（簡易版）
-            # 面の境界から面積を推定
-            area = 100.0  # デフォルト値（立方体の場合）
-
-            # 重心計算（面の中心点を近似）
-            # 面のパラメータ範囲の中心を使用
+            properties = GProp_GProps()
             try:
-                u_min, u_max, v_min, v_max = surface_adaptor.BoundsUV()
-                u_mid = (u_min + u_max) / 2
-                v_mid = (v_min + v_max) / 2
-                center_point = surface_adaptor.Value(u_mid, v_mid)
-                centroid = center_point
+                brepgprop.SurfaceProperties(face, properties)
+                area = float(properties.Mass())
+                centroid = properties.CentreOfMass()
             except:
-                # フォールバック：原点を使用
-                centroid = gp_Pnt(0, 0, 0)
+                area = 0.0
+                u_min, u_max, v_min, v_max = surface_adaptor.BoundsUV()
+                centroid = surface_adaptor.Value((u_min + u_max) / 2, (v_min + v_max) / 2)
 
             # 法線ベクトルを取得（立方体の面を識別するため）
             normal_vec = None
@@ -253,6 +251,14 @@ class GeometryAnalyzer:
                 "unfoldable": True,  # デフォルトで展開可能とする
                 "boundary_curves": [],
             }
+            bbox = Bnd_Box()
+            brepbndlib.Add(face, bbox)
+            xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+            face_data["match_centroid"] = [
+                (xmin + xmax) / 2,
+                (ymin + ymax) / 2,
+                (zmin + zmax) / 2,
+            ]
 
             # 曲面タイプ別の詳細解析
             if surface_type_enum == GeomAbs_Plane:

@@ -1429,6 +1429,7 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
             units="m",
             mirror_horizontal=request.mirror_horizontal or False,
             max_faces=request.max_faces or 20,
+            curve_mode=request.curve_mode or "smooth",
         )
 
         output_tmpdir = tempfile.mkdtemp()

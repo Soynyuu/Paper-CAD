@@ -124,6 +124,7 @@ export interface PlateauTexturedUnfoldOptions extends PlateauBuildingIdWithMeshS
     mirrorHorizontal?: boolean;
     maxFaces?: number;
     returnFaceNumbers?: boolean;
+    curveMode?: "smooth" | "faceted";
 }
 
 export interface PlateauBuildingIdSearchResponse {
@@ -598,6 +599,7 @@ export class CityGMLService implements ICityGMLService {
                 mirror_horizontal: options?.mirrorHorizontal ?? false,
                 max_faces: options?.maxFaces ?? 20,
                 return_face_numbers: options?.returnFaceNumbers ?? true,
+                curve_mode: options?.curveMode ?? "smooth",
             };
 
             const response = await fetch(`${this.baseUrl}/plateau/unfold-textured-by-id-and-mesh`, {

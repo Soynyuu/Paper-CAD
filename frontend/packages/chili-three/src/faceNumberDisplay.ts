@@ -2,41 +2,53 @@
 // See LICENSE file in the project root for full license information.
 
 import {
+    BufferAttribute,
+    BufferGeometry,
     CanvasTexture,
     DoubleSide,
     Group,
+    Line,
+    LineBasicMaterial,
     Mesh,
     MeshBasicMaterial,
     Sprite,
     SpriteMaterial,
     Vector3,
 } from "three";
-import { type FaceMeshData, IShape, IFace, ShapeType } from "chili-core";
-import { ThreeGeometryFactory } from "./threeGeometryFactory";
+import { IShape, IFace, ShapeType } from "chili-core";
+
+interface FaceGeometryData {
+    position: Float32Array;
+    index?: Uint32Array;
+}
 
 interface FaceNumberMarker {
     faceIndex: number;
     faceNumber: number;
+    anchorPosition?: Vector3;
     position: Vector3;
     normal?: Vector3;
-    faceMesh?: FaceMeshData;
+    faceGeometry?: FaceGeometryData;
+    faceSize?: number;
 }
 
 export class FaceNumberDisplay extends Group {
     private sprites: Map<string, Sprite> = new Map();
     private markers: Map<number, FaceNumberMarker[]> = new Map();
     private highlightOverlays: Map<string, Mesh> = new Map();
+    private calloutLines: Map<string, Line> = new Map();
     private _visible: boolean = false;
     // バックエンドから受信した面番号データを保存
     private backendFaceNumbers: Map<number, number> = new Map();
+    private requireBackendFaceNumber: boolean = false;
     // モデルのバウンディングボックスサイズ（動的オフセット計算用）
     private modelSize: number = 0;
+    private modelCenter: Vector3 = new Vector3();
     // ハイライトされた面番号を追跡
     private highlightedFaces: Set<number> = new Set();
     // 面インデックスから面番号へのマッピング（ハイライト時に使用）
     private faceIndexToNumber: Map<number, number> = new Map();
     private focusedFaceNumber: number | null = null;
-    private readonly maxAutoVisibleNumbers = 36;
 
     constructor() {
         super();
@@ -166,8 +178,10 @@ export class FaceNumberDisplay extends Group {
      */
     setBackendFaceNumbers(
         faceNumbers: Map<number, number> | Array<{ faceIndex: number; faceNumber: number }>,
+        requireMatch: boolean = false,
     ): void {
         this.backendFaceNumbers.clear();
+        this.requireBackendFaceNumber = requireMatch;
 
         if (Array.isArray(faceNumbers)) {
             // 配列の場合はMapに変換
@@ -227,11 +241,6 @@ export class FaceNumberDisplay extends Group {
             let center = this.getFaceCenter(face as IFace);
             const normal = this.getFaceNormal(face as IFace);
 
-            // 立方体の場合、法線方向に基づいて正確な面中心を再計算
-            if (center && normal) {
-                center = this.refineFaceCenterForBox(center, normal, shape);
-            }
-
             // フォールバック：面の中心が取得できない場合は、メッシュ情報から推定
             if (!center) {
                 console.log(`Face ${index}: Primary center calculation failed, trying mesh estimation`);
@@ -240,6 +249,10 @@ export class FaceNumberDisplay extends Group {
 
             // バックエンドから受信した面番号を使用
             const backendNumber = this.backendFaceNumbers.get(index);
+            if (this.requireBackendFaceNumber && backendNumber === undefined) {
+                console.warn(`FaceNumberDisplay: no verified correspondence for face ${index}`);
+                return;
+            }
             const faceNumber = backendNumber !== undefined ? backendNumber : index + 1; // フォールバック：インデックス+1
 
             // 面インデックスから面番号へのマッピングを保存
@@ -260,30 +273,26 @@ export class FaceNumberDisplay extends Group {
                     "Final face number:",
                     faceNumber,
                 );
-                const position = center.clone();
-
-                // スプライトを面の表面から適切な距離に配置
-                if (normal) {
-                    const originalPosition = position.clone();
-                    // モデルサイズに基づく動的オフセット（モデルサイズの1%、最小値2）
-                    const offset = Math.max(this.modelSize * 0.01, 2);
-                    position.addScaledVector(normal, offset);
-                    console.log(
-                        `FaceNumberDisplay: Face ${faceNumber} - Original:`,
-                        originalPosition,
-                        "Final:",
-                        position,
-                        "Offset:",
-                        offset,
-                    );
-                }
+                const anchorPosition = center.clone();
+                const faceMesh = (face as IFace).mesh?.faces;
+                const faceSize = faceMesh?.position
+                    ? this.calculatePositionBounds(faceMesh.position).size
+                    : 0;
+                const position = this.calculateLabelPosition(anchorPosition, normal, faceSize, index);
 
                 this.setMarker({
                     faceIndex: index,
                     faceNumber,
+                    anchorPosition,
                     position,
                     normal: normal?.clone().normalize(),
-                    faceMesh: this.asFaceMeshData((face as IFace).mesh),
+                    faceGeometry: faceMesh?.position
+                        ? {
+                              position: faceMesh.position.slice(),
+                              index: faceMesh.index?.slice(),
+                          }
+                        : undefined,
+                    faceSize,
                 });
             } else {
                 console.log(`FaceNumberDisplay: ERROR - Could not get center for face ${index}`);
@@ -348,7 +357,9 @@ export class FaceNumberDisplay extends Group {
 
         const nextHighlighted = new Set<number>();
         existingMarkers.forEach((marker) => {
-            const nextFaceNumber = this.backendFaceNumbers.get(marker.faceIndex) ?? marker.faceNumber;
+            const backendFaceNumber = this.backendFaceNumbers.get(marker.faceIndex);
+            if (this.requireBackendFaceNumber && backendFaceNumber === undefined) return;
+            const nextFaceNumber = backendFaceNumber ?? marker.faceNumber;
             const nextMarker: FaceNumberMarker = {
                 ...marker,
                 faceNumber: nextFaceNumber,
@@ -375,21 +386,19 @@ export class FaceNumberDisplay extends Group {
      * 面の中心座標を取得（シンプルで確実な計算）
      */
     private getFaceCenter(face: IFace): Vector3 | null {
-        // シンプルな面のバウンディングボックス中心計算
-        const boundingBoxCenter = this.calculateFaceBoundingBoxCenter(face);
-        if (boundingBoxCenter) {
-            console.log("Face center from bounding box:", boundingBoxCenter);
-            return boundingBoxCenter;
-        }
-
-        // フォールバック1: メッシュデータから重心を計算
+        // Prefer an area-weighted point that stays on small and concave faces.
         const meshCenter = this.calculateFaceCenterFromMesh(face);
         if (meshCenter) {
             console.log("Face center calculated from mesh data:", meshCenter);
             return meshCenter;
         }
 
-        // フォールバック2: normal(0.5, 0.5)を使用
+        const boundingBoxCenter = this.calculateFaceBoundingBoxCenter(face);
+        if (boundingBoxCenter) {
+            return boundingBoxCenter;
+        }
+
+        // Final fallback: use a point on the parametric surface.
         try {
             const [point, _] = face.normal(0.5, 0.5);
             if (!point) {
@@ -455,80 +464,6 @@ export class FaceNumberDisplay extends Group {
         } catch (error) {
             console.warn("Failed to calculate face bounding box center:", error);
             return null;
-        }
-    }
-
-    /**
-     * 立方体の面中心を法線方向に基づいて精密に計算
-     */
-    private refineFaceCenterForBox(center: Vector3, normal: Vector3, shape: IShape): Vector3 {
-        try {
-            // 全体の形状のバウンディングボックスを取得
-            const shapeMesh = shape.mesh;
-            if (!shapeMesh?.faces?.position) {
-                console.log("No shape mesh for refinement, using original center");
-                return center;
-            }
-
-            const positions = shapeMesh.faces.position;
-            let minX = Infinity,
-                maxX = -Infinity;
-            let minY = Infinity,
-                maxY = -Infinity;
-            let minZ = Infinity,
-                maxZ = -Infinity;
-
-            for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
-
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
-                minZ = Math.min(minZ, z);
-                maxZ = Math.max(maxZ, z);
-            }
-
-            const shapeCenter = new Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
-
-            const halfSizeX = (maxX - minX) / 2;
-            const halfSizeY = (maxY - minY) / 2;
-            const halfSizeZ = (maxZ - minZ) / 2;
-
-            // 法線方向に基づいて正確な面の中心を計算
-            let refinedCenter = shapeCenter.clone();
-
-            const normalThreshold = 0.8; // 法線の主成分を判定する閾値
-
-            if (Math.abs(normal.x) > normalThreshold) {
-                // X方向の面
-                refinedCenter.x = normal.x > 0 ? maxX : minX;
-                console.log(
-                    `X-direction face: normal.x=${normal.x.toFixed(2)}, center.x=${refinedCenter.x.toFixed(2)}`,
-                );
-            } else if (Math.abs(normal.y) > normalThreshold) {
-                // Y方向の面
-                refinedCenter.y = normal.y > 0 ? maxY : minY;
-                console.log(
-                    `Y-direction face: normal.y=${normal.y.toFixed(2)}, center.y=${refinedCenter.y.toFixed(2)}`,
-                );
-            } else if (Math.abs(normal.z) > normalThreshold) {
-                // Z方向の面
-                refinedCenter.z = normal.z > 0 ? maxZ : minZ;
-                console.log(
-                    `Z-direction face: normal.z=${normal.z.toFixed(2)}, center.z=${refinedCenter.z.toFixed(2)}`,
-                );
-            }
-
-            console.log(
-                `Refined face center: original=${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)} -> refined=${refinedCenter.x.toFixed(2)}, ${refinedCenter.y.toFixed(2)}, ${refinedCenter.z.toFixed(2)}`,
-            );
-            return refinedCenter;
-        } catch (error) {
-            console.warn("Failed to refine face center:", error);
-            return center;
         }
     }
 
@@ -699,6 +634,54 @@ export class FaceNumberDisplay extends Group {
     /**
      * モデル全体のサイズを計算（バウンディングボックスの対角線長）
      */
+    private calculatePositionBounds(positions: Float32Array): { center: Vector3; size: number } {
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        for (let i = 0; i < positions.length; i += 3) {
+            minX = Math.min(minX, positions[i]);
+            minY = Math.min(minY, positions[i + 1]);
+            minZ = Math.min(minZ, positions[i + 2]);
+            maxX = Math.max(maxX, positions[i]);
+            maxY = Math.max(maxY, positions[i + 1]);
+            maxZ = Math.max(maxZ, positions[i + 2]);
+        }
+        const center = new Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+        return { center, size: new Vector3(maxX - minX, maxY - minY, maxZ - minZ).length() };
+    }
+
+    private calculateLabelPosition(
+        anchor: Vector3,
+        normal: Vector3 | null,
+        faceSize: number,
+        faceIndex: number,
+    ): Vector3 {
+        // Keep the whole camera-facing badge clear of its source surface. A tiny
+        // epsilon leaves the corners of an oblique sprite behind the face and
+        // makes the badge look sliced in half.
+        const surfaceOffset = Math.max(this.modelSize * 0.004, 0.05);
+        if (faceSize >= this.modelSize * 0.025) {
+            return normal
+                ? anchor.clone().addScaledVector(normal.clone().normalize(), surfaceOffset)
+                : anchor.clone();
+        }
+
+        const outward = anchor.clone().sub(this.modelCenter);
+        if (outward.lengthSq() < 1e-12 && normal) outward.copy(normal);
+        if (outward.lengthSq() < 1e-12) outward.set(1, 0, 0);
+        outward.normalize();
+        const angle = faceIndex * 2.399963229728653;
+        const jitter = new Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle * 0.5)).normalize();
+        const distance = Math.min(this.modelSize * 0.03, Math.max(this.modelSize * 0.012, faceSize * 2));
+        return anchor
+            .clone()
+            .addScaledVector(outward, distance)
+            .addScaledVector(jitter, distance * 0.35);
+    }
+
     private calculateModelSize(shape: IShape): number {
         try {
             const mesh = shape.mesh;
@@ -707,39 +690,9 @@ export class FaceNumberDisplay extends Group {
                 return 100; // デフォルトサイズ
             }
 
-            const positions = mesh.faces.position;
-            let minX = Infinity,
-                maxX = -Infinity;
-            let minY = Infinity,
-                maxY = -Infinity;
-            let minZ = Infinity,
-                maxZ = -Infinity;
-
-            for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
-
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
-                minZ = Math.min(minZ, z);
-                maxZ = Math.max(maxZ, z);
-            }
-
-            // バウンディングボックスの対角線長を計算
-            const sizeX = maxX - minX;
-            const sizeY = maxY - minY;
-            const sizeZ = maxZ - minZ;
-            const diagonalLength = Math.sqrt(sizeX * sizeX + sizeY * sizeY + sizeZ * sizeZ);
-
-            console.log(
-                `FaceNumberDisplay: Bounding box size: [${sizeX.toFixed(2)}, ${sizeY.toFixed(2)}, ${sizeZ.toFixed(2)}]`,
-            );
-            console.log(`FaceNumberDisplay: Diagonal length: ${diagonalLength.toFixed(2)}`);
-
-            return diagonalLength || 100; // 0の場合はデフォルト値
+            const bounds = this.calculatePositionBounds(mesh.faces.position);
+            this.modelCenter.copy(bounds.center);
+            return bounds.size || 100;
         } catch (error) {
             console.warn("Failed to calculate model size:", error);
             return 100; // デフォルトサイズ
@@ -805,7 +758,8 @@ export class FaceNumberDisplay extends Group {
         context.stroke();
 
         context.fillStyle = isHighlighted ? "#92400e" : "#1e3a8a";
-        context.font = `700 ${label.length >= 3 ? 78 : 92}px Arial, sans-serif`;
+        const fontSize = label.length >= 4 ? 64 : label.length === 3 ? 76 : 92;
+        context.font = `700 ${fontSize}px Arial, sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
         context.fillText(label, size / 2, size / 2 + 3);
@@ -815,14 +769,20 @@ export class FaceNumberDisplay extends Group {
         const material = new SpriteMaterial({
             map: texture,
             sizeAttenuation: false, // ズームしても面番号のサイズを一定に保つ
-            depthTest: true,
+            depthTest: !isHighlighted,
             depthWrite: false,
+            // Avoid z-fighting with the labelled surface while retaining depth
+            // testing against geometry in front of the label.
+            polygonOffset: !isHighlighted,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+            transparent: true,
         });
 
         const sprite = new Sprite(material);
         // 画面上で一定のサイズを保つ固定スケール
         // ハイライト時は少し大きくする
-        const scale = isHighlighted ? 0.03 : isDense ? 0.018 : 0.024;
+        const scale = isHighlighted ? 0.06 : isDense ? 0.034 : 0.046;
         sprite.scale.set(scale, scale, 1);
         sprite.name = `FaceNumber_${number}`;
         sprite.renderOrder = 999; // 最前面に表示
@@ -842,11 +802,12 @@ export class FaceNumberDisplay extends Group {
         });
 
         if (!this._visible) {
+            this.clearCalloutLines();
             this.syncHighlightOverlays();
             return;
         }
 
-        const isDense = this.getMarkerCount() > this.maxAutoVisibleNumbers;
+        const isDense = this.getMarkerCount() > 96;
         visibleNumbers.forEach((faceNumber) => {
             const markers = this.getMarkers(faceNumber);
             if (markers.length === 0) return;
@@ -878,25 +839,44 @@ export class FaceNumberDisplay extends Group {
             });
         });
 
+        this.syncCalloutLines();
         this.syncHighlightOverlays();
+    }
+
+    private syncCalloutLines(): void {
+        this.clearCalloutLines();
+        this.getAllMarkers().forEach((marker) => {
+            const anchor = marker.anchorPosition;
+            if (!anchor || anchor.distanceToSquared(marker.position) < 1e-10) return;
+            const geometry = new BufferGeometry().setFromPoints([anchor, marker.position]);
+            const material = new LineBasicMaterial({
+                color: this.highlightedFaces.has(marker.faceNumber) ? 0xf59e0b : 0x2563eb,
+                depthTest: !this.highlightedFaces.has(marker.faceNumber),
+                depthWrite: false,
+                transparent: true,
+                opacity: this.highlightedFaces.has(marker.faceNumber) ? 1 : 0.8,
+            });
+            const line = new Line(geometry, material);
+            line.renderOrder = 997;
+            line.frustumCulled = false;
+            const key = this.getMarkerKey(marker);
+            this.calloutLines.set(key, line);
+            this.add(line);
+        });
+    }
+
+    private clearCalloutLines(): void {
+        this.calloutLines.forEach((line) => {
+            line.geometry.dispose();
+            (line.material as LineBasicMaterial).dispose();
+            this.remove(line);
+        });
+        this.calloutLines.clear();
     }
 
     private getVisibleFaceNumbers(): Set<number> {
         const numbers = Array.from(this.markers.keys()).sort((a, b) => a - b);
-        const visible = new Set<number>();
-        if (numbers.length <= this.maxAutoVisibleNumbers) {
-            numbers.forEach((number) => visible.add(number));
-        } else {
-            visible.add(numbers[0]);
-            visible.add(numbers[numbers.length - 1]);
-            const remainingSlots = Math.max(1, this.maxAutoVisibleNumbers - 2);
-            const stride = Math.ceil(numbers.length / remainingSlots);
-            numbers.forEach((number, index) => {
-                if (index % stride === 0) {
-                    visible.add(number);
-                }
-            });
-        }
+        const visible = new Set<number>(numbers);
 
         this.highlightedFaces.forEach((number) => {
             if (this.markers.has(number)) {
@@ -909,15 +889,6 @@ export class FaceNumberDisplay extends Group {
         }
 
         return visible;
-    }
-
-    private asFaceMeshData(mesh: unknown): FaceMeshData | undefined {
-        const candidate = mesh as Partial<FaceMeshData> | undefined;
-        if (candidate?.position && candidate.index && candidate.normal && candidate.uv && candidate.groups) {
-            return candidate as FaceMeshData;
-        }
-
-        return undefined;
     }
 
     private removeSprite(key: string): void {
@@ -943,7 +914,7 @@ export class FaceNumberDisplay extends Group {
         this.highlightedFaces.forEach((faceNumber) => {
             this.getMarkers(faceNumber).forEach((marker) => {
                 const key = this.getMarkerKey(marker);
-                if (this.highlightOverlays.has(key) || !marker.faceMesh) return;
+                if (this.highlightOverlays.has(key) || !marker.faceGeometry) return;
 
                 const overlay = this.createHighlightOverlay(marker);
                 this.highlightOverlays.set(key, overlay);
@@ -953,7 +924,12 @@ export class FaceNumberDisplay extends Group {
     }
 
     private createHighlightOverlay(marker: FaceNumberMarker): Mesh {
-        const geometry = ThreeGeometryFactory.createFaceBufferGeometry(marker.faceMesh!);
+        const geometry = new BufferGeometry();
+        geometry.setAttribute("position", new BufferAttribute(marker.faceGeometry!.position, 3));
+        if (marker.faceGeometry!.index?.length) {
+            geometry.setIndex(new BufferAttribute(marker.faceGeometry!.index!, 1));
+        }
+        geometry.computeVertexNormals();
         const material = new MeshBasicMaterial({
             color: 0xf59e0b,
             transparent: true,
@@ -971,10 +947,6 @@ export class FaceNumberDisplay extends Group {
         overlay.userData["faceIndex"] = marker.faceIndex;
         overlay.renderOrder = 998;
         overlay.frustumCulled = false;
-
-        if (marker.normal) {
-            overlay.position.addScaledVector(marker.normal, Math.max(this.modelSize * 0.0025, 0.4));
-        }
 
         return overlay;
     }
@@ -1094,6 +1066,7 @@ export class FaceNumberDisplay extends Group {
             this.remove(sprite);
         });
         this.sprites.clear();
+        this.clearCalloutLines();
         this.clearHighlightOverlays();
     }
 
@@ -1130,6 +1103,19 @@ export class FaceNumberDisplay extends Group {
         this.focusedFaceNumber = faceNumber;
         this.applyDisplayFilter();
         return true;
+    }
+
+    getFaceFocusInfo(faceNumber: number): { center: Vector3; radius: number } | undefined {
+        const marker = this.getMarkers(faceNumber)[0];
+        if (!marker) return undefined;
+        this.updateWorldMatrix(true, false);
+        const localCenter = marker.anchorPosition ?? marker.position;
+        const center = this.localToWorld(localCenter.clone());
+        const localEdge = localCenter
+            .clone()
+            .add(new Vector3(marker.faceSize || this.modelSize * 0.01, 0, 0));
+        const radius = Math.max(center.distanceTo(this.localToWorld(localEdge)), this.modelSize * 0.002);
+        return { center, radius };
     }
 
     /**
@@ -1257,7 +1243,7 @@ export class FaceNumberDisplay extends Group {
         return {
             total,
             visible: this.sprites.size,
-            limited: total > this.maxAutoVisibleNumbers,
+            limited: false,
         };
     }
 
@@ -1271,5 +1257,7 @@ export class FaceNumberDisplay extends Group {
         this.highlightedFaces.clear();
         this.faceIndexToNumber.clear();
         this.focusedFaceNumber = null;
+        this.backendFaceNumbers.clear();
+        this.requireBackendFaceNumber = false;
     }
 }

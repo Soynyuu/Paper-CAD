@@ -50,9 +50,7 @@ export function PlateauSearchLoading({
         <div className={minimal ? styles.minimalWrapper : styles.wrapper} aria-live="polite">
             {animationFailed ? (
                 <div
-                    className={`${styles.fallbackSpinner} ${
-                        minimal ? styles.fallbackSpinnerMinimal : ""
-                    }`}
+                    className={`${styles.fallbackSpinner} ${minimal ? styles.fallbackSpinnerMinimal : ""}`}
                 />
             ) : (
                 <div

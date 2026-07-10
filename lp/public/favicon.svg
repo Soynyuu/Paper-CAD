@@ -1,22 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <!-- Definitions for Gradients -->
   <defs>
-    <!-- Top Face Gradient (Vivid Purple to Indigo) -->
+    <!-- Top Face Gradient (Light Orange to Vivid Orange) -->
     <linearGradient id="topFaceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#c084fc" />
-      <stop offset="100%" stop-color="#6366f1" />
+      <stop offset="0%" stop-color="#fdba74" />
+      <stop offset="100%" stop-color="#f97316" />
     </linearGradient>
 
-    <!-- Left Face Gradient (Electric Cyan to Blue) -->
+    <!-- Left Face Gradient (Warm Orange to Deep Orange) -->
     <linearGradient id="leftFaceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee" />
-      <stop offset="100%" stop-color="#0284c7" />
+      <stop offset="0%" stop-color="#fb923c" />
+      <stop offset="100%" stop-color="#ea580c" />
     </linearGradient>
 
-    <!-- Right Face Gradient (Neon Pink to Deep Rose) -->
+    <!-- Right Face Gradient (Amber to Burnt Orange) -->
     <linearGradient id="rightFaceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fb7185" />
-      <stop offset="100%" stop-color="#db2777" />
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#c2410c" />
     </linearGradient>
 
     <!-- Glue Tab Gradient (Light Slate Semi-Transparent) -->
@@ -76,14 +76,14 @@
     <line x1="256" y1="240" x2="377" y2="170" stroke="#f8fafc" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round" />
     <line x1="256" y1="240" x2="256" y2="380" stroke="#f8fafc" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round" />
 
-    <!-- CAD Vertex Nodes (Glowing Blue Anchors) -->
-    <circle cx="256" cy="100" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="135" cy="170" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="377" cy="170" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="256" cy="240" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="135" cy="310" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="377" cy="310" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
-    <circle cx="256" cy="380" r="7" fill="#38bdf8" stroke="#ffffff" stroke-width="2.5" />
+    <!-- CAD Vertex Nodes (Glowing Orange Anchors) -->
+    <circle cx="256" cy="100" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="135" cy="170" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="377" cy="170" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="256" cy="240" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="135" cy="310" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="377" cy="310" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
+    <circle cx="256" cy="380" r="7" fill="#fb923c" stroke="#ffffff" stroke-width="2.5" />
 
     <!-- Subtly indicate an unfolding action or dimensional label -->
     <!-- Dimension line: distance along the left edge -->
@@ -92,10 +92,10 @@
       <line x1="135" y1="170" x2="95" y2="170" stroke="#94a3b8" stroke-width="1.5" />
       <line x1="135" y1="310" x2="95" y2="310" stroke="#94a3b8" stroke-width="1.5" />
       <!-- Dimension line itself -->
-      <line x1="105" y1="175" x2="105" y2="305" stroke="#38bdf8" stroke-width="2" />
+      <line x1="105" y1="175" x2="105" y2="305" stroke="#fb923c" stroke-width="2" />
       <!-- Dimension arrows -->
-      <line x1="100" y1="180" x2="110" y2="170" stroke="#38bdf8" stroke-width="2" />
-      <line x1="100" y1="315" x2="110" y2="305" stroke="#38bdf8" stroke-width="2" />
+      <line x1="100" y1="180" x2="110" y2="170" stroke="#fb923c" stroke-width="2" />
+      <line x1="100" y1="315" x2="110" y2="305" stroke="#fb923c" stroke-width="2" />
     </g>
   </g>
 </svg>

@@ -105,11 +105,7 @@ export class StepUnfoldPanel extends HTMLElement {
 
         this._highlightFaceButton = button({
             textContent: "検索",
-            className: cn(
-                "pc-shadcn",
-                buttonVariants({ size: "sm" }),
-                style.faceControlButton,
-            ),
+            className: cn("pc-shadcn", buttonVariants({ size: "sm" }), style.faceControlButton),
         });
 
         this._clearHighlightsButton = button({
@@ -335,11 +331,7 @@ export class StepUnfoldPanel extends HTMLElement {
                 div(
                     { className: style.topBar },
                     // Left section: Buttons
-                    div(
-                        { className: style.buttonGroup },
-                        this._faceNumberPopover,
-                        this._pdfExportButton,
-                    ),
+                    div({ className: style.buttonGroup }, this._faceNumberPopover, this._pdfExportButton),
                 ),
                 // Secondary controls (face highlight and PDF settings)
                 this._secondaryControlsContainer,
@@ -1921,7 +1913,9 @@ export class StepUnfoldPanel extends HTMLElement {
         return pageBorders.map((border, index) => {
             const x = parseFloat(border.getAttribute("x") || "0");
             const y = parseFloat(border.getAttribute("y") || "0");
-            const width = parseFloat(border.getAttribute("width") || svgElement.getAttribute("width") || "0");
+            const width = parseFloat(
+                border.getAttribute("width") || svgElement.getAttribute("width") || "0",
+            );
             const height = parseFloat(border.getAttribute("height") || "0");
 
             if (!width || !height) {

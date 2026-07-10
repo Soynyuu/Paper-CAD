@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+from base64 import b64decode
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from fastapi import Response
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 
 from utils.logger import get_logger
 
@@ -15,6 +20,34 @@ DEFAULT_LOCAL_DEMO_CACHE_DIR = (
     Path(__file__).resolve().parent.parent / "data" / "local_demo_cache"
 )
 DEFAULT_LOCAL_DEMO_MANIFEST_PATH = DEFAULT_LOCAL_DEMO_CACHE_DIR / "manifest.json"
+LOCAL_DEMO_IMAGERY_FALLBACK_PNG = b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAACAElEQVR42u3TQQkAAAgEwetfVRAj+"
+    "DaDA5NgYVM98FYkwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwA"
+    "BgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAABlABA4ABwABg"
+    "ADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwA"
+    "BgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAA"
+    "MAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAG"
+    "AAMAAYAAwABsAAKmAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAA"
+    "MAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADAAGAAMAAYAAOAAcAAYAAwA"
+    "BgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYA"
+    "AwABgADAAGAAOAAcAAYAAwABgADAAGgGsBEc8pyAvhBkIAAAAASUVORK5CYII="
+)
+
+
+class LocalDemoStaticFiles(StaticFiles):
+    """Serve cached demo files and fill only missing imagery tiles."""
+
+    async def get_response(self, path: str, scope: Dict[str, Any]) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as error:
+            if error.status_code != 404 or not path.startswith("imagery/"):
+                raise
+            return Response(
+                content=LOCAL_DEMO_IMAGERY_FALLBACK_PNG,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
 
 
 @dataclass(frozen=True)

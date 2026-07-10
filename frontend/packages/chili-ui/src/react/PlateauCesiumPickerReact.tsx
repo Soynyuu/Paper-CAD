@@ -120,7 +120,9 @@ interface TooltipButtonProps extends ButtonProps {
 function TooltipButton({ label, children, ...buttonProps }: TooltipButtonProps) {
     return (
         <Tooltip.Root>
-            <Tooltip.Trigger render={<Button variant="outline" size="sm" {...buttonProps} aria-label={label} />}>
+            <Tooltip.Trigger
+                render={<Button variant="outline" size="sm" {...buttonProps} aria-label={label} />}
+            >
                 {children}
             </Tooltip.Trigger>
             <Tooltip.Portal>
@@ -1084,7 +1086,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         open={showResults}
                         openOnInputClick
                     >
-                                  <Tabs.Root
+                        <Tabs.Root
                             className={`${styles.searchModes} ${showDetails ? styles.visible : ""}`}
                             value={searchMode}
                             onValueChange={handleSearchModeChange}
@@ -1121,9 +1123,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                 ref={searchInputRef}
                                 className={styles.searchInput}
                                 placeholder={
-                                    searchMode === "buildingId"
-                                        ? "建物IDを入力"
-                                        : "場所や施設を検索"
+                                    searchMode === "buildingId" ? "建物IDを入力" : "場所や施設を検索"
                                 }
                                 onFocus={handleSearchFocus}
                                 onKeyDown={handleSearchKeyDown}
@@ -1159,8 +1159,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                 検索
                             </Button>
                         </div>
-
-
 
                         {showResults && <div className={styles.searchDivider} />}
 
@@ -1209,7 +1207,6 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                             )}
                         </Autocomplete.List>
                     </Autocomplete.Root>
-
                 </form>
             </div>
         );
@@ -1230,8 +1227,7 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                         {isSearchStage ? (
                             <div className={styles.searchStage}>
                                 <div className={styles.stageLogo} aria-hidden="true">
-                                    <span>Paper</span>
-                                    <span>CAD</span>
+                                    PaperCAD
                                 </div>
                                 <Dialog.Close
                                     render={

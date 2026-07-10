@@ -9,16 +9,12 @@ test("PLATEAU unfold forwards fit-page scale mode", async () => {
     global.fetch = fetchMock as any;
 
     const service = new CityGMLService("http://example.test/api");
-    const result = await service.unfoldTexturedByBuildingIdAndMesh(
-        "bldg_test",
-        "53393586",
-        {
-            scaleMode: "fitPage",
-            scaleFactor: 150,
-            pageFormat: "A4",
-            pageOrientation: "portrait",
-        },
-    );
+    const result = await service.unfoldTexturedByBuildingIdAndMesh("bldg_test", "53393586", {
+        scaleMode: "fitPage",
+        scaleFactor: 150,
+        pageFormat: "A4",
+        pageOrientation: "portrait",
+    });
 
     expect(result.isOk).toBe(true);
     const request = fetchMock.mock.calls[0][1] as RequestInit;

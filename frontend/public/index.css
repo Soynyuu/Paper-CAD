@@ -18,8 +18,7 @@ body {
     --font-family-sans:
         "Inter", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Hiragino Sans",
         "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Segoe UI", sans-serif;
-    --font-family-mono:
-        "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --font-family-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 :root[theme="light"] {

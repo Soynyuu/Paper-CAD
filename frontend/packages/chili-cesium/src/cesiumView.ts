@@ -323,10 +323,7 @@ export class CesiumView {
             this.viewer.scene?.requestRender();
             return;
         } catch (error) {
-            console.warn(
-                `[CesiumView] Failed to load PLATEAU terrain from ${terrainUrl}.`,
-                error,
-            );
+            console.warn(`[CesiumView] Failed to load PLATEAU terrain from ${terrainUrl}.`, error);
         }
 
         if (appConfig?.cesiumOfflineMode) {

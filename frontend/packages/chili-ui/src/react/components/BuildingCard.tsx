@@ -48,9 +48,7 @@ export function BuildingCard({ building, index, onRemove }: BuildingCardProps) {
     return (
         <div className={styles.buildingCard}>
             <div className={styles.cardHeader}>
-                <div className={styles.buildingName}>
-                    {building.properties.name || `建物 ${index + 1}`}
-                </div>
+                <div className={styles.buildingName}>{building.properties.name || `建物 ${index + 1}`}</div>
                 <Tooltip.Root>
                     <Tooltip.Trigger
                         render={

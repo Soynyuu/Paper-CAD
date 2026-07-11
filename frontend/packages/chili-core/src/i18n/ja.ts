@@ -349,6 +349,8 @@ export default {
         "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}":
             "{0}件の建物を取り込みました（{1}件失敗: {2}）",
         "toast.plateau.importFailed:{0}": "建物の取り込みに失敗しました: {0}",
+        "toast.plateau.lodFallback:{0}:{1}:{2}":
+            "{0} は指定した {1} を使用できなかったため {2} で取り込みました",
         "toast.plateau.tilesetLoadFailed:{0}": "一部のメッシュ読み込みに失敗しました（{0}件）",
         "toast.stepUnfold.success": "展開図を生成しました",
         "toast.stepUnfold.error": "展開図の生成に失敗しました",

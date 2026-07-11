@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 class BrepPapercraftRequest(BaseModel):
     """STEP to SVG/PDF unfold request parameters (STEP → 展開図変換リクエストパラメータ)"""
@@ -174,6 +174,7 @@ class BuildingInfoResponse(BaseModel):
     name_similarity: Optional[float] = None  # Name matching score (0.0-1.0)
     match_reason: Optional[str] = None  # Explanation of why this building matched
     municipality_code: Optional[str] = None  # CityGML catalog municipality code
+    has_lod1: bool = False  # Does the building have LOD1 geometry?
     has_lod2: bool = False  # Does the building have LOD2 geometry?
     has_lod3: bool = False  # Does the building have LOD3 geometry?
 
@@ -287,6 +288,11 @@ class PlateauBuildingIdWithMeshRequest(BaseModel):
         description="デバッグモード / Debug mode",
         example=False
     )
+    lod_target: Optional[Literal["auto", "LOD2", "LOD1"]] = Field(
+        default="auto",
+        description="使用するLOD / Target LOD (auto/LOD2/LOD1)",
+        example="auto",
+    )
 
 
 class PlateauTexturedUnfoldRequest(BaseModel):
@@ -334,6 +340,11 @@ class PlateauTexturedUnfoldRequest(BaseModel):
         default=False,
         description="デバッグモード / Debug mode",
         example=False
+    )
+    lod_target: Optional[Literal["auto", "LOD2", "LOD1"]] = Field(
+        default="auto",
+        description="使用するLOD / Target LOD (auto/LOD2/LOD1)",
+        example="auto",
     )
 
     # Unfold settings (compatible with BrepPapercraftRequest)

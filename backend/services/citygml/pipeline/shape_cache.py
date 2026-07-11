@@ -1,7 +1,8 @@
 """
 In-memory LRU cache for per-building STEP shapes (Issue #192).
 
-Caches TopoDS_Shape objects keyed by (gml_id, precision_mode, shape_fix_level)
+Caches TopoDS_Shape objects keyed by
+(gml_id, precision_mode, shape_fix_level, lod_target)
 to avoid re-processing the same building when:
 - The same building appears in multiple API requests
 - A multi-building batch includes duplicates
@@ -12,11 +13,24 @@ keeps them alive in memory.
 """
 
 from collections import OrderedDict
-from typing import Any, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional, Tuple, Union
 import threading
 
-# Cache key: (gml_id, precision_mode, shape_fix_level)
-CacheKey = Tuple[str, str, str]
+# Cache key: (gml_id, precision_mode, shape_fix_level, lod_target)
+CacheKey = Tuple[str, str, str, str]
+
+
+@dataclass(frozen=True)
+class CachedShape:
+    shape: Any
+    used_lods: Tuple[str, ...]
+
+    @property
+    def lod_used(self) -> str:
+        if len(self.used_lods) == 1:
+            return self.used_lods[0]
+        return "mixed" if self.used_lods else "unknown"
 
 
 class ShapeCache:
@@ -28,13 +42,13 @@ class ShapeCache:
 
     Usage:
         cache = ShapeCache(max_size=128)
-        key = ("bldg_abc123", "ultra", "minimal")
+        key = ("bldg_abc123", "ultra", "minimal", "LOD2")
 
         # Check cache before expensive computation
         shape = cache.get(key)
         if shape is None:
             shape = expensive_build_shape(...)
-            cache.put(key, shape)
+            cache.put(key, shape, "LOD2")
     """
 
     def __init__(self, max_size: int = 128):
@@ -44,7 +58,7 @@ class ShapeCache:
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: CacheKey) -> Optional[Any]:
+    def get(self, key: CacheKey) -> Optional[CachedShape]:
         """
         Look up a cached shape. Returns None on miss.
         Moves the entry to the end (most recently used) on hit.
@@ -57,18 +71,25 @@ class ShapeCache:
             self._misses += 1
             return None
 
-    def put(self, key: CacheKey, shape: Any) -> None:
+    def put(
+        self, key: CacheKey, shape: Any, used_lods: Union[str, Iterable[str]]
+    ) -> None:
         """
         Store a shape in the cache. Evicts LRU entry if at capacity.
         """
+        normalized_lods = (
+            (used_lods,)
+            if isinstance(used_lods, str)
+            else tuple(sorted(set(used_lods)))
+        )
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
-                self._cache[key] = shape
+                self._cache[key] = CachedShape(shape=shape, used_lods=normalized_lods)
             else:
                 if len(self._cache) >= self._max_size:
                     self._cache.popitem(last=False)  # Evict LRU
-                self._cache[key] = shape
+                self._cache[key] = CachedShape(shape=shape, used_lods=normalized_lods)
 
     def clear(self) -> None:
         """Clear all cached entries."""

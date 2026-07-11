@@ -7,7 +7,7 @@ import time
 import hashlib
 import copy
 from collections import OrderedDict
-from typing import List, Optional, Dict, Any, Union, Tuple, Set
+from typing import List, Optional, Dict, Any, Union, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
@@ -71,6 +71,47 @@ def _source_triangles(source: Dict[str, Any]) -> np.ndarray:
     return vertices[:triangle_vertex_count].reshape((-1, 3, 3))
 
 
+def _curved_face_sample_points(face: Dict[str, Any], max_points: int = 32) -> np.ndarray:
+    """Return distributed boundary points that are known to lie on a curved face."""
+    if face.get("surface_type") == "plane":
+        return np.empty((0, 3), dtype=float)
+
+    points = []
+    for boundary in face.get("boundary_curves", []):
+        for point in boundary:
+            if len(point) >= 3:
+                values = np.asarray(point[:3], dtype=float)
+                if np.all(np.isfinite(values)):
+                    points.append(values)
+    if not points:
+        return np.empty((0, 3), dtype=float)
+
+    unique_points = np.unique(np.round(np.asarray(points), decimals=9), axis=0)
+    if len(unique_points) <= max_points:
+        return unique_points
+    sample_indices = np.linspace(0, len(unique_points) - 1, max_points, dtype=int)
+    return unique_points[sample_indices]
+
+
+def _face_to_source_surface_distance(
+    face_center: np.ndarray,
+    curved_samples: np.ndarray,
+    triangles: np.ndarray,
+    fallback_distance: float,
+) -> float:
+    if len(triangles) == 0:
+        return fallback_distance
+    if len(curved_samples) == 0:
+        return min(_point_triangle_distance(face_center, triangle) for triangle in triangles)
+
+    sample_distances = [
+        min(_point_triangle_distance(point, triangle) for triangle in triangles)
+        for point in curved_samples
+    ]
+    # A high percentile rejects an adjacent face that only shares one boundary edge.
+    return float(np.percentile(sample_distances, 75.0))
+
+
 def match_source_face_descriptors(
     faces_data: List[Dict[str, Any]],
     source_descriptors: List[Dict[str, Any]],
@@ -89,6 +130,7 @@ def match_source_face_descriptors(
     distance_scale = max(diagonal, 1.0)
 
     source_triangles = [_source_triangles(source) for source in source_descriptors]
+    curved_face_samples = [_curved_face_sample_points(face) for face in faces_data]
     matches: List[Tuple[int, int]] = []
     unmatched_faces: List[int] = []
     for face_index, face in enumerate(faces_data):
@@ -112,10 +154,11 @@ def match_source_face_descriptors(
                 if denominator > 1e-12:
                     normal_error = 1.0 - abs(float(np.dot(left, right)) / denominator)
             triangles = source_triangles[source_index]
-            surface_distance = (
-                min(_point_triangle_distance(face_centers[face_index], triangle) for triangle in triangles)
-                if len(triangles) > 0
-                else center_distance
+            surface_distance = _face_to_source_surface_distance(
+                face_centers[face_index],
+                curved_face_samples[face_index],
+                triangles,
+                center_distance,
             )
             bounds = source.get("bounds") or {}
             minimum = np.asarray(bounds.get("min", source_centers[source_index]), dtype=float)
@@ -135,7 +178,8 @@ def match_source_face_descriptors(
                 best_source_index = source_index
                 best_surface_distance = surface_distance
 
-        tolerance = max(distance_scale * 0.002, 1e-4)
+        tolerance_ratio = 0.01 if len(curved_face_samples[face_index]) > 0 else 0.002
+        tolerance = max(distance_scale * tolerance_ratio, 1e-4)
         if best_source_index is not None and best_surface_distance <= tolerance:
             matches.append((face_index, best_source_index))
         else:
@@ -236,7 +280,7 @@ class StepUnfoldGenerator:
         )
         self._face_match_warnings: List[Dict[str, Any]] = []
         self._source_face_descriptors: List[Dict[str, Any]] = []
-        self._exported_face_numbers: Optional[Set[int]] = None
+        self._exported_face_number_map: Optional[Dict[int, int]] = None
 
         # レイアウトマネージャー
         self.layout_manager = LayoutManager(scale_factor=self.scale_factor)
@@ -1031,17 +1075,21 @@ class StepUnfoldGenerator:
             raise ValueError(f"BREP展開図生成エラー: {str(e)}")
 
     def _remember_exported_face_numbers(self, groups) -> None:
-        """Record exactly the numbers that the SVG exporter can label."""
-        exported: Set[int] = set()
+        """Map every exported source face number to its SVG group label."""
+        exported: Dict[int, int] = {}
         for group in groups:
             if not group.get("polygons"):
                 continue
             face_numbers = group.get("face_numbers") or []
             # SVGExporter emits one label per placed group using its first number.
-            face_number = face_numbers[0] if face_numbers else None
-            if face_number is not None:
-                exported.add(int(face_number))
-        self._exported_face_numbers = exported
+            representative = face_numbers[0] if face_numbers else None
+            if representative is None:
+                continue
+            representative = int(representative)
+            for face_number in face_numbers:
+                if face_number is not None:
+                    exported.setdefault(int(face_number), representative)
+        self._exported_face_number_map = exported
 
     def get_face_numbers(self) -> List[Dict[str, int]]:
         """
@@ -1058,14 +1106,14 @@ class StepUnfoldGenerator:
                 face_number = face_data.get("face_number", face_index + 1)
                 if face_number is None:
                     continue
-                if (
-                    self._exported_face_numbers is not None
-                    and face_number not in self._exported_face_numbers
-                ):
-                    continue
+                displayed_face_number = face_number
+                if self._exported_face_number_map is not None:
+                    displayed_face_number = self._exported_face_number_map.get(int(face_number))
+                    if displayed_face_number is None:
+                        continue
                 item = {
                     "faceIndex": face_data.get("source_face_index", face_data.get("index", face_index)),
-                    "faceNumber": face_number,
+                    "faceNumber": displayed_face_number,
                 }
                 if "source_node_index" in face_data:
                     item["nodeIndex"] = face_data["source_node_index"]

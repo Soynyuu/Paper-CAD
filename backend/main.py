@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 import uvicorn
 from config import create_app, OCCT_AVAILABLE
 from fastapi import Request
@@ -8,16 +9,9 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# FastAPIアプリケーションの作成
-app = create_app()
-
-# APIルーターの追加
-app.include_router(router)
-
-
 # 起動時の初期化処理
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(_app):
     """
     サーバー起動時に実行される初期化処理
 
@@ -31,6 +25,14 @@ async def startup_event():
     except Exception as e:
         logger.error("Failed to initialize PLATEAU mesh mapping: %s", e)
         logger.warning("PLATEAU search functionality may be limited")
+    yield
+
+
+# FastAPIアプリケーションの作成
+app = create_app(lifespan=lifespan)
+
+# APIルーターの追加
+app.include_router(router)
 
 
 # ルートパスでAPI情報を返す

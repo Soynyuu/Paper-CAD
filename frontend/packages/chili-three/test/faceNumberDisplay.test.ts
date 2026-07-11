@@ -156,11 +156,11 @@ test("same backend face numbers keep all matching markers", () => {
     expect(display.getFaceNumberOccurrences(312)).toBe(2);
     expect(display.getMultiFaceNumbers()).toEqual([{ faceNumber: 312, count: 2 }]);
     expect(display.focusFace(312)).toBe(true);
-    expect(
-        Array.from((display as any).sprites.values()).filter(
-            (sprite: any) => sprite.userData.faceNumber === 312,
-        ),
-    ).toHaveLength(2);
+    const matchingSprites = Array.from((display as any).sprites.values()).filter(
+        (sprite: any) => sprite.userData.faceNumber === 312,
+    ) as any[];
+    expect(matchingSprites).toHaveLength(2);
+    expect(matchingSprites.every((sprite) => sprite.userData.highlighted === true)).toBe(true);
 });
 
 test("highlighting a face creates a 3D face overlay, not only a number label", () => {

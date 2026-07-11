@@ -4,7 +4,7 @@
 import React from "react";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { X } from "lucide-react";
-import { I18n } from "chili-core";
+import { I18n, type LodTarget } from "chili-core";
 import type { PickedBuilding } from "chili-cesium";
 import { Button } from "./ui/button";
 import styles from "./BuildingCard.module.css";
@@ -13,6 +13,16 @@ export interface BuildingCardProps {
     building: PickedBuilding;
     index: number;
     onRemove: (gmlId: string) => void;
+    lodTarget: LodTarget;
+    lodAvailability?: BuildingLodAvailability;
+    onLodTargetChange: (gmlId: string, lodTarget: LodTarget) => void;
+}
+
+export interface BuildingLodAvailability {
+    status: "loading" | "ready" | "error";
+    hasLod1: boolean;
+    hasLod2: boolean;
+    hasLod3: boolean;
 }
 
 // PLATEAU usage code to Japanese label mapping
@@ -34,7 +44,14 @@ const USAGE_CODE_MAP: Record<string, string> = {
  * Shows building name, height, usage type, and GML ID.
  * Includes a remove button to deselect the building.
  */
-export function BuildingCard({ building, index, onRemove }: BuildingCardProps) {
+export function BuildingCard({
+    building,
+    index,
+    onRemove,
+    lodTarget,
+    lodAvailability,
+    onLodTargetChange,
+}: BuildingCardProps) {
     const height = building.properties.measuredHeight || 0;
     const usageLabel = building.properties.usage
         ? USAGE_CODE_MAP[building.properties.usage] || building.properties.usage
@@ -78,6 +95,31 @@ export function BuildingCard({ building, index, onRemove }: BuildingCardProps) {
                 <div>{usageLabel}</div>
             </div>
             <div className={styles.cardId}>{building.gmlId}</div>
+            <label className={styles.lodField}>
+                <span>インポートLOD</span>
+                <select
+                    className={styles.lodSelect}
+                    value={lodTarget}
+                    onChange={(event) => onLodTargetChange(building.gmlId, event.target.value as LodTarget)}
+                >
+                    <option value="auto">自動（最高LOD）</option>
+                    {lodAvailability?.status === "ready" && lodAvailability.hasLod2 && (
+                        <option value="LOD2">LOD2</option>
+                    )}
+                    {lodAvailability?.status === "ready" && lodAvailability.hasLod1 && (
+                        <option value="LOD1">LOD1</option>
+                    )}
+                </select>
+                {lodAvailability?.status === "loading" && (
+                    <span className={styles.lodStatus}>利用可能なLODを確認中…</span>
+                )}
+                {lodAvailability?.status === "error" && (
+                    <span className={styles.lodStatus}>LODを取得できないため自動を使用します</span>
+                )}
+                {lodAvailability?.status === "ready" && lodAvailability.hasLod3 && (
+                    <span className={styles.lodStatus}>自動ではLOD3が優先されます</span>
+                )}
+            </label>
         </div>
     );
 }

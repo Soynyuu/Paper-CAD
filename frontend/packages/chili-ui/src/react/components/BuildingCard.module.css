@@ -68,6 +68,31 @@
     text-overflow: ellipsis;
 }
 
+.lodField {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--neutral-600);
+}
+
+.lodSelect {
+    width: 100%;
+    min-height: 30px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--panel-background-color);
+    color: var(--foreground-color);
+    padding: 4px 8px;
+    font: inherit;
+}
+
+.lodStatus {
+    color: var(--neutral-500);
+    line-height: 1.35;
+}
+
 .tooltipPopup {
     padding: 5px 8px;
     border-radius: var(--radius-sm, 4px);

@@ -2,9 +2,9 @@
 // See LICENSE file in the project root for full license information.
 
 import React from "react";
-import { I18n } from "chili-core";
+import { I18n, type LodTarget } from "chili-core";
 import type { PickedBuilding } from "chili-cesium";
-import { BuildingCard } from "./BuildingCard";
+import { BuildingCard, type BuildingLodAvailability } from "./BuildingCard";
 import {
     ScrollArea,
     ScrollAreaContent,
@@ -21,6 +21,9 @@ export interface SidebarProps {
     onImport: () => void;
     onUnfoldBeta: () => void;
     onClear: () => void;
+    lodTargetByGmlId: Record<string, LodTarget>;
+    lodAvailabilityByGmlId: Record<string, BuildingLodAvailability>;
+    onLodTargetChange: (gmlId: string, lodTarget: LodTarget) => void;
 }
 
 /**
@@ -29,7 +32,16 @@ export interface SidebarProps {
  * Shows list of selected buildings with remove buttons.
  * Footer includes Import and Clear buttons.
  */
-export function Sidebar({ selectedBuildings, onRemove, onImport, onUnfoldBeta, onClear }: SidebarProps) {
+export function Sidebar({
+    selectedBuildings,
+    onRemove,
+    onImport,
+    onUnfoldBeta,
+    onClear,
+    lodTargetByGmlId,
+    lodAvailabilityByGmlId,
+    onLodTargetChange,
+}: SidebarProps) {
     const count = selectedBuildings.length;
     const canImport = count > 0;
 
@@ -58,6 +70,9 @@ export function Sidebar({ selectedBuildings, onRemove, onImport, onUnfoldBeta, o
                                     building={building}
                                     index={index}
                                     onRemove={onRemove}
+                                    lodTarget={lodTargetByGmlId[building.gmlId] ?? "auto"}
+                                    lodAvailability={lodAvailabilityByGmlId[building.gmlId]}
+                                    onLodTargetChange={onLodTargetChange}
                                 />
                             ))
                         )}

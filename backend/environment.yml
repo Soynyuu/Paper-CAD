@@ -191,6 +191,7 @@ dependencies:
   - shapely=2.0.7  # Polygon intersection detection
   - geopy=2.4.1  # Geocoding (address → coordinates)
   - requests=2.32.3  # HTTP library for API calls
+  - chardet=5.2.0  # Keep requests-compatible encoding detection (reportlab dependency)
   - pyproj  # Coordinate transformation for CityGML (auto-select compatible version)
   - tqdm  # Progress bar for scripts
   - pip:

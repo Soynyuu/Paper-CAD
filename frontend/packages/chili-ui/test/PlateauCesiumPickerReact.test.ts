@@ -195,6 +195,9 @@ test("sidebar disables actions with no selection and calls remove for selected b
             onImport: jest.fn(),
             onUnfoldBeta: jest.fn(),
             onClear: jest.fn(),
+            lodTargetByGmlId: {},
+            lodAvailabilityByGmlId: {},
+            onLodTargetChange: jest.fn(),
         }),
     );
 
@@ -207,10 +210,22 @@ test("sidebar disables actions with no selection and calls remove for selected b
             onImport: jest.fn(),
             onUnfoldBeta: jest.fn(),
             onClear: jest.fn(),
+            lodTargetByGmlId: { bldg_selected: "auto" },
+            lodAvailabilityByGmlId: {
+                bldg_selected: {
+                    status: "ready",
+                    hasLod1: true,
+                    hasLod2: true,
+                    hasLod3: true,
+                },
+            },
+            onLodTargetChange: jest.fn(),
         }),
     );
 
     expect(screen.getByText("選択中の建物")).toBeTruthy();
+    expect(screen.getByRole("option", { name: "LOD2" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "LOD1" })).toBeTruthy();
     await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: "Remove 選択中の建物" }));
     });

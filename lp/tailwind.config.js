@@ -8,13 +8,13 @@ export default {
     extend: {
       colors: {
         brand: {
-          orange: '#FF6A00',
-          black: '#111111',
-          gray: '#F4F5F7',
+          orange: '#F05A28',
+          black: '#181715',
+          gray: '#F7F4EE',
         }
       },
       fontFamily: {
-        sans: ['"Noto Sans JP"', 'sans-serif'],
+        sans: ['"Gen Interface JP"', '"Noto Sans JP"', 'sans-serif'],
         mono: ['"Roboto Mono"', 'monospace'],
       },
       letterSpacing: {

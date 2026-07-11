@@ -186,6 +186,7 @@ async def plateau_search_by_address(request: PlateauSearchRequest):
                 name_similarity=b.name_similarity,
                 match_reason=b.match_reason,
                 municipality_code=b.municipality_code,
+                has_lod1=b.has_lod1,
                 has_lod2=b.has_lod2,
                 has_lod3=b.has_lod3,
             )
@@ -607,6 +608,7 @@ async def plateau_search_by_building_id(request: PlateauBuildingIdRequest):
             match_reason=building_data.match_reason,
             municipality_code=building_data.municipality_code
             or result.get("municipality_code"),
+            has_lod1=building_data.has_lod1,
             has_lod2=building_data.has_lod2,
             has_lod3=building_data.has_lod3,
         )
@@ -880,6 +882,7 @@ async def plateau_search_by_id_and_mesh(request: PlateauBuildingIdWithMeshReques
             name_similarity=building_data.name_similarity,
             match_reason=building_data.match_reason,
             municipality_code=building_data.municipality_code,
+            has_lod1=building_data.has_lod1,
             has_lod2=building_data.has_lod2,
             has_lod3=building_data.has_lod3,
         )
@@ -1031,6 +1034,7 @@ async def plateau_batch_search_buildings(request: PlateauBatchBuildingRequest):
                             name_similarity=building_data.name_similarity,
                             match_reason=building_data.match_reason,
                             municipality_code=building_data.municipality_code,
+                            has_lod1=building_data.has_lod1,
                             has_lod2=building_data.has_lod2,
                             has_lod3=building_data.has_lod3,
                         )
@@ -1161,6 +1165,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         logger.info(f"[API] Mesh Code: {request.mesh_code}")
         logger.info(f"[API] Precision Mode: {request.precision_mode}")
         logger.info(f"[API] Shape Fix Level: {request.shape_fix_level}")
+        logger.info(f"[API] LOD Target: {request.lod_target}")
         logger.info(f"{'=' * 60}\n")
 
         # Step 1: Search for building by ID + mesh code
@@ -1207,6 +1212,7 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
         try:
             # Export to STEP with specified building ID filter
             t_step2 = _time.time()
+            conversion_report: Dict[str, Any] = {}
             success, message = await loop.run_in_executor(
                 None,
                 partial(
@@ -1220,6 +1226,8 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                     precision_mode=request.precision_mode,
                     shape_fix_level=request.shape_fix_level,
                     merge_building_parts=request.merge_building_parts,
+                    lod_target=request.lod_target or "auto",
+                    conversion_report=conversion_report,
                     debug=request.debug,
                 ),
             )
@@ -1249,6 +1257,15 @@ async def plateau_fetch_by_id_and_mesh(request: PlateauBuildingIdWithMeshRequest
                 path=tmp_step_path,
                 media_type="application/octet-stream",
                 filename=step_file_name,
+                headers={
+                    "X-LOD-Requested": str(
+                        conversion_report.get("lod_requested", request.lod_target or "auto")
+                    ),
+                    "X-LOD-Used": str(conversion_report.get("lod_used", "unknown")),
+                    "X-LOD-Fallback": str(
+                        bool(conversion_report.get("lod_fallback", False))
+                    ).lower(),
+                },
                 background=BackgroundTasks(),
             )
 
@@ -1319,6 +1336,7 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
         logger.info(f"[API] /api/plateau/unfold-textured-by-id-and-mesh")
         logger.info(f"[API] Building ID: {request.building_id}")
         logger.info(f"[API] Mesh Code: {request.mesh_code}")
+        logger.info(f"[API] LOD Target: {request.lod_target}")
         logger.info(
             f"[API] Layout: {request.layout_mode}, Page: {request.page_format}/{request.page_orientation}"
         )
@@ -1361,6 +1379,7 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
             tempfile.gettempdir(), f"plateau_textured_unfold_{uuid.uuid4()}.step"
         )
 
+        conversion_report: Dict[str, Any] = {}
         success, message = await loop.run_in_executor(
             None,
             partial(
@@ -1376,6 +1395,8 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
                 precision_mode=request.precision_mode or "ultra",
                 shape_fix_level=request.shape_fix_level or "minimal",
                 merge_building_parts=request.merge_building_parts or False,
+                lod_target=request.lod_target or "auto",
+                conversion_report=conversion_report,
                 debug=request.debug or False,
             ),
         )
@@ -1452,6 +1473,13 @@ async def plateau_unfold_textured_by_id_and_mesh(request: PlateauTexturedUnfoldR
             "building": {
                 "gml_id": target_gml_id,
                 "mesh_code": request.mesh_code,
+                "lod_requested": conversion_report.get(
+                    "lod_requested", request.lod_target or "auto"
+                ),
+                "lod_used": conversion_report.get("lod_used", "unknown"),
+                "lod_fallback": bool(
+                    conversion_report.get("lod_fallback", False)
+                ),
             },
         }
 

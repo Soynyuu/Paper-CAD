@@ -63,12 +63,12 @@ async def citygml_to_step(
     gml_path: Optional[str] = Form(
         None,
         description="サーバーローカルのCityGMLの絶対パス",
-        example="/abs/path/to/53394642_bldg_6697_op.gml",
+        examples=["/abs/path/to/53394642_bldg_6697_op.gml"],
     ),
     limit: Union[int, str, None] = Form(
         None,
         description="処理する建物数の上限（未指定で無制限、正数で制限）",
-        example=10,
+        examples=[10],
     ),
     debug: bool = Form(False, description="デバッグログ出力を有効化"),
     method: str = Form(
@@ -78,12 +78,12 @@ async def citygml_to_step(
     reproject_to: Optional[str] = Form(
         None,
         description="出力の平面直角/投影座標系（例: EPSG:6676）。未指定で自動選択",
-        example="EPSG:6676",
+        examples=["EPSG:6676"],
     ),
     source_crs: Optional[str] = Form(
         None,
         description="入力の座標系を明示（例: EPSG:6697）。未指定ならGMLのsrsNameから推定",
-        example="EPSG:6697",
+        examples=["EPSG:6697"],
     ),
     auto_reproject: bool = Form(
         True,
@@ -92,22 +92,22 @@ async def citygml_to_step(
     precision_mode: str = Form(
         "ultra",
         description="精度モード: standard（標準、0.01%）, high（高精度、0.001%）, maximum（最大精度、0.0001%）, ultra（超高精度、0.00001%、LOD2/LOD3最適化、推奨）, auto（自動）",
-        example="ultra",
+        examples=["ultra"],
     ),
     shape_fix_level: str = Form(
         "minimal",
         description="形状修正レベル: minimal（修正最小、ディティール優先、推奨）, standard（標準）, aggressive（修正強化、堅牢性優先）, ultra（最大修正、LOD2/LOD3最適化）",
-        example="minimal",
+        examples=["minimal"],
     ),
     building_ids: Optional[str] = Form(
         None,
         description="抽出する建物IDのリスト（カンマ区切り）。未指定で全建物を処理。例: 'bldg_12345,bldg_67890'",
-        example="bldg_12345,bldg_67890",
+        examples=["bldg_12345,bldg_67890"],
     ),
     filter_attribute: str = Form(
         "gml:id",
         description="building_idsと照合する属性名。'gml:id'（デフォルト）またはgen:genericAttributeのキー名（例: 'buildingID'）",
-        example="gml:id",
+        examples=["gml:id"],
     ),
 ):
     """

@@ -10,6 +10,7 @@ import {
     ICommand,
     PubSub,
     Transaction,
+    type LodTarget,
 } from "chili-core";
 import type { PlateauCesiumPickerResult } from "chili-ui/src/plateauCesiumPickerDialog";
 
@@ -74,6 +75,7 @@ export class ImportPlateauBuilding implements ICommand {
                             }
 
                             const unfoldOptions = await this.getCurrentUnfoldOptions();
+                            const lodTarget = data.lodTargetByGmlId?.[targetBuilding.gmlId] ?? "auto";
                             const targetMeshCode = this.resolveSearchMeshCode(
                                 targetBuilding.meshCode,
                                 targetBuilding.properties.meshcode,
@@ -91,6 +93,7 @@ export class ImportPlateauBuilding implements ICommand {
                                     pageOrientation: unfoldOptions.pageOrientation,
                                     mirrorHorizontal: unfoldOptions.mirrorHorizontal,
                                     curveMode: unfoldOptions.curveMode,
+                                    lodTarget,
                                 },
                             );
 
@@ -105,6 +108,15 @@ export class ImportPlateauBuilding implements ICommand {
 
                             (PubSub.default as any).pub("stepUnfold.showResult", unfoldResult.value);
                             PubSub.default.pub("showToast", "toast.stepUnfold.success");
+                            if (unfoldResult.value.building?.lod_fallback) {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.lodFallback:{0}:{1}:{2}",
+                                    targetBuilding.properties.name || targetBuilding.gmlId,
+                                    unfoldResult.value.building.lod_requested,
+                                    unfoldResult.value.building.lod_used,
+                                );
+                            }
                             console.log("[ImportPlateauBuilding] Textured unfold generated");
                             return;
                         }
@@ -120,7 +132,13 @@ export class ImportPlateauBuilding implements ICommand {
                             buildings.length.toString(),
                         );
 
-                        const stepBlobs: Blob[] = [];
+                        const successfulImports: Array<{
+                            building: (typeof buildings)[number];
+                            blob: Blob;
+                            requestedLod: LodTarget;
+                            usedLod: string;
+                            lodFallback: boolean;
+                        }> = [];
                         const failedBuildings: string[] = [];
 
                         // Convert each building to STEP
@@ -141,6 +159,7 @@ export class ImportPlateauBuilding implements ICommand {
                                     {
                                         debug: false,
                                         mergeBuildingParts: false,
+                                        lodTarget: data.lodTargetByGmlId?.[building.gmlId] ?? "auto",
                                     },
                                 );
 
@@ -153,7 +172,13 @@ export class ImportPlateauBuilding implements ICommand {
                                     continue;
                                 }
 
-                                stepBlobs.push(result.value);
+                                successfulImports.push({
+                                    building,
+                                    blob: result.value.blob,
+                                    requestedLod: result.value.requestedLod,
+                                    usedLod: result.value.usedLod,
+                                    lodFallback: result.value.lodFallback,
+                                });
                             } catch (error) {
                                 console.error(
                                     `[ImportPlateauBuilding] Exception converting ${building.gmlId}:`,
@@ -163,7 +188,7 @@ export class ImportPlateauBuilding implements ICommand {
                             }
                         }
 
-                        if (stepBlobs.length === 0) {
+                        if (successfulImports.length === 0) {
                             PubSub.default.pub(
                                 "showToast",
                                 "toast.plateau.allConversionsFailed:{0}",
@@ -174,10 +199,11 @@ export class ImportPlateauBuilding implements ICommand {
 
                         // Import all converted STEP files
                         await Transaction.executeAsync(document, "import PLATEAU buildings", async () => {
-                            for (let i = 0; i < stepBlobs.length; i++) {
-                                const building = buildings[i];
+                            for (let i = 0; i < successfulImports.length; i++) {
+                                const imported = successfulImports[i];
+                                const building = imported.building;
                                 const filename = `plateau_${building.properties.name || building.gmlId.substring(0, 20)}_${i + 1}.step`;
-                                const stepFile = new File([stepBlobs[i]], filename, {
+                                const stepFile = new File([imported.blob], filename, {
                                     type: "application/step",
                                 });
 
@@ -188,12 +214,24 @@ export class ImportPlateauBuilding implements ICommand {
                         // Fit camera and show success
                         document.application.activeView?.cameraController.fitContent();
 
+                        successfulImports
+                            .filter((imported) => imported.lodFallback)
+                            .forEach((imported) => {
+                                PubSub.default.pub(
+                                    "showToast",
+                                    "toast.plateau.lodFallback:{0}:{1}:{2}",
+                                    imported.building.properties.name || imported.building.gmlId,
+                                    imported.requestedLod,
+                                    imported.usedLod,
+                                );
+                            });
+
                         // Success message
                         if (failedBuildings.length > 0) {
                             PubSub.default.pub(
                                 "showToast",
                                 "toast.plateau.importSuccessWithFailures:{0}:{1}:{2}",
-                                stepBlobs.length.toString(),
+                                successfulImports.length.toString(),
                                 failedBuildings.length.toString(),
                                 failedBuildings.join(", "),
                             );
@@ -201,12 +239,12 @@ export class ImportPlateauBuilding implements ICommand {
                             PubSub.default.pub(
                                 "showToast",
                                 "toast.plateau.importSuccess:{0}",
-                                stepBlobs.length.toString(),
+                                successfulImports.length.toString(),
                             );
                         }
 
                         console.log("[ImportPlateauBuilding] Import successful:", {
-                            succeeded: stepBlobs.length,
+                            succeeded: successfulImports.length,
                             failed: failedBuildings.length,
                         });
                     } catch (error) {

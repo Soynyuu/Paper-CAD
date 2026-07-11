@@ -28,8 +28,9 @@ def _process_building_worker(
     precision_mode: str,
     shape_fix_level: str,
     merge_building_parts: bool,
+    lod_target: str,
     debug: bool,
-) -> Optional[bytes]:
+) -> Optional[Tuple[bytes, Tuple[str, ...]]]:
     """
     Worker function for parallel building processing.
 
@@ -92,12 +93,20 @@ def _process_building_worker(
             merge_building_parts as merge_parts_fn,
         )
 
+        used_lods = set()
+
         def extract_single_solid(bldg_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
             result = extract_building_geometry(
-                bldg_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode
+                bldg_elem,
+                xyz_tx,
+                id_idx,
+                dbg,
+                precision_mode=prec_mode,
+                lod_target=lod_target,
             )
             if not result.exterior_faces:
                 return None
+            used_lods.add(result.lod_level)
             return make_solid_with_cavities(
                 result.exterior_faces,
                 result.interior_shells,
@@ -131,7 +140,7 @@ def _process_building_worker(
         try:
             breptools.Write(shp, tmp_path)
             with open(tmp_path, "rb") as f:
-                return f.read()
+                return f.read(), tuple(sorted(used_lods))
         finally:
             try:
                 os.unlink(tmp_path)
@@ -155,6 +164,7 @@ def process_buildings_parallel(
     precision_mode: str,
     shape_fix_level: str,
     merge_building_parts: bool,
+    lod_target: str,
     debug: bool,
     max_workers: Optional[int] = None,
 ) -> list:
@@ -207,6 +217,7 @@ def process_buildings_parallel(
                 precision_mode,
                 shape_fix_level,
                 merge_building_parts,
+                lod_target,
                 debug,
             )
             future_to_id[future] = building_id
@@ -214,8 +225,9 @@ def process_buildings_parallel(
         for future in as_completed(future_to_id):
             building_id = future_to_id[future]
             try:
-                brep_bytes = future.result()
-                if brep_bytes is not None:
+                worker_result = future.result()
+                if worker_result is not None:
+                    brep_bytes, used_lods = worker_result
                     # Deserialize BREP back to TopoDS_Shape via temp file
                     from OCC.Core.BRep import BRep_Builder
                     from OCC.Core.TopoDS import TopoDS_Shape
@@ -239,24 +251,24 @@ def process_buildings_parallel(
                             pass
 
                     if not shape.IsNull():
-                        results.append((building_id, shape))
+                        results.append((building_id, shape, used_lods))
                         log(
                             f"[PARALLEL] ✓ {building_id[:40]}: Shape deserialized successfully"
                         )
                     else:
-                        results.append((building_id, None))
+                        results.append((building_id, None, used_lods))
                         log(
                             f"[PARALLEL] ✗ {building_id[:40]}: Deserialized shape is null"
                         )
                 else:
-                    results.append((building_id, None))
+                    results.append((building_id, None, ()))
                     log(f"[PARALLEL] ✗ {building_id[:40]}: Worker returned None")
 
             except Exception as e:
-                results.append((building_id, None))
+                results.append((building_id, None, ()))
                 log(f"[PARALLEL] ✗ {building_id[:40]}: Exception: {e}")
 
     log(
-        f"[PARALLEL] Completed: {sum(1 for _, s in results if s is not None)}/{len(results)} buildings successful"
+        f"[PARALLEL] Completed: {sum(1 for _, s, _ in results if s is not None)}/{len(results)} buildings successful"
     )
     return results

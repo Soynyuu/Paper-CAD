@@ -149,7 +149,7 @@ def test_local_demo_search_uses_manifest_building_and_mesh(tmp_path, monkeypatch
                     "jp_tower": {
                         "mesh_code": "53394611",
                         "building_id": "bldg_manifest",
-                        "municipality_code": "13102",
+                        "municipality_code": "13101",
                     }
                 }
             },
@@ -196,5 +196,5 @@ def test_local_demo_search_uses_manifest_building_and_mesh(tmp_path, monkeypatch
     building = result["buildings"][0]
     assert building.gml_id == "bldg_manifest"
     assert building.name == "JPタワー"
-    assert building.municipality_code == "13102"
+    assert building.municipality_code == "13101"
     assert building.match_reason == "local_demo"

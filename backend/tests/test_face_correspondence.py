@@ -36,6 +36,20 @@ def _source(node, index, number, center, area=4.0, normal=(0.0, 0.0, 1.0)):
     }
 
 
+def _mesh_source(node, index, number, positions, indices, center, bounds, area):
+    return {
+        "nodeIndex": node,
+        "faceIndex": index,
+        "faceNumber": number,
+        "centroid": list(center),
+        "area": area,
+        "normal": None,
+        "bounds": {"min": list(bounds[0]), "max": list(bounds[1])},
+        "meshPositions": [coordinate for point in positions for coordinate in point],
+        "meshIndices": indices,
+    }
+
+
 def test_matches_faces_after_step_reorders_them():
     faces = [_face((10.0, 0.0, 0.0)), _face((0.0, 0.0, 0.0))]
     sources = [
@@ -82,6 +96,74 @@ def test_multiple_step_fragments_share_one_source_face_number():
         {"faceIndex": 4, "faceNumber": 9, "nodeIndex": 0},
         {"faceIndex": 4, "faceNumber": 9, "nodeIndex": 0},
     ]
+
+
+def test_curved_face_uses_boundary_samples_instead_of_axis_center():
+    side_points = [
+        (10.0, 0.0, 0.0),
+        (10.0, 0.0, 10.0),
+        (0.0, 10.0, 0.0),
+        (0.0, 10.0, 10.0),
+        (-10.0, 0.0, 0.0),
+        (-10.0, 0.0, 10.0),
+        (0.0, -10.0, 0.0),
+        (0.0, -10.0, 10.0),
+    ]
+    side_indices = [0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4, 4, 5, 6, 5, 7, 6]
+    cap_points = [
+        (-10.0, -10.0, 0.0),
+        (10.0, -10.0, 0.0),
+        (10.0, 10.0, 0.0),
+        (-10.0, 10.0, 0.0),
+    ]
+    sources = [
+        _mesh_source(
+            0, 4, 9, side_points, side_indices, (0.0, 0.0, 5.0),
+            ((-10.0, -10.0, 0.0), (10.0, 10.0, 10.0)), 628.0,
+        ),
+        _mesh_source(
+            0, 5, 10, cap_points, [0, 1, 2, 0, 2, 3], (0.0, 0.0, 0.0),
+            ((-10.0, -10.0, 0.0), (10.0, 10.0, 0.0)), 314.0,
+        ),
+    ]
+    curved_face = {
+        "surface_type": "cylinder",
+        "match_centroid": [0.0, 0.0, 5.0],
+        "centroid": [0.0, 0.0, 5.0],
+        "area": 628.0,
+        "normal_vector": None,
+        "boundary_curves": [
+            [(10.0, 0.0, 0.0), (0.0, 10.0, 0.0), (-10.0, 0.0, 0.0)],
+            [(10.0, 0.0, 10.0), (0.0, 10.0, 10.0), (-10.0, 0.0, 10.0)],
+        ],
+    }
+
+    matches, unmatched = match_source_face_descriptors([curved_face], sources)
+
+    assert matches == [(0, 0)]
+    assert unmatched == []
+
+
+def test_curved_face_without_boundary_samples_remains_unmatched():
+    curved_face = {
+        "surface_type": "cone",
+        "match_centroid": [0.0, 0.0, 5.0],
+        "centroid": [0.0, 0.0, 5.0],
+        "area": 100.0,
+        "normal_vector": None,
+        "boundary_curves": [],
+    }
+    source = _mesh_source(
+        0, 0, 1,
+        [(10.0, 0.0, 0.0), (5.0, 0.0, 10.0), (0.0, 10.0, 0.0)],
+        [0, 1, 2], (0.0, 0.0, 5.0),
+        ((0.0, 0.0, 0.0), (10.0, 10.0, 10.0)), 100.0,
+    )
+
+    matches, unmatched = match_source_face_descriptors([curved_face], [source])
+
+    assert matches == []
+    assert unmatched == [0]
 
 
 def test_rejects_face_outside_matching_tolerance():
@@ -134,6 +216,36 @@ def test_generator_returns_only_numbers_present_in_exported_groups():
 
     assert generator.get_face_numbers() == [
         {"faceIndex": 3, "faceNumber": 20, "nodeIndex": 0}
+    ]
+
+
+def test_generator_maps_all_merged_faces_to_the_exported_representative_number():
+    generator = StepUnfoldGenerator()
+    generator.faces_data = [
+        {"face_number": 10, "source_face_index": 2, "source_node_index": 0},
+        {"face_number": 20, "source_face_index": 3, "source_node_index": 0},
+        {"face_number": 30, "source_face_index": 4, "source_node_index": 0},
+        {"face_number": 40, "source_face_index": 5, "source_node_index": 0},
+    ]
+
+    generator._remember_exported_face_numbers(
+        [
+            {
+                "polygons": [[(0, 0), (1, 0), (0, 1)]],
+                "face_numbers": [10, 20, 30],
+            },
+            {
+                "polygons": [[(2, 0), (3, 0), (2, 1)]],
+                "face_numbers": [40],
+            },
+        ]
+    )
+
+    assert generator.get_face_numbers() == [
+        {"faceIndex": 2, "faceNumber": 10, "nodeIndex": 0},
+        {"faceIndex": 3, "faceNumber": 10, "nodeIndex": 0},
+        {"faceIndex": 4, "faceNumber": 10, "nodeIndex": 0},
+        {"faceIndex": 5, "faceNumber": 40, "nodeIndex": 0},
     ]
 
 

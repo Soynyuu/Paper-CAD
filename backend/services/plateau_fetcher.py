@@ -675,6 +675,7 @@ class BuildingInfo:
     name_similarity: Optional[float] = None
     match_reason: Optional[str] = None
     municipality_code: Optional[str] = None
+    has_lod1: bool = False  # Does the building have LOD1 geometry?
     has_lod2: bool = False  # Does the building have LOD2 geometry?
     has_lod3: bool = False  # Does the building have LOD3 geometry?
 
@@ -1250,7 +1251,7 @@ def parse_buildings_from_citygml(xml_content: str) -> List[BuildingInfo]:
                 name = name_elem.text.strip()
 
         # Detect LOD levels
-        has_lod2, has_lod3 = _detect_lod_levels(
+        has_lod1, has_lod2, has_lod3 = _detect_lod_levels(
             building_elem, building_id=building_id or gml_id
         )
 
@@ -1265,6 +1266,7 @@ def parse_buildings_from_citygml(xml_content: str) -> List[BuildingInfo]:
                 usage=usage,
                 measured_height=measured_height,
                 name=name,
+                has_lod1=has_lod1,
                 has_lod2=has_lod2,
                 has_lod3=has_lod3,
             )
@@ -1386,19 +1388,32 @@ def _extract_building_height(building_elem: ET.Element) -> Optional[float]:
 
 def _detect_lod_levels(
     building_elem: ET.Element, building_id: Optional[str] = None, debug: bool = False
-) -> Tuple[bool, bool]:
+) -> Tuple[bool, bool, bool]:
     """Detect which LOD levels are available for a building.
 
     Returns:
-        (has_lod2, has_lod3) tuple of booleans
+        (has_lod1, has_lod2, has_lod3) tuple of booleans
 
     Detection strategy:
     - LOD3: Check for lod3Solid, lod3MultiSurface, lod3Geometry, or detailed BoundarySurfaces
     - LOD2: Check for lod2Solid, lod2MultiSurface, lod2Geometry, or WallSurface/RoofSurface
     """
+    has_lod1 = False
     has_lod3 = False
     has_lod2 = False
     found_tags = []
+
+    lod1_tags = [
+        ".//bldg:lod1Solid",
+        ".//bldg:lod1MultiSurface",
+        ".//bldg:lod1Geometry",
+    ]
+    for tag in lod1_tags:
+        elem = building_elem.find(tag, NS)
+        if elem is not None:
+            has_lod1 = True
+            found_tags.append(f"LOD1:{tag.split(':')[-1]}")
+            break
 
     if debug:
         building_label = (
@@ -1477,13 +1492,15 @@ def _detect_lod_levels(
             result_str.append("LOD3")
         if has_lod2:
             result_str.append("LOD2")
+        if has_lod1:
+            result_str.append("LOD1")
         if not result_str:
-            result_str.append("LOD1 or lower")
+            result_str.append("No supported LOD geometry")
         logger.debug(
             f"[LOD DEBUG]   Result: {', '.join(result_str)} | Tags found: {found_tags or 'none'}"
         )
 
-    return (has_lod2, has_lod3)
+    return (has_lod1, has_lod2, has_lod3)
 
 
 def find_nearest_building(

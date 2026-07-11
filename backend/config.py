@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Callable, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from utils.logger import get_logger
@@ -266,13 +267,18 @@ def setup_cors(app: FastAPI) -> None:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-LOD-Requested", "X-LOD-Used", "X-LOD-Fallback"],
     )
 
     logger.info("CORS: 許可されたオリジン数=%d: %s", len(origins), origins)
 
 
-def create_app() -> FastAPI:
+def create_app(lifespan: Optional[Callable] = None) -> FastAPI:
     """FastAPIアプリケーションを作成する"""
-    app = FastAPI(**APP_CONFIG, openapi_tags=TAGS_METADATA)
+    app = FastAPI(
+        **APP_CONFIG,
+        openapi_tags=TAGS_METADATA,
+        lifespan=lifespan,
+    )
     setup_cors(app)
     return app

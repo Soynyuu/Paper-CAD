@@ -5,6 +5,8 @@ import { IApplication } from "../application";
 import { Result } from "../foundation";
 import { IService } from "../service";
 
+export type LodTarget = "auto" | "LOD2" | "LOD1";
+
 export interface CityGMLConversionOptions {
     defaultHeight?: number;
     limit?: number;
@@ -59,6 +61,7 @@ export interface BuildingInfo {
     usage?: string;
     measured_height?: number;
     building_structure_type?: string;
+    has_lod1?: boolean;
     has_lod2?: boolean;
     has_lod3?: boolean;
     name?: string;
@@ -109,6 +112,7 @@ export interface PlateauBuildingIdSearchOptions {
 export interface PlateauBuildingIdWithMeshSearchOptions {
     debug?: boolean;
     mergeBuildingParts?: boolean;
+    lodTarget?: LodTarget;
 }
 
 export interface PlateauTexturedUnfoldOptions extends PlateauBuildingIdWithMeshSearchOptions {
@@ -166,6 +170,20 @@ export interface PlateauTexturedUnfoldResponse {
         details?: any;
     }>;
     texture_stats?: any;
+    building?: {
+        gml_id: string;
+        mesh_code: string;
+        lod_requested: LodTarget;
+        lod_used: string;
+        lod_fallback: boolean;
+    };
+}
+
+export interface PlateauStepImportResult {
+    blob: Blob;
+    requestedLod: LodTarget;
+    usedLod: string;
+    lodFallback: boolean;
 }
 
 export class CityGMLService implements ICityGMLService {
@@ -523,7 +541,7 @@ export class CityGMLService implements ICityGMLService {
         buildingId: string,
         meshCode: string,
         options?: PlateauBuildingIdWithMeshSearchOptions,
-    ): Promise<Result<Blob>> {
+    ): Promise<Result<PlateauStepImportResult>> {
         try {
             const requestBody = {
                 building_id: buildingId,
@@ -534,6 +552,7 @@ export class CityGMLService implements ICityGMLService {
                 shape_fix_level: "minimal",
                 method: "solid",
                 auto_reproject: true,
+                lod_target: options?.lodTarget ?? "auto",
             };
 
             const response = await fetch(`${this.baseUrl}/plateau/fetch-by-id-and-mesh`, {
@@ -561,7 +580,15 @@ export class CityGMLService implements ICityGMLService {
             }
 
             const blob = await response.blob();
-            return Result.ok(blob);
+            const requestedLod = (response.headers.get("X-LOD-Requested") ||
+                options?.lodTarget ||
+                "auto") as LodTarget;
+            return Result.ok({
+                blob,
+                requestedLod,
+                usedLod: response.headers.get("X-LOD-Used") || "unknown",
+                lodFallback: response.headers.get("X-LOD-Fallback") === "true",
+            });
         } catch (error) {
             if (error instanceof Error) {
                 if (error.message.includes("fetch")) {
@@ -600,6 +627,7 @@ export class CityGMLService implements ICityGMLService {
                 max_faces: options?.maxFaces ?? 20,
                 return_face_numbers: options?.returnFaceNumbers ?? true,
                 curve_mode: options?.curveMode ?? "smooth",
+                lod_target: options?.lodTarget ?? "auto",
             };
 
             const response = await fetch(`${this.baseUrl}/plateau/unfold-textured-by-id-and-mesh`, {

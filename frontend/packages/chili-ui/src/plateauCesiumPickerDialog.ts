@@ -9,6 +9,7 @@ import {
     PubSub,
     CityGMLService,
     type BatchBuildingRequest,
+    type LodTarget,
 } from "chili-core";
 import {
     CesiumBuildingPicker,
@@ -25,6 +26,7 @@ import style from "./dialog.module.css";
 export interface PlateauCesiumPickerResult {
     selectedBuildings: PickedBuilding[];
     action?: "import" | "unfoldBeta";
+    lodTargetByGmlId?: Record<string, LodTarget>;
 }
 
 /**

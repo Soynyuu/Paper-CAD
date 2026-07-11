@@ -5,7 +5,7 @@ This module coordinates all conversion phases (PHASE:0-7) using the refactored m
 It preserves 100% compatibility with the original monolithic implementation.
 """
 
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple, Any, Dict
 import os
 import time
 from datetime import datetime
@@ -327,6 +327,8 @@ def export_step_from_citygml(
     target_longitude: Optional[float] = None,
     radius_meters: float = 100,
     use_streaming: bool = True,
+    lod_target: str = "auto",
+    conversion_report: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str]:
     """
     Convert CityGML building(s) to STEP format (AP214).
@@ -375,6 +377,20 @@ def export_step_from_citygml(
     """
     if not OCCT_AVAILABLE:
         return False, "OCCT is not available; cannot export STEP."
+
+    normalized_lod_target = lod_target or "auto"
+    if normalized_lod_target not in {"auto", "LOD2", "LOD1"}:
+        return False, f"lod_target must be one of auto/LOD2/LOD1, got: {lod_target}"
+    if conversion_report is not None:
+        conversion_report.clear()
+        conversion_report.update(
+            {
+                "lod_requested": normalized_lod_target,
+                "lod_used": "unknown",
+                "lod_fallback": False,
+                "used_lods": [],
+            }
+        )
 
     # Normalize limit
     if limit is not None and limit <= 0:
@@ -623,15 +639,27 @@ def export_step_from_citygml(
     shapes: List[Any] = []  # List[TopoDS_Shape]
     tried_solid = False
     tried_sew = False
+    used_lods: List[str] = []
+    current_used_lods: List[str] = []
+
+    def record_lod(lod_used: str) -> None:
+        if lod_used and lod_used != "unknown":
+            used_lods.append(lod_used)
 
     # Helper function for solid extraction with BuildingPart merging
     def extract_single_solid(building_elem, xyz_tx, id_idx, dbg, prec_mode, fix_level):
         """Extract solid from single building element using LOD extractor."""
         result = extract_building_geometry(
-            building_elem, xyz_tx, id_idx, dbg, precision_mode=prec_mode
+            building_elem,
+            xyz_tx,
+            id_idx,
+            dbg,
+            precision_mode=prec_mode,
+            lod_target=normalized_lod_target,
         )
         if not result.exterior_faces:
             return None
+        current_used_lods.append(result.lod_level)
 
         # Build solid from extracted faces
         return make_solid_with_cavities(
@@ -681,17 +709,27 @@ def export_step_from_citygml(
                 precision_mode=precision_mode,
                 shape_fix_level=shape_fix_level,
                 merge_building_parts=merge_building_parts,
+                lod_target=normalized_lod_target,
                 debug=debug,
             )
 
             shape_cache = get_shape_cache()
-            for building_id, shp in parallel_results:
+            for building_id, shp, building_used_lods in parallel_results:
                 if shp is not None and not shp.IsNull():
+                    for lod_used in building_used_lods:
+                        record_lod(lod_used)
                     if is_valid_shape(shp):
                         shapes.append(shp)
                         count += 1
                         shape_cache.put(
-                            (building_id, precision_mode, shape_fix_level), shp
+                            (
+                                building_id,
+                                precision_mode,
+                                shape_fix_level,
+                                normalized_lod_target,
+                            ),
+                            shp,
+                            building_used_lods,
                         )
                         log(f"[PARALLEL] ✓ {building_id[:40]}: Added (total: {count})")
                     else:
@@ -720,18 +758,26 @@ def export_step_from_citygml(
 
                     # Issue #192: Check shape cache before expensive computation
                     shape_cache = get_shape_cache()
-                    cache_key = (building_id, precision_mode, shape_fix_level)
+                    cache_key = (
+                        building_id,
+                        precision_mode,
+                        shape_fix_level,
+                        normalized_lod_target,
+                    )
                     cached_shape = shape_cache.get(cache_key)
 
                     if cached_shape is not None:
                         log(f"├─ [CACHE] ✓ Cache hit for {building_id[:40]}")
-                        shp = cached_shape
+                        shp = cached_shape.shape
+                        for lod_used in cached_shape.used_lods:
+                            record_lod(lod_used)
                     else:
                         # Use BuildingPart merger for complete extraction
                         # Note: Use local XLink index for streaming mode, shared index for legacy
                         logger.info(
                             f"[PHASE:2]   Extracting geometry (merge_building_parts={merge_building_parts})..."
                         )
+                        current_used_lods.clear()
                         shp = merge_parts_fn(
                             b,
                             extract_single_solid,
@@ -746,7 +792,14 @@ def export_step_from_citygml(
 
                         # Store in cache for future requests
                         if shp is not None and not shp.IsNull():
-                            shape_cache.put(cache_key, shp)
+                            unique_current_lods = sorted(set(current_used_lods))
+                            lod_used = (
+                                unique_current_lods[0]
+                                if len(unique_current_lods) == 1
+                                else ("mixed" if unique_current_lods else "unknown")
+                            )
+                            record_lod(lod_used)
+                            shape_cache.put(cache_key, shp, unique_current_lods)
 
                     if shp is None or shp.IsNull():
                         building_ms = (time.time() - t_building) * 1000
@@ -788,6 +841,17 @@ def export_step_from_citygml(
         log(
             f"[INFO] Shape cache: {cache_stats['size']} entries, {cache_stats['hits']} hits, {cache_stats['misses']} misses ({cache_stats['hit_rate']})"
         )
+        if conversion_report is not None:
+            unique_used_lods = sorted(set(used_lods))
+            conversion_report["used_lods"] = unique_used_lods
+            conversion_report["lod_used"] = (
+                unique_used_lods[0]
+                if len(unique_used_lods) == 1
+                else ("mixed" if unique_used_lods else "unknown")
+            )
+            conversion_report["lod_fallback"] = bool(
+                normalized_lod_target == "LOD2" and "LOD1" in unique_used_lods
+            )
         log(f"")
 
     # -------------------------------------------------------------------------

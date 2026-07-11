@@ -9,7 +9,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { Search, X } from "lucide-react";
-import { DialogResult, I18n, PubSub } from "chili-core";
+import { CityGMLService, DialogResult, I18n, PubSub, type LodTarget } from "chili-core";
 import {
     CesiumView,
     CesiumBuildingPicker,
@@ -19,6 +19,7 @@ import {
 } from "chili-cesium";
 import { selectedBuildingsAtom, loadingAtom, loadingMessageAtom } from "./atoms/cesiumState";
 import { Sidebar } from "./components/Sidebar";
+import type { BuildingLodAvailability } from "./components/BuildingCard";
 import { Loading } from "./components/Loading";
 import { PlateauSearchLoading } from "./components/PlateauSearchLoading";
 import { Button, type ButtonProps } from "./components/ui/button";
@@ -150,6 +151,11 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const perfDefaultsRef = useRef<{ resolutionScale: number; globeMaxSSE: number | null } | null>(null);
 
     const [selectedBuildings, setSelectedBuildings] = useAtom(selectedBuildingsAtom);
+    const [lodTargetByGmlId, setLodTargetByGmlId] = useState<Record<string, LodTarget>>({});
+    const [lodAvailabilityByGmlId, setLodAvailabilityByGmlId] = useState<
+        Record<string, BuildingLodAvailability>
+    >({});
+    const lodAvailabilityCacheRef = useRef<Record<string, BuildingLodAvailability>>({});
     const [loading, setLoading] = useAtom(loadingAtom);
     const [loadingMessage, setLoadingMessage] = useAtom(loadingMessageAtom);
     const [viewerReady, setViewerReady] = useState(false);
@@ -185,6 +191,102 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     const preferredPickLod = Math.min(3, Math.max(1, Number(appConfig?.cesiumPickLod ?? 2)));
     const preferredResolutionScale = clampResolutionScale(appConfig?.cesiumResolutionScale ?? 0.6, 0.6);
     const preferNoTexture = Boolean(appConfig?.cesiumPreferNoTexture);
+
+    useEffect(() => {
+        const selectedIds = new Set(selectedBuildings.map((building) => building.gmlId));
+
+        setLodTargetByGmlId((previous) => {
+            const next: Record<string, LodTarget> = {};
+            selectedBuildings.forEach((building) => {
+                next[building.gmlId] = previous[building.gmlId] ?? "auto";
+            });
+            return next;
+        });
+        setLodAvailabilityByGmlId((previous) => {
+            const next: Record<string, BuildingLodAvailability> = {};
+            selectedIds.forEach((gmlId) => {
+                const cached = lodAvailabilityCacheRef.current[gmlId];
+                if (cached) next[gmlId] = cached;
+                else if (previous[gmlId]) next[gmlId] = previous[gmlId];
+            });
+            return next;
+        });
+
+        const pending = selectedBuildings.filter(
+            (building) => !lodAvailabilityCacheRef.current[building.gmlId],
+        );
+        if (pending.length === 0) return;
+
+        let cancelled = false;
+        const loadingAvailability: BuildingLodAvailability = {
+            status: "loading",
+            hasLod1: false,
+            hasLod2: false,
+            hasLod3: false,
+        };
+        setLodAvailabilityByGmlId((previous) => {
+            const next = { ...previous };
+            pending.forEach((building) => {
+                next[building.gmlId] = loadingAvailability;
+            });
+            return next;
+        });
+
+        const service = new CityGMLService(appConfig?.stepUnfoldApiUrl || "http://localhost:8001/api");
+        void service
+            .batchSearchByBuildingIds(
+                pending.map((building) => ({
+                    buildingId: building.gmlId,
+                    meshCode: building.meshCode,
+                })),
+            )
+            .then((result) => {
+                if (cancelled) return;
+
+                const resolved: Record<string, BuildingLodAvailability> = {};
+                pending.forEach((building) => {
+                    resolved[building.gmlId] = {
+                        status: "error",
+                        hasLod1: false,
+                        hasLod2: false,
+                        hasLod3: false,
+                    };
+                });
+
+                if (result.isOk) {
+                    result.value.results.forEach((item) => {
+                        if (!item.success || !item.building) return;
+                        resolved[item.building.gml_id] = {
+                            status: "ready",
+                            hasLod1: item.building.has_lod1 === true,
+                            hasLod2: item.building.has_lod2 === true,
+                            hasLod3: item.building.has_lod3 === true,
+                        };
+                    });
+                }
+
+                Object.assign(lodAvailabilityCacheRef.current, resolved);
+                setLodAvailabilityByGmlId((previous) => ({ ...previous, ...resolved }));
+                setLodTargetByGmlId((previous) => {
+                    const next = { ...previous };
+                    Object.entries(resolved).forEach(([gmlId, availability]) => {
+                        const target = next[gmlId] ?? "auto";
+                        if (
+                            availability.status !== "ready" ||
+                            (target === "LOD1" && !availability.hasLod1) ||
+                            (target === "LOD2" && !availability.hasLod2)
+                        ) {
+                            next[gmlId] = "auto";
+                        }
+                    });
+                    return next;
+                });
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [appConfig?.stepUnfoldApiUrl, selectedBuildings]);
 
     const applyPerformanceMode = (viewer: Cesium.Viewer) => {
         if (!perfDefaultsRef.current) {
@@ -378,6 +480,16 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
     // Handle remove building
     const handleRemoveBuilding = useCallback(
         (gmlId: string) => {
+            setLodTargetByGmlId((previous) => {
+                const next = { ...previous };
+                delete next[gmlId];
+                return next;
+            });
+            setLodAvailabilityByGmlId((previous) => {
+                const next = { ...previous };
+                delete next[gmlId];
+                return next;
+            });
             const picker = buildingPickerRef.current;
             if (!picker) {
                 setSelectedBuildings((prev) => prev.filter((b) => b.gmlId !== gmlId));
@@ -390,22 +502,34 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
         [setSelectedBuildings],
     );
 
+    const handleLodTargetChange = useCallback((gmlId: string, lodTarget: LodTarget) => {
+        setLodTargetByGmlId((previous) => ({ ...previous, [gmlId]: lodTarget }));
+    }, []);
+
     // Handle import
     const handleImport = useCallback(() => {
         if (selectedBuildings.length === 0) {
             PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
             return;
         }
-        onClose(DialogResult.ok, { selectedBuildings, action: "import" });
-    }, [selectedBuildings, onClose]);
+        onClose(DialogResult.ok, {
+            selectedBuildings,
+            action: "import",
+            lodTargetByGmlId,
+        });
+    }, [selectedBuildings, onClose, lodTargetByGmlId]);
 
     const handleUnfoldBeta = useCallback(() => {
         if (selectedBuildings.length === 0) {
             PubSub.default.pub("showToast", "error.plateau.selectAtLeastOne");
             return;
         }
-        onClose(DialogResult.ok, { selectedBuildings, action: "unfoldBeta" });
-    }, [selectedBuildings, onClose]);
+        onClose(DialogResult.ok, {
+            selectedBuildings,
+            action: "unfoldBeta",
+            lodTargetByGmlId,
+        });
+    }, [selectedBuildings, onClose, lodTargetByGmlId]);
 
     // Handle clear
     const handleClear = useCallback(() => {
@@ -414,6 +538,8 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
             picker.clearSelection();
         }
         setSelectedBuildings([]);
+        setLodTargetByGmlId({});
+        setLodAvailabilityByGmlId({});
     }, [setSelectedBuildings]);
 
     // Handle close
@@ -1297,6 +1423,9 @@ export function PlateauCesiumPickerReact({ onClose }: PlateauCesiumPickerReactPr
                                     onImport={handleImport}
                                     onUnfoldBeta={handleUnfoldBeta}
                                     onClear={handleClear}
+                                    lodTargetByGmlId={lodTargetByGmlId}
+                                    lodAvailabilityByGmlId={lodAvailabilityByGmlId}
+                                    onLodTargetChange={handleLodTargetChange}
                                 />
                             </div>
                         )}

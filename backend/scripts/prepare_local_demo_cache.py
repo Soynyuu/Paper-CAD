@@ -42,6 +42,8 @@ GSI_IMAGERY = {
     ),
 }
 PLATEAU_TERRAIN_URL = "https://tile.plateauview.mlit.go.jp/terrain"
+MAX_TARGET_DISTANCE_METERS = 500.0
+MIN_TARGET_NAME_SIMILARITY = 0.3
 
 
 def request_json(url: str, timeout: int = 60) -> Any:
@@ -144,17 +146,29 @@ def resolve_target_building(
     if target.get("building_id") and target.get("mesh_code"):
         return target
 
-    ranked_candidates: List[Tuple[Any, str, Dict[str, str]]] = []
+    expected_municipality = str(target.get("municipality_code") or "").strip()
+    if not expected_municipality:
+        raise RuntimeError(f"Target {target['name']} is missing municipality_code")
+
+    ranked_candidates: List[Tuple[Any, str, str]] = []
     for mesh_code in target.get("cached_mesh_codes") or [target["mesh_code"]]:
         area_codes = _get_wards_from_mesh(str(mesh_code))
-        if not area_codes:
+        if expected_municipality not in area_codes:
             continue
 
-        cached = _load_gml_from_cache_with_metadata(str(mesh_code), area_codes)
+        # Load only the expected municipality. Combining adjacent municipalities can
+        # overwrite municipality_by_gml_id when their source datasets reuse IDs.
+        cached = _load_gml_from_cache_with_metadata(
+            str(mesh_code), [expected_municipality]
+        )
         if not cached:
             continue
 
-        buildings = parse_buildings_from_citygml(cached.xml_content)
+        buildings = [
+            building
+            for building in parse_buildings_from_citygml(cached.xml_content)
+            if cached.municipality_by_gml_id.get(building.gml_id) == expected_municipality
+        ]
         ranked = find_nearest_building(
             buildings,
             float(target["latitude"]),
@@ -163,10 +177,13 @@ def resolve_target_building(
             search_mode="hybrid",
         )
         if ranked:
-            ranked_candidates.append((ranked[0], str(mesh_code), cached.municipality_by_gml_id))
+            ranked_candidates.append((ranked[0], str(mesh_code), expected_municipality))
 
     if not ranked_candidates:
-        raise RuntimeError(f"No buildings parsed for target {target['name']}")
+        raise RuntimeError(
+            f"No buildings found for target {target['name']} in municipality "
+            f"{expected_municipality}"
+        )
 
     ranked_candidates.sort(
         key=lambda candidate: (
@@ -174,14 +191,62 @@ def resolve_target_building(
             candidate[0].distance_meters,
         )
     )
-    building, mesh_code, municipality_by_gml_id = ranked_candidates[0]
+    building, mesh_code, actual_municipality = ranked_candidates[0]
+    if actual_municipality != expected_municipality:
+        raise RuntimeError(
+            f"Municipality mismatch for target {target['name']} "
+            f"(building={building.gml_id}): expected {expected_municipality}, "
+            f"got {actual_municipality}"
+        )
+    if building.distance_meters > MAX_TARGET_DISTANCE_METERS:
+        raise RuntimeError(
+            f"Building candidate too far from target {target['name']} "
+            f"(building={building.gml_id}): {building.distance_meters:.1f}m > "
+            f"{MAX_TARGET_DISTANCE_METERS:.1f}m"
+        )
+    if (building.name_similarity or 0.0) <= MIN_TARGET_NAME_SIMILARITY:
+        raise RuntimeError(
+            f"Building candidate name does not match target {target['name']} "
+            f"(building={building.gml_id}, name={building.name!r}): similarity "
+            f"{building.name_similarity or 0.0:.3f} <= {MIN_TARGET_NAME_SIMILARITY:.3f}"
+        )
     target["building_id"] = building.gml_id
     target["mesh_code"] = mesh_code
-    target["municipality_code"] = (
-        municipality_by_gml_id.get(building.gml_id)
-        or target.get("municipality_code")
-    )
+    target["municipality_code"] = expected_municipality
     return target
+
+
+def validate_manifest_consistency(manifest: Dict[str, Any]) -> None:
+    """Fail when a target and its cached tileset belong to different municipalities."""
+    tileset_municipalities = {
+        str(item.get("municipality_code"))
+        for item in manifest.get("tilesets", [])
+        if item.get("municipality_code")
+    }
+    errors: List[str] = []
+    static_targets = {target.key: target for target in LOCAL_DEMO_TARGETS}
+    manifest_targets = manifest.get("targets", {})
+
+    for missing_key in sorted(set(static_targets) - set(manifest_targets)):
+        errors.append(f"missing target {missing_key}")
+
+    for key, target in manifest_targets.items():
+        expected = static_targets.get(key)
+        actual_code = str(target.get("municipality_code") or "")
+        if expected is None:
+            errors.append(f"unknown target {key}")
+            continue
+        if actual_code != expected.municipality_code:
+            errors.append(
+                f"{key}: expected municipality {expected.municipality_code}, got {actual_code or 'missing'}"
+            )
+        if not target.get("building_id") or not target.get("mesh_code"):
+            errors.append(f"{key}: missing building_id or mesh_code")
+        if manifest.get("tilesets") and actual_code not in tileset_municipalities:
+            errors.append(f"{key}: no cached tileset for municipality {actual_code or 'missing'}")
+
+    if errors:
+        raise RuntimeError("Invalid local demo manifest: " + "; ".join(errors))
 
 
 def local_tileset_path(cache_dir: Path, municipality_code: str, lod: int) -> Path:
@@ -459,6 +524,7 @@ def main() -> None:
         count = download_terrain(cache_dir, bboxes, parse_zoom_range(args.terrain_zooms))
         print(f"[Terrain] downloaded {count} new tile(s)")
 
+    validate_manifest_consistency(manifest)
     manifest_path = cache_dir / "manifest.json"
     with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)

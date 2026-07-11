@@ -25,6 +25,7 @@ def extract_building_geometry(
     id_index: IDIndex,
     debug: bool = False,
     precision_mode: str = "standard",
+    lod_target: str = "auto",
 ) -> LODExtractionResult:
     """
     Extract building geometry using LOD3→LOD2→LOD1 fallback chain.
@@ -95,97 +96,85 @@ def extract_building_geometry(
     # bounding box. This is both faster and more accurate.
     building_tolerance = compute_building_tolerance(elem, xyz_transform, precision_mode)
 
+    normalized_lod_target = lod_target or "auto"
+    if normalized_lod_target not in {"auto", "LOD2", "LOD1"}:
+        raise ValueError(
+            f"lod_target must be one of auto/LOD2/LOD1, got: {normalized_lod_target}"
+        )
+
     # Log extraction start
     if debug:
         log(f"\n{'=' * 80}")
         log(f"[PHASE:1] LOD STRATEGY SELECTION")
         log(f"{'=' * 80}")
         log(f"[INFO] Building ID: {elem_id}")
-        log(f"[INFO] Strategy: LOD3 → LOD2 → LOD1 (with fallback to boundedBy)")
+        strategy_labels = {
+            "auto": "LOD3 → LOD2 → LOD1",
+            "LOD2": "LOD2 → LOD1",
+            "LOD1": "LOD1 only",
+        }
+        log(
+            f"[INFO] Strategy: {strategy_labels[normalized_lod_target]} "
+            "(with strategy-internal fallbacks)"
+        )
         log(
             f"[INFO] Precomputed tolerance: {building_tolerance:.2e} (precision_mode={precision_mode})"
         )
         log(f"")
 
-    # =========================================================================
-    # LOD3 Extraction - Highest detail level (architectural models)
-    # =========================================================================
-    result = extract_lod3_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
-        if debug:
-            log(
-                f"[PHASE:1] ✓ LOD3 extraction succeeded with {len(result.exterior_faces)} faces"
-            )
-            log(f"[PHASE:1] Method: {result.method}")
-        return result
+    strategies = {
+        "LOD3": extract_lod3_geometry,
+        "LOD2": extract_lod2_geometry,
+        "LOD1": extract_lod1_geometry,
+    }
+    strategy_orders = {
+        "auto": ("LOD3", "LOD2", "LOD1"),
+        "LOD2": ("LOD2", "LOD1"),
+        "LOD1": ("LOD1",),
+    }
+    levels = strategy_orders[normalized_lod_target]
 
-    # LOD3 failed, log and continue
-    if debug:
-        log(f"[PHASE:1] LOD3 extraction failed, falling back to LOD2")
-
-    # =========================================================================
-    # LOD2 Extraction - PLATEAU's primary use case
-    # =========================================================================
-    # ⚠️ CRITICAL: LOD2 includes Issue #48 fix for boundedBy vs lod2Solid comparison
-    result = extract_lod2_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
-        if debug:
-            log(
-                f"[PHASE:1] ✓ LOD2 extraction succeeded with {len(result.exterior_faces)} faces"
-            )
-            log(f"[PHASE:1] Method: {result.method}")
-            if result.prefer_bounded_by:
+    for index, level in enumerate(levels):
+        result = strategies[level](
+            elem,
+            xyz_transform,
+            id_index,
+            elem_id,
+            tolerance=building_tolerance,
+            debug=debug,
+        )
+        if result.exterior_faces:
+            if debug:
                 log(
-                    f"[PHASE:1] Note: boundedBy was preferred over lod2Solid (Issue #48 fix)"
+                    f"[PHASE:1] ✓ {level} extraction succeeded with "
+                    f"{len(result.exterior_faces)} faces"
                 )
-        return result
+                log(f"[PHASE:1] Method: {result.method}")
+                if level == "LOD2" and result.prefer_bounded_by:
+                    log(
+                        "[PHASE:1] Note: boundedBy was preferred over "
+                        "lod2Solid (Issue #48 fix)"
+                    )
+            return result
 
-    # LOD2 failed, log and continue
-    if debug:
-        log(f"[PHASE:1] LOD2 extraction failed, falling back to LOD1")
-
-    # =========================================================================
-    # LOD1 Extraction - Simple block models (last resort)
-    # =========================================================================
-    result = extract_lod1_geometry(
-        elem,
-        xyz_transform,
-        id_index,
-        elem_id,
-        tolerance=building_tolerance,
-        debug=debug,
-    )
-    if result.exterior_faces:
-        if debug:
+        if debug and index + 1 < len(levels):
             log(
-                f"[PHASE:1] ✓ LOD1 extraction succeeded with {len(result.exterior_faces)} faces"
+                f"[PHASE:1] {level} extraction failed, "
+                f"falling back to {levels[index + 1]}"
             )
-            log(f"[PHASE:1] Method: {result.method}")
-        return result
 
     # All strategies failed
     if debug:
         log(f"[PHASE:1] ✗ All LOD extraction strategies failed for {elem_id}")
-        log(f"[PHASE:1] No geometry found in LOD3, LOD2, or LOD1")
+        log(
+            f"[PHASE:1] No geometry found for target {normalized_lod_target} "
+            f"(tried: {', '.join(levels)})"
+        )
 
     # Return empty result
     return LODExtractionResult(
         exterior_faces=[],
         interior_shells=[],
-        lod_level="LOD1",  # Default to LOD1 level for failed extractions
-        method="All strategies failed",
+        lod_level=levels[-1],
+        method=f"All requested strategies failed ({' → '.join(levels)})",
     )

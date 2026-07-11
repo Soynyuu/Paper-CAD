@@ -31,7 +31,7 @@ try:
     from reportlab.pdfgen import canvas as pdf_canvas
     from reportlab.lib.pagesizes import A4, A3, letter
     from reportlab.lib.utils import ImageReader
-    from svglib.svglib import renderSVG
+    from svglib.svglib import svg2rlg
     from reportlab.graphics import renderPDF
     REPORTLAB_AVAILABLE = True
 except ImportError:
@@ -222,7 +222,7 @@ class PDFExporter:
                 temp_pdf_path = os.path.join(temp_dir, f"page_{i:03d}.pdf")
 
                 # SVGをReportLabのDrawingオブジェクトに変換
-                drawing = renderSVG.svg2rlg(svg_path)
+                drawing = svg2rlg(svg_path)
 
                 if drawing:
                     # Drawingをページサイズに合わせて描画

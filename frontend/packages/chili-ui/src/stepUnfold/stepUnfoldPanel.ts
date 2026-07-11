@@ -24,6 +24,12 @@ import style from "./stepUnfoldPanel.module.css";
 import { Dialog } from "../dialog";
 import { buttonVariants } from "../react/components/ui/button";
 import { cn } from "../react/lib/utils";
+import {
+    clearSvgFaceShapes,
+    getSvgElementsBounds,
+    highlightSvgFaceShapes,
+    SvgBounds,
+} from "./faceSearchHighlight";
 
 export class StepUnfoldPanel extends HTMLElement {
     private static _instance: StepUnfoldPanel | null = null;
@@ -1391,6 +1397,7 @@ export class StepUnfoldPanel extends HTMLElement {
         if (!svgRoot) return false;
 
         this._clearSvgFaceNumberSearch();
+        const faceShapes = highlightSvgFaceShapes(svgRoot, faceNumber);
         const selector = `.face-number[data-face-number="${faceNumber}"]`;
         const targets = svgRoot.querySelectorAll<SVGGElement>(selector);
         targets.forEach((target) => {
@@ -1401,13 +1408,46 @@ export class StepUnfoldPanel extends HTMLElement {
             badge?.setAttribute("style", "fill: rgba(255,248,220,0.96); stroke: #f59e0b; stroke-width: 2;");
             text?.setAttribute("style", `${text.getAttribute("style") ?? ""} fill: #92400e;`);
         });
-        return targets.length > 0;
+
+        if (faceShapes.length > 0) {
+            const bounds = getSvgElementsBounds(faceShapes);
+            if (bounds) this._focusSvgOnFace(bounds);
+        }
+
+        return targets.length > 0 || faceShapes.length > 0;
+    }
+
+    private _focusSvgOnFace(bounds: SvgBounds): void {
+        const editor = this._svgEditor as any;
+        const canvas = editor?.svgCanvas;
+        const workarea = editor?.workarea as HTMLElement | undefined;
+        if (!canvas?.setBBoxZoom || !canvas?.setZoom || !editor?.updateCanvas || !workarea) return;
+
+        const padding = Math.max(bounds.width, bounds.height) * 0.12;
+        const paddedBounds = {
+            x: bounds.x - padding,
+            y: bounds.y - padding,
+            width: Math.max(bounds.width + padding * 2, 1),
+            height: Math.max(bounds.height + padding * 2, 1),
+        };
+        const availableWidth = Math.max(workarea.clientWidth - 30, 1);
+        const availableHeight = Math.max(workarea.clientHeight - 30, 1);
+        const zoomInfo = canvas.setBBoxZoom(paddedBounds, availableWidth, availableHeight);
+        if (!zoomInfo) return;
+
+        const zoom = Math.min(zoomInfo.zoom, 4);
+        canvas.setZoom(zoom);
+        editor.updateCanvas(false, {
+            x: (paddedBounds.x + paddedBounds.width / 2) * zoom,
+            y: (paddedBounds.y + paddedBounds.height / 2) * zoom,
+        });
     }
 
     private _clearSvgFaceNumberSearch() {
         const svgRoot = this._getSvgRoot();
         if (!svgRoot) return;
 
+        clearSvgFaceShapes(svgRoot);
         svgRoot.querySelectorAll('.face-number[data-search-match="true"]').forEach((element) => {
             element.removeAttribute("data-search-match");
             element.querySelector(".face-number-badge")?.removeAttribute("style");

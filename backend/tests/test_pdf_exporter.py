@@ -85,3 +85,32 @@ def test_export_stacked_svg_to_pdf_keeps_page_count_and_media_box(tmp_path):
 
     assert math.isclose(width_pt, 210 * PT_PER_MM, abs_tol=0.75)
     assert math.isclose(height_pt, 297 * PT_PER_MM, abs_tol=0.75)
+
+
+def test_reportlab_fallback_exports_pdf_with_expected_page_size(tmp_path, monkeypatch):
+    if not (pdf_module.REPORTLAB_AVAILABLE and pdf_module.PYPDF2_AVAILABLE):
+        pytest.skip("ReportLab PDF backend dependencies are not available")
+
+    svg_path = tmp_path / "page.svg"
+    svg_path.write_text(
+        f'''<svg xmlns="{SVG_NS}" width="210mm" height="297mm" viewBox="0 0 210 297">
+  <rect x="10" y="10" width="190" height="277" fill="none" stroke="black" />
+</svg>''',
+        encoding="utf-8",
+    )
+    pdf_path = tmp_path / "fallback.pdf"
+    monkeypatch.setattr(pdf_module, "CAIROSVG_AVAILABLE", False)
+
+    exporter = PDFExporter(page_format="A4", page_orientation="portrait")
+    exporter.export_svg_list_to_pdf([str(svg_path)], str(pdf_path))
+
+    assert pdf_path.is_file()
+    with open(pdf_path, "rb") as pdf_file:
+        reader = pdf_module.PdfReader(pdf_file)
+        assert len(reader.pages) == 1
+        page = reader.pages[0]
+        width_pt = float(page.mediabox.width)
+        height_pt = float(page.mediabox.height)
+
+    assert math.isclose(width_pt, 210 * PT_PER_MM, abs_tol=0.75)
+    assert math.isclose(height_pt, 297 * PT_PER_MM, abs_tol=0.75)
